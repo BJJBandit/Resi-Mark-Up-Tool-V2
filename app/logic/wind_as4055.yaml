@@ -37,11 +37,12 @@ nodes:
       Building exceeds a cl 1.2 limit (height, width or roof pitch). AS 4055 classes do not apply; wind actions must be derived from AS/NZS 1170.2 by the engineer.
 
   - id: scope_unverified
-    title: Scope limits not yet confirmed
+    title: Scope not verified – classification provisional
     citation: AS 4055:2021 cl 1.2
-    status: blocked
+    status: flag
     rule: >-
-      The cl 1.2 limit values are not yet entered in wind.py (TODO(standard: AS 4055:2021 cl 1.2)) or the building geometry is incomplete, so the scope check could not be made. Classification continues but is provisional.
+      The scope check step above could not be completed (cl 1.2 limit values not yet confirmed in wind.py, or
+      building geometry incomplete). Classification continues but is provisional until the scope is confirmed.
     goto: inputs_check
 
   - id: inputs_check

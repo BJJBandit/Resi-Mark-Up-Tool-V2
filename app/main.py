@@ -15,11 +15,13 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from . import pipeline
+from .routes_logic import router as logic_router
 from .schemas import SHEET_TITLES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="Resi Mark-Up Tool")
+app.include_router(logic_router)
 
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text()
 MAX_UPLOAD = 30 * 1024 * 1024  # Claude request limit is 32 MB

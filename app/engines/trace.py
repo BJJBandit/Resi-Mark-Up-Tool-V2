@@ -148,6 +148,9 @@ class Trace(BaseModel):
         """Citations of everything that stopped an engine – de-duplicated, in order."""
         out: list[str] = []
         for s in self.all_steps():
+            # a parent's status is only a roll-up of its children – the children carry the citation
+            if s.children:
+                continue
             if s.status == "blocked" and s.citation and s.citation not in out:
                 out.append(s.citation)
         return out
@@ -244,7 +247,7 @@ def _mm_step(s: Step, out: list[str], counter: list[int]) -> str:
             prev = cid
         out.append("  end")
         out.append(f"  class {nid}_g {s.rolled_status}")
-        return first or f"{nid}_g"
+        return f"{nid}_g"
     shape = "{{{{{}}}}}" if s.kind == "decision" else ("[[{}]]" if s.kind == "lookup" else "[{}]")
     out.append(f"  {nid}{shape.format(chr(34) + label + chr(34))}")
     out.append(f"  class {nid} {s.status}")

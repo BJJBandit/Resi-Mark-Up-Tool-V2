@@ -199,9 +199,7 @@ def run(project: Project, building_id: str, tables: TableSet, prefs: dict[str, A
 
         wk: Walk = walk(t, variables, tables, trace)
 
-        derived = wk.vars.get("wind_class") if wk.results.get("wind_class_source") in ("derived",) else None
-        if "classification" in wk.results:
-            derived = wk.results["classification"].get("wind_class")
+        derived = (wk.results.get("classification") or {}).get("wind_class")
         final = wk.vars.get("wind_class")
         source = str(wk.results.get("wind_class_source", ""))
 
@@ -235,7 +233,7 @@ def run(project: Project, building_id: str, tables: TableSet, prefs: dict[str, A
         topographic_class=wk.vars.get("topographic_class"),
         scope_check=scope,
         status=section.rolled_status,
-        flags=list(wk.flags) + ([] if scope != "unverified" else []),
+        flags=list(wk.flags),
         blocked_on=trace.blocked_on(),
         visited=wk.visited,
     )

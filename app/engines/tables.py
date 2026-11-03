@@ -137,7 +137,8 @@ class Table:
         label = self.table
         if label and not label.lower().startswith(("table", "cl", "fig", "clause")):
             label = f"Table {label}"
-        return f"{self.standard}:{self.edition} {label}".strip()
+        head = f"{self.standard}:{self.edition}" if self.edition else self.standard
+        return f"{head} {label}".strip()
 
     @property
     def loaded(self) -> bool:
@@ -278,6 +279,15 @@ class Table:
 # ---------------------------------------------------------------------------
 
 
+def _is_lookup_table(path: Path) -> bool:
+    """A lookup table declares ``inputs``/``outputs`` and ``rows`` (or has a CSV sidecar)."""
+    try:
+        meta = yaml.safe_load(path.read_text()) or {}
+    except yaml.YAMLError:
+        return False
+    return isinstance(meta, dict) and ("rows" in meta or "inputs" in meta or path.with_suffix(".csv").exists())
+
+
 class TableSet:
     """All tables found under a standards directory, addressed by id."""
 
@@ -291,6 +301,8 @@ class TableSet:
         for path in sorted(root.rglob("*.yaml")):
             if path.name.startswith("_"):
                 continue
+            if not _is_lookup_table(path):
+                continue  # other data under standards/ (e.g. steel section catalogues) is not a lookup table
             tables.append(Table.from_yaml(path, table_id=path.relative_to(root).with_suffix("").as_posix()))
         return cls(tables)
 
