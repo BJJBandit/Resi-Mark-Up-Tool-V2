@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model review – Resi Mark-Up Tool</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1b1f24; --muted:#5b6470; --line:#d9dde3; --accent:#1f5fbf; --err:#b42318; --warn:#b54708; --ok:#027a48; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171b; --card:#1d2126; --ink:#e8eaed; --muted:#9aa3ad; --line:#333a42; --accent:#6ea4ff; --err:#ff8a80; --warn:#f8b26a; --ok:#6fd39a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  h3 { font-size: 14px; margin: 14px 0 6px; color: var(--muted); }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 16px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 14px; }
+  label { display:block; font-size:12px; color:var(--muted); margin-top:6px; }
+  input, select { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit; }
+  table { width:100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align:left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td select, td input { padding: 3px 6px; }
+  .badge { display:inline-block; font-size:11px; padding:1px 6px; border-radius:10px; border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+  .badge.claude { border-color: var(--accent); color: var(--accent); }
+  .badge.user { border-color: var(--ok); color: var(--ok); }
+  .badge.low { border-color: var(--warn); color: var(--warn); }
+  .attn li { margin: 2px 0; }
+  .attn { border-left: 3px solid var(--warn); }
+  button { padding: 9px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  .actions { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0; display:flex; gap: 10px; align-items:center; border-top: 1px solid var(--line); margin-top: 20px; }
+  .muted { color: var(--muted); }
+  .err { color: var(--err); }
+  img.plan { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; margin-top: 8px; }
+  .storey { border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 10px; }
+  .two { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
+  details summary { cursor: pointer; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1 id="title">Model review</h1>
+      <div class="muted" id="sub"></div>
+    </div>
+    <div class="muted" id="usage"></div>
+  </div>
+
+  <div class="card attn" id="attn" hidden>
+    <h2>Needs attention</h2>
+    <ul id="attnList"></ul>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h2>Site</h2>
+      <div class="grid" id="site"></div>
+    </div>
+    <div class="card">
+      <h2>Wind (AS 4055 inputs)</h2>
+      <div class="grid" id="wind"></div>
+      <p class="muted" style="margin:10px 0 0">The engine derives the class from these inputs and flags any difference from the stated class.</p>
+    </div>
+  </div>
+
+  <div id="buildings"></div>
+
+  <div class="card">
+    <details><summary>Pages (<span id="pageCount"></span>)</summary>
+      <table id="pages"><thead><tr><th>#</th><th>Title</th><th>Kind</th><th>Scale</th><th>Vector</th></tr></thead><tbody></tbody></table>
+    </details>
+  </div>
+
+  <div class="actions">
+    <button class="secondary" id="save">Save changes</button>
+    <button id="approve">Approve model &amp; run design</button>
+    <span class="muted" id="status"></span>
+    <span class="err" id="error"></span>
+  </div>
+  <div class="card" id="results" hidden>
+    <h2>Design results</h2>
+    <div id="resultLinks"></div>
+  </div>
+</main>
+
+<script>
+const jobId = location.pathname.split('/').filter(Boolean)[1];
+let model = null;
+
+const SITE_CLASSES = ['Unknown','A','S','M','M-D','H1','H1-D','H2','H2-D','E','E-D','P'];
+const WIND = ['', 'N1','N2','N3','N4','N5','N6','C1','C2','C3','C4'];
+const WALL_CONSTR = ['timber_stud','brick_veneer','double_brick','blockwork','blockwork_corefilled','steel_frame','concrete','other'];
+const ROOF_FORM = ['unknown','hip','gable','gable_hip','skillion','flat','combination'];
+const ROOF_CONSTR = ['unknown','truss','rafter','mixed'];
+const CLAD = ['unknown','sheet','tile'];
+const FLOOR = ['unknown','slab_on_ground','suspended_timber','suspended_timber_on_steel','suspended_slab','bondek_slab'];
+const PAGE_KINDS = ['cover','site_plan','floor_plan','roof_plan','elevation','section','detail','drainage','electrical','notes','schedule','other'];
+
+const el = (tag, attrs={}, ...kids) => { const e=document.createElement(tag); for (const [k,v] of Object.entries(attrs)) { if (k==='class') e.className=v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (v!==undefined && v!==null) e.setAttribute(k, v);} for (const k of kids.flat()) e.append(k?.nodeType ? k : document.createTextNode(k ?? '')); return e; };
+
+function badge(p) {
+  if (!p) return '';
+  const cls = p.source==='claude' ? 'claude' : p.source==='user' ? 'user' : '';
+  const low = p.confidence < 0.6 ? ' low' : '';
+  const txt = p.source + (p.page ? ' p'+p.page : '') + (p.source==='claude' ? ' '+Math.round(p.confidence*100)+'%' : '');
+  return el('span', {class:'badge '+cls+low, title: p.note || ''}, txt);
+}
+function field(label, obj, key, opts) {
+  const wrap = el('div');
+  wrap.append(el('label', {}, label));
+  let input;
+  if (opts) {
+    input = el('select'); for (const o of opts) input.append(el('option', {value:o, selected: String(obj[key] ?? '')===String(o) ? '' : null}, o===''?'—':o));
+    input.onchange = () => { obj[key] = input.value === '' ? null : input.value; mark(obj, key); };
+  } else {
+    input = el('input', {value: obj[key] ?? ''});
+    input.onchange = () => { const v = input.value.trim(); obj[key] = v==='' ? null : (isNaN(v) ? v : Number(v)); mark(obj, key); };
+  }
+  wrap.append(input);
+  return wrap;
+}
+function mark(obj, key) { if (obj.provenance && typeof obj.provenance==='object' && 'source' in obj.provenance) obj.provenance = {source:'user', confidence:1, note:'edited in review'}; }
+
+function render() {
+  document.getElementById('title').textContent = (model.project_name || 'Model review') + (model.job_no ? ' – ' + model.job_no : '');
+  document.getElementById('sub').textContent = `${model.buildings.length} building(s), ${model.pages.length} pages · status: ${model.review.status}`;
+  const u = model._usage; if (u) document.getElementById('usage').textContent = `Claude tokens: ${u.input_tokens.toLocaleString()} in / ${u.output_tokens.toLocaleString()} out over ${u.calls.length} call(s)`;
+
+  const attn = model.review.needs_attention || [];
+  document.getElementById('attn').hidden = !attn.length;
+  const al = document.getElementById('attnList'); al.innerHTML=''; attn.forEach(a => al.append(el('li', {}, a)));
+
+  const g = model.site.geotech, w = model.site.wind;
+  const s = document.getElementById('site'); s.innerHTML='';
+  s.append(field('Address', model.site, 'address'), field('Site class (AS 2870)', g, 'site_class', SITE_CLASSES), field('ys (mm)', g, 'ys_mm'),
+           field('Bearing (kPa)', g, 'bearing_kpa'), field('Founding depth (mm)', g, 'founding_depth_mm'), field('Founding material', g, 'founding_material'),
+           field('Rock depth (mm)', g, 'rock_depth_mm'), field('Fill present', g, 'fill_present', ['', 'true','false']), field('Fill depth (mm)', g, 'fill_depth_mm'),
+           field('Trees / abnormal moisture', g, 'trees_or_abnormal_moisture', ['', 'true','false']), field('Landslip hazard', g, 'landslip_or_slope_hazard', ['', 'true','false']),
+           field('BAL', model.site, 'bal'), field('Corrosion env.', model.site, 'corrosion_environment', ['', 'low','medium','high','severe']));
+  const wd = document.getElementById('wind'); wd.innerHTML='';
+  wd.append(field('Stated class', w, 'stated_class', WIND), field('Stated by', w, 'stated_source', ['', 'architect','geotech','user']),
+            field('Region', w, 'region', ['A','B','C','D']), field('Terrain category', w, 'terrain_category', ['', 'TC1','TC2','TC2.5','TC3']),
+            field('Shielding', w, 'shielding', ['', 'FS','PS','NS']), field('Topographic class', w, 'topographic_class', ['', 'T0','T1','T2','T3','T4','T5']),
+            field('Site slope (°)', w, 'site_slope_deg'));
+
+  const bs = document.getElementById('buildings'); bs.innerHTML='';
+  for (const b of model.buildings) {
+    const card = el('div', {class:'card'});
+    card.append(el('h2', {}, `Building: ${b.name || b.id}`));
+    const grid = el('div', {class:'grid'});
+    grid.append(field('Name', b, 'name'), field('NCC class', b, 'ncc_class', ['1a','1b','10a','10b']),
+                field('External walls', b, 'external_wall_construction', WALL_CONSTR), field('Internal walls', b, 'internal_wall_construction', WALL_CONSTR),
+                field('Roof form', b.roof, 'form', ROOF_FORM), field('Roof construction', b.roof, 'construction', ROOF_CONSTR),
+                field('Pitch (°)', b.roof, 'pitch_deg'), field('Cladding', b.roof, 'cladding', CLAD), field('Eaves (mm)', b.roof, 'eaves_mm'));
+    card.append(grid, el('div', {class:'muted'}, 'Roof: ', badge(b.roof.provenance)));
+    for (const st of b.storeys) {
+      const sd = el('div', {class:'storey'});
+      sd.append(el('h3', {}, `Storey: ${st.name} (${st.id}) – ${st.walls.length} walls, page ${st.frame?.page_number ?? '?'}` + (st.frame ? `, 1:${st.frame.scale_denominator}` : ', NO SCALE')));
+      const sg = el('div', {class:'grid'});
+      sg.append(field('Floor', st.floor, 'kind', FLOOR), field('Wall height (mm)', st, 'wall_height_mm'), field('Level RL', st, 'level_rl'));
+      sd.append(sg);
+      const tbl = el('table'); tbl.append(el('thead', {}, el('tr', {}, ...['ID','Ext','Length','Thk','Construction','Load-bearing','Openings','Source'].map(h=>el('th',{},h)))));
+      const tb = el('tbody');
+      for (const wl of st.walls) {
+        const len = Math.hypot(wl.end.x-wl.start.x, wl.end.y-wl.start.y);
+        const lb = el('select'); for (const [v,t] of [['', '— decide —'],['true','Yes'],['false','No']]) lb.append(el('option',{value:v, selected: String(wl.load_bearing ?? '')===v ? '' : null}, t));
+        if (wl.external) { lb.value='true'; lb.disabled=true; }
+        lb.onchange = () => { wl.load_bearing = lb.value===''?null:lb.value==='true'; wl.provenance={source:'user',confidence:1,note:'set in review'}; };
+        const cs = el('select'); for (const c of WALL_CONSTR) cs.append(el('option',{value:c, selected: wl.construction===c?'':null}, c)); cs.onchange=()=>{wl.construction=cs.value;};
+        tb.append(el('tr', {}, el('td',{},wl.id), el('td',{},wl.external?'ext':'int'), el('td',{},Math.round(len)), el('td',{},Math.round(wl.thickness_mm)),
+                  el('td',{},cs), el('td',{},lb), el('td',{title: wl.openings.map(o=>`${o.tag||o.kind} ${o.width_mm}`).join(', ')}, String(wl.openings.length)), el('td',{},badge(wl.provenance))));
+      }
+      tbl.append(tb); sd.append(tbl);
+      if (st.frame) sd.append(el('img', {class:'plan', src:`/jobs/${jobId}/plan/${b.id}/${st.id}.png`, alt:'labelled plan', loading:'lazy'}));
+      card.append(sd);
+    }
+    bs.append(card);
+  }
+  document.getElementById('pageCount').textContent = model.pages.length;
+  const pt = document.querySelector('#pages tbody'); pt.innerHTML='';
+  for (const p of model.pages) {
+    const ks = el('select'); for (const k of PAGE_KINDS) ks.append(el('option',{value:k, selected:p.kind===k?'':null},k)); ks.onchange=()=>{p.kind=ks.value;};
+    pt.append(el('tr',{}, el('td',{},p.number), el('td',{},p.title), el('td',{},ks), el('td',{},p.scale_denominator?'1:'+p.scale_denominator:'—'), el('td',{},p.is_vector?'yes':el('span',{class:'err'},'NO – image only'))));
+  }
+}
+
+async function load() {
+  const r = await fetch(`/jobs/${jobId}/model`); if (!r.ok) { document.getElementById('error').textContent = await r.text(); return; }
+  model = await r.json(); render();
+}
+async function save(approve) {
+  const st = document.getElementById('status'), er = document.getElementById('error'); er.textContent=''; st.textContent = approve ? 'Saving and starting design…' : 'Saving…';
+  const body = {...model}; delete body._usage;
+  const r = await fetch(`/jobs/${jobId}/model` + (approve ? '?approve=true' : ''), {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  if (!r.ok) { er.textContent = await r.text(); st.textContent=''; return false; }
+  model = await r.json(); render(); st.textContent = approve ? 'Design running…' : 'Saved.'; return true;
+}
+document.getElementById('save').onclick = () => save(false);
+document.getElementById('approve').onclick = async () => { if (await save(true)) poll(); };
+async function poll() {
+  const r = await fetch(`/jobs/${jobId}`); const j = await r.json();
+  document.getElementById('status').textContent = j.step || j.status;
+  if (j.status === 'done') {
+    const rs = document.getElementById('results'); rs.hidden=false; const rl = document.getElementById('resultLinks'); rl.innerHTML='';
+    rl.append(el('a',{href:`/jobs/${jobId}/markup.pdf`},'Mark-up PDF'), ' · ', el('a',{href:`/jobs/${jobId}/trace`},'Design trace'), ' · ', el('a',{href:`/jobs/${jobId}/review.json`},'review.json'));
+    if (j.warnings?.length) rl.append(el('ul',{}, ...j.warnings.map(w=>el('li',{class:'muted'},w))));
+  } else if (j.status === 'error') { document.getElementById('error').textContent = j.error; }
+  else setTimeout(poll, 2500);
+}
+load();
+</script>
+</body>
+</html>
