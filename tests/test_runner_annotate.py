@@ -101,3 +101,11 @@ def test_pdf_builds_from_annotated_sheets(tmp_path):
     assert doc.page_count >= 3
     assert sum(len(list(pg.annots())) for pg in doc) > 20
     (tmp_path / "markup.pdf").write_bytes(out)
+
+
+def test_run_summary_shape():
+    run = run_design(_project())
+    s = run.summary()
+    assert s["status"] in {"ok", "flag", "blocked", "not_supported"}
+    assert isinstance(s["blocked_on"], list) and isinstance(s["flags"], list)
+

@@ -55,6 +55,7 @@ MIN_LINE_MM = 350  # a heavy line shorter than this is never a wall face
 MIN_PIECE_MM = 250  # minimum overlap for a line pair
 MAX_OPENING_MM = 7000
 MIN_OPENING_MM = 300
+UNTAGGED_MAX_OPENING_MM = 2500  # a gap with no tag, window lines or swing is only a door-sized opening
 JUNK_PIECE_MM = 1500  # a non-nominal pair piece shorter than this is joinery, not a wall
 SILENT_GAP_MM = 70  # gaps up to this are drafting noise
 PLAN_MIN_SIZE_MM = 2500
@@ -180,13 +181,16 @@ def _band_taken(accepted: list[Bar], bar: Bar) -> bool:
     return False
 
 
-def bars_from_pairs(segs: list[Seg], heavy: float, ppm: float) -> list[Bar]:
+def bars_from_pairs(segs: list[Seg], heavy: float, ppm: float, kinds: tuple[str, ...] = ("stroke", "fill")) -> list[Bar]:
+    """Pairs of parallel lines at wall spacing. `kinds` limits the lines used: in fill
+    mode only the edges of solid polygons are paired (L-shaped wall fills that are
+    not plain rectangles), in pair mode every heavy line."""
     min_t, max_t = MIN_T_MM * ppm, MAX_T_MM * ppm
     min_ov = MIN_PIECE_MM * ppm
     diagonals = [s for s in segs if s.axis is None and 2.0 <= s.length <= 12.0]
     cands = [
         s for s in segs
-        if s.axis and not s.dashed and s.kind in ("stroke", "fill")
+        if s.axis and not s.dashed and s.kind in kinds
         and s.width >= heavy - 0.05 and s.length >= MIN_LINE_MM * ppm
     ]
     proposals: list[tuple[tuple, Bar, int, int]] = []
@@ -361,7 +365,9 @@ def build_runs(bars: list[Bar], ev: Evidence) -> list[Run]:
                         opening = OpeningCandidate(gap_lo, gap_hi, "window", None, "", "window_lines", 0.7)
                     elif _arc_near(ev, axis, pos, t, gap_lo, gap_hi):
                         opening = OpeningCandidate(gap_lo, gap_hi, "door", None, "", "arc", 0.7)
-                    elif not (_junction_at(cross, axis, pos, t, gap_lo) and _junction_at(cross, axis, pos, t, gap_hi)):
+                    elif gap <= UNTAGGED_MAX_OPENING_MM * ppm and not (
+                        _junction_at(cross, axis, pos, t, gap_lo) and _junction_at(cross, axis, pos, t, gap_hi)
+                    ):
                         opening = OpeningCandidate(gap_lo, gap_hi, "unknown", None, "", "no_junction", 0.4)
                 if opening is None:
                     runs.append(cur)
@@ -481,35 +487,45 @@ def extend_run_ends(runs: list[Run], ev: Evidence) -> None:
 
 
 def glazed_walls(runs: list[Run], ev: Evidence) -> list[Run]:
-    """A side of a room that is all glass has no wall bar at all: two parallel walls
-    end at the same line and window lines join their ends. Make that a run whose
-    whole length is one opening, so the outline closes and the opening is recorded."""
+    """A side of a room that is all glass has no wall bar at all: a wall ends on a
+    line where window lines run across to another wall (which either ends on the
+    same line or passes through it). Make that a run whose whole length is one
+    opening, so the outline closes and the opening is recorded."""
     ppm = ev.ppm
     made: list[Run] = []
     for axis in ("h", "v"):
         same = [r for r in runs if r.axis == axis]
         other: Axis = "v" if axis == "h" else "h"
-        for side in ("lo", "hi"):
-            ends = sorted((((r.lo if side == "lo" else r.hi), r) for r in same), key=lambda e: e[0])
-            for i, (e1, r1) in enumerate(ends):
-                for e2, r2 in ends[i + 1 :]:
-                    if e2 - e1 > 1.5:
-                        break
+        for r1 in same:
+            for side in ("lo", "hi"):
+                e = r1.lo if side == "lo" else r1.hi
+                for r2 in same:
+                    if r2 is r1:
+                        continue
+                    # the two walls meet the glass line at a corner each: their ends may differ by a wall thickness
+                    corner_tol = max(r1.thickness, r2.thickness) + 1.5
+                    ends_here = abs((r2.lo if side == "lo" else r2.hi) - e) <= corner_tol
+                    passes = r2.lo + 1.5 < e < r2.hi - 1.5
+                    if not (ends_here or passes):
+                        continue
                     span = abs(r2.pos - r1.pos)
                     if not (MIN_OPENING_MM * ppm <= span <= MAX_OPENING_MM * ppm):
                         continue
-                    pos = (e1 + e2) / 2
                     t = (r1.thickness + r2.thickness) / 2
                     lo, hi = min(r1.pos, r2.pos), max(r1.pos, r2.pos)
-                    # already walled, or the ends simply butt into a cross wall?
-                    if any(o.axis == other and abs(o.pos - pos) <= max(t, o.thickness) + 1.0 and overlap(o.lo, o.hi, lo, hi) > 0.3 * span for o in runs + made):
+                    # another wall of this axis in between would be the real neighbour
+                    if any(o is not r1 and o is not r2 and o.axis == axis and lo < o.pos < hi and o.lo - 1.5 <= e <= o.hi + 1.5 for o in same):
                         continue
-                    if any(o.axis == other and abs(o.pos - pos) <= o.thickness / 2 + 1.5 and (o.lo - 1 <= r1.pos <= o.hi + 1 or o.lo - 1 <= r2.pos <= o.hi + 1) for o in runs):
+                    # already walled, or the end simply butts into a cross wall?
+                    if any(o.axis == other and abs(o.pos - e) <= max(t, o.thickness) + 1.0 and overlap(o.lo, o.hi, lo, hi) > 0.3 * span for o in runs + made):
                         continue
-                    covered = sum(max(0.0, overlap(a, b, lo, hi)) for a, b in _light_runs_in_band(ev, other, pos, t, strict=False))
+                    if any(o.axis == other and abs(o.pos - e) <= max(t, o.thickness) + 1.5
+                           and o.lo - o.thickness - 1 <= r1.pos <= o.hi + o.thickness + 1 for o in runs):
+                        continue
+                    covered = sum(max(0.0, overlap(a, b, lo, hi)) for a, b in _light_runs_in_band(ev, other, e, t, strict=False))
                     if covered < 0.5 * span:
                         continue
-                    run = Run(other, pos, lo, hi, t, [])
+                    run = Run(other, e, lo, hi, t, [])
                     run.openings.append(OpeningCandidate(lo, hi, "window", None, "", "window_lines", 0.6))
                     made.append(run)
     return made
@@ -580,12 +596,20 @@ def snap_corners(runs: list[Run]) -> None:
                 if not (c.lo - c.thickness / 2 - 1.0 <= r.pos <= c.hi + c.thickness / 2 + 1.0):
                     continue
                 d = abs(c.pos - e)
-                if d <= c.thickness / 2 + r.thickness / 2 + 1.5 and (best is None or d < best[0]):
-                    best = (d, c.pos)
+                # among the cross walls within reach prefer the longest: a real wall over a stair rail or nib
+                if d <= c.thickness / 2 + 1.5 * r.thickness + 1.5 and (best is None or c.length > best[0]):
+                    best = (c.length, c.pos)
             if best is not None:
-                setattr(r, end, best[1])
+                new = best[1]
+                shortens = (new - e) if end == "lo" else (e - new)
+                jamb = min((o.lo for o in r.openings), default=r.hi) if end == "lo" else max((o.hi for o in r.openings), default=r.lo)
+                # never pull an end back past an opening, and only a little past the drawn end
+                if shortens <= 0 or (shortens <= r.thickness / 2 + 1.0 and (new <= jamb if end == "lo" else new >= jamb)):
+                    setattr(r, end, new)
         if r.hi < r.lo:
             r.lo, r.hi = r.hi, r.lo
+        for o in r.openings:
+            o.lo, o.hi = max(o.lo, r.lo), min(o.hi, r.hi)
 
 
 # ---------------------------------------------------------------------------
@@ -744,7 +768,12 @@ def label_plans(plans: list[Plan], titles: list[Line], fallback: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def detect_walls(scan: PageScan, vs: VectorSet, scale_denominator: float | None) -> WallResult:
+def detect_walls(
+    scan: PageScan, vs: VectorSet, scale_denominator: float | None,
+    dimension_boxes: list[tuple[float, float, float, float]] | None = None,
+) -> WallResult:
+    """`dimension_boxes` are the text boxes of numbers already identified as
+    dimensions, so a `1200` on a dimension line is not mistaken for a door tag."""
     scale = scale_denominator or 100.0
     ppm = pts_per_mm(scale)
     notes: list[str] = []
@@ -754,17 +783,26 @@ def detect_walls(scan: PageScan, vs: VectorSet, scale_denominator: float | None)
     fill_bars = bars_from_fills(vs, ppm)
     heavy = heavy_pen(vs)
     if sum(b.length for b in fill_bars) >= FILL_MODE_MIN_LENGTH_MM * ppm:
-        mode, bars = "fill", fill_bars
+        mode, bars = "fill", list(fill_bars)
+        # solid wall shapes that are not plain rectangles (returns, nibs) come from their edges
+        for b in bars_from_pairs(vs.segments, 0.0, ppm, kinds=("fill",)):
+            if not _band_taken(bars, b):
+                bars.append(b)
     elif heavy is not None:
         mode, bars = "pair", bars_from_pairs(vs.segments, heavy, ppm)
     else:
         mode, bars = "none", []
 
     tag_lines = []
+    dim_centres = [((b[0] + b[2]) / 2, (b[1] + b[3]) / 2) for b in (dimension_boxes or [])]
     for ln in scan.lines:
         tag = parse_tag(ln.text)
-        if tag is not None:
-            tag_lines.append((ln, tag))
+        if tag is None:
+            continue
+        x0, y0, x1, y1 = ln.bbox
+        if any(x0 - 0.5 <= cx <= x1 + 0.5 and y0 - 0.5 <= cy <= y1 + 0.5 for cx, cy in dim_centres):
+            continue  # it is a dimension string
+        tag_lines.append((ln, tag))
     light = [s for s in vs.segments if s.axis and (mode == "fill" or heavy is None or s.width < heavy - 0.05)]
     ev = Evidence(light, vs.curves, tag_lines, ppm)
 

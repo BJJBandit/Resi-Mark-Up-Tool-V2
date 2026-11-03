@@ -4,3 +4,5 @@ uvicorn[standard]==0.54.0
 python-multipart==0.0.33
 pymupdf==2.1
 pydantic>=2.13,<3
+shapely>=2.0
+numpy>=1.26

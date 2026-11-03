@@ -44,7 +44,7 @@ def render_overlay(pdf_path: str, page_number: int, out_dir: str = DEFAULT_OUT, 
     vs = extract_vectors(page)
     dims = analyse_dimensions(scan, vs)
     scale = choose_scale(scan, dims)
-    walls = detect_walls(scan, vs, scale)
+    walls = detect_walls(scan, vs, scale, [d.word.bbox for d in dims.dims])
     m = pdf_to_page(page)
     ppm = pts_per_mm(scale or 100.0)
 

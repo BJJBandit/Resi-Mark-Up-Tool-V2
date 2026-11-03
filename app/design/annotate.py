@@ -219,7 +219,8 @@ def footing_elements(b: Building, storey: Storey, result: Any, m: Mapper) -> tup
             sched.append(ScheduleItem(tag=c.id, text=f"{c.section} COLUMN".upper()))
     if not getattr(result, "verified", False):
         notes.append("-FOOTING SIZES ARE THE PRACTICE STANDARD; ENGINEER TO VERIFY AGAINST AS 2870 BEFORE ISSUE")
-        warn.append(f"{b.id}: footings unverified - " + "; ".join(result.blocked_on or ["standard design table not loaded"]))
+        needs = [x for x in (result.blocked_on or []) if "AS 2870" in x] or ["standard design table not loaded"]
+        warn.append(f"{b.id}: footings unverified - " + "; ".join(needs))
     return els, sched, notes, warn
 
 

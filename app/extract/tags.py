@@ -43,9 +43,14 @@ class Tag:
     is_id_only: bool = False
 
 
+_NOT_A_TAG = re.compile(r"^(CL|RL|FFL|FCL|FSL|AHD)\s*\d")
+
+
 def parse_tag(text: str) -> Tag | None:
     t = text.strip()
     up = t.upper()
+    if _NOT_A_TAG.match(up):
+        return None  # ceiling heights and levels
     m = _MAVERIC.match(up)
     if m:
         kind = _TYPE_KIND.get(m.group(1), "unknown")
@@ -75,4 +80,6 @@ def looks_like_tag(text: str) -> bool:
     """True for strings that are probably opening tags even when unparsed, so they can
     be reported as unmatched (e.g. a code style we have not seen)."""
     up = text.strip().upper()
+    if _NOT_A_TAG.match(up):
+        return False
     return bool(parse_tag(up)) or bool(re.match(r"^[A-Z]{1,3}\d{3,4}[A-Z]?$", up))

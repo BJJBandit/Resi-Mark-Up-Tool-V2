@@ -45,7 +45,7 @@ class DesignRun:
 
     def summary(self) -> dict[str, Any]:
         return {
-            "status": self.trace.status(),
+            "status": self.trace.status,
             "steps_run": len(self.results),
             "steps_skipped": len([s for s in self.plan.steps if s.skipped]),
             "blocked_on": self.trace.blocked_on(),
