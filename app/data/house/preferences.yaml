@@ -1,0 +1,146 @@
+# Arete house preferences – extracted from 2024-C07-PR01, PR03 and PR05.
+# Editable in the app (Settings → Preferences). Values marked "confirm" are my reading
+# of the drawings and should be checked.
+
+practice:
+  wind_region: A                # AS 4055 Fig 2.1 – Tasmania (confirm whole practice)
+  default_terrain_category: TC3 # confirm – suburban default
+  default_shielding: PS         # confirm
+  default_topographic_class: T0 # confirm
+
+editions:
+  as4055: 2021
+  as2870: 2011
+  as1684_2: 2021
+  as4773: 2015
+  ncc: 2022
+
+banner:
+  footing_sheets: "AS 2870:2011 SITE CLASSIFICATION: {site_class}"
+  framing_sheets: "AS 4055:2021 WIND CLASSIFICATION: {wind_class}"   # confirm wording
+
+sheets:
+  single_storey: [footing_floor, wall, roof]
+  two_storey: [footing_slab, wall_gf, floor_ff, wall_ff, roof]
+  outbuilding: [footing_slab, roof_wall]
+  include_load_path_sheet: false   # confirm – not in your sets
+
+materials:
+  internal_timber_grade: "F17/LVL"
+  external_timber_grade: "F7 TP"
+  deck_timber_grade: "F7 TP"
+  lvl_treatment: equivalent_to_f17   # F17 tables govern; LVL offered as equivalent
+  prefer_doubled_timber_before_steel: true
+  steel_lintel_section: "250 PFC"
+  steel_bearer_sections: ["250UB37", "310UB40"]
+  steel_grade_note: "GRADE 300 UB/PFC TO AS 3679.1, GRADE 350 SHS TO AS 1163"
+
+columns:
+  standard: {tag: C1, section: "89x3.5 SHS"}
+  heavy:    {tag: C2, section: "89x5 SHS", use: "continuous full-height / supporting PFC"}
+  double_stud: {tag: DS, section: "2/90x45 F17/LVL"}
+  base_plates:
+    C1_on_pier: "190x90x10 PLATE, 2/M10 4.6/S CHEMSET 502+ 60 EMBEDMENT"
+    C1_on_slab_external: "100x230x12 PLATE, 4/M12 4.6/S THREADED ROD CHEMSET REO502+ 90 EMBEDMENT"
+    C2: "250x250x12 PLATE, 4/M12 4.6/S THREADED ROD CHEMSET REO502+ 90 EMBEDMENT, H.D.G."
+    BP1: "190x190x10 PLATE, 4/M12 4.6/S CHEMSET 502+ 100 EMBEDMENT OR 4/N12 H.D.G. CAST-IN TANGS"
+
+footings:
+  pier:
+    diameter: 450
+    reinforcement: "1/N16 CENTRAL"
+    founding: "TO ROCK / REFUSAL"
+    max_spacing_under_strip: 3000
+    at_corners: true
+    omit_where_strip_on_rock: true
+  strip_footing:
+    width: 450
+    depth_min: 450
+    depth_min_class_P: 500
+    reinforcement: "4/L11 TM TOP AND BOTTOM - 50 COVER"
+    reduce_on_rock: "DEPTH MAY BE REDUCED TO 300 AND TOP MESH OMITTED WHERE FOUNDED ON ROCK"
+  edge_beam:
+    width: 450
+    depth_min: 450
+    reinforcement: "4/L11 TM TOP AND BOTTOM - 50 COVER, 1/N16 TOP"
+  internal_beam:
+    width: 300
+    depth_min: 400
+    reinforcement: "3/L11 TM BOTTOM WITH 50 COVER"
+    omit_on_rock: true
+  slab_house:
+    thickness: 100
+    mesh: "SL82 TOP WITH 30 COVER"
+    concrete: "25 MPa"
+  slab_garage:
+    thickness: 150
+    mesh: "SL92 TOP AND BOTTOM WITH 30 COVER"
+    concrete: "32 MPa"
+  re_entrant_bars: "3/N12 2000 LONG, 100 BETWEEN BARS, FIRST BAR 40 FROM CORNER"
+  foundation_brickwork:
+    leaf: 110
+    engaged_piers_max_ctrs: 1800
+    max_height_single_leaf: 1500
+    double_brick_above_height: 1500
+    max_total_height: 2400
+  retained_fill_rule: "BRICK VENEER NOT TO RETAIN MORE THAN 100; 100-1000 USE 190 COREFILLED BLOCK N12 AT 400 EW"
+  isolate_paving: "10 ABELFLEX JOINT AND MASTIC SEAL"
+
+floor:
+  joist_spacing_default: 450
+  joist_spacing_tiled: 300
+  joist_sizes_preferred: ["140x45 F17/LVL", "190x45 F17/LVL", "240x45 F7 TP"]
+  bearer_sizes_preferred: ["2/140x45 F17/LVL", "2/190x35 F17", "2/190x45 F17/LVL", "2/240x45 F17/LVL", "2/290x45 F7 TP"]
+  deck_joist_sizes: ["90x45 F7 TP", "140x45 F7 TP", "190x45 F7 TP", "240x45 F7 TP"]
+  deck_bearer_sizes: ["2/140x45 F7 TP", "2/190x45 F7 TP", "2/290x45 F7 TP"]
+  deck_ledger_fixing: "M12 4.6/S BOLTS EACH END AND AT MAX 300 CTRS"
+  cleat_bolt_rule:
+    140: "2/M10 4.6/S"
+    190: "3/M10 4.6/S"
+    240: "3/M12 4.6/S"
+
+walls:
+  lintel_sizes_order: ["90x35", "120x35", "140x35", "140x45", "190x35", "190x45", "240x35", "240x45", "2/290x45"]
+  lintel_grade: "F17/LVL"
+  stud_rule_openings_over_1500: "MIN F17 STUDS TO SIDES OF OPENING"
+  stud_rule_openings_over_2000: "MIN 2/90x35 F17/LVL STUDS TO SIDES OF OPENING"
+  stud_rule_height_over_2600: "ALL STUDS F17"
+  masonry_lintels:      # confirm source (NCC HP / AS 4773)
+    - {span_max: 900,  section: "75x10 FL"}
+    - {span_max: 1500, section: "100x75x8 UA"}
+    - {span_max: 3300, section: "150x100x10 UA"}
+  masonry_lintel_bearing: 150
+
+bracing:
+  types_used:
+    d:    {description: "TYPE d STRAP BRACING (DOUBLE DIAGONAL TENSIONED METAL STRAP)", lengths: [1800, 2400]}
+    g:    {description: "TYPE g PLY BRACING", lengths: [600]}
+    h(B): {description: "TYPE h METHOD B PLY BRACING", lengths: [900, 1600, 1800, 2800, 3600]}
+  label_format: "{type} - {length}"
+  preference_order: ["d", "h(B)", "g"]    # confirm – d used wherever a full-height 1800+ panel fits
+  bottom_plate_fixing_at_panel_ends: "M12 MASONRY ANCHOR 60 INTO SLAB"
+
+tie_down:
+  source: house_table_4        # or as1684_section_9
+  variants_available: ["N2_single_upper_sheet", "N3_single_upper_sheet"]
+  type_A: "30x0.8 G.I. STRAP, 6/30x2.8 NAILS EACH END, M10 BOLT TO FLOOR"
+  type_B: "DOUBLE 30x0.8 G.I. STRAP, M12 BOLT TO FLOOR FRAMING – LINTELS >= 1800 ON TOP FLOOR"
+
+roof:
+  trusses_by_manufacturer: true
+  truss_tag: TR1
+  verandah_beam_grade: "F7 TP"
+  verandah_beam_sizes: ["140x45 F17/LVL", "190x45 F7 TP", "2/190x45 F7 TP", "240x45 F17/LVL", "2/290x45 F7 TP"]
+  annotate_rlw_on_verandah_beams: true
+  roof_beam_steel: "250 PFC"
+
+connections:
+  cleat_callout: "6 CFW 8 PLATE CLEAT TO {col}. CLEAT CONNECT {beam} TO {col} WITH {bolts}. MIN 50 BETWEEN BOLTS AND TIMBER END. MIN 40 BETWEEN BOLTS AND TIMBER EDGE. MIN 20 BETWEEN BOLTS AND CLEAT EDGES/ENDS."
+  pfc_to_column: "6 CFW 8 PLATE CLEAT TO C2. CLEAT CONNECT {beam} FLANGE TO C2 WITH 3/M16 4.6/S BOLTS. PROVIDE 8 PLATE CAP 6 CFW TO C2. ALTERNATIVELY, {beam} TO BEAR ON C2 AND 6 CFW PERIMETER"
+  wall_to_continuous_column: "BOLT WALL FRAMING TO C2 CONTINUOUS COLUMNS WITH M10 BOLTS AT MAX 600 CTRS"
+
+drawing:
+  scale: "1:100 @ A3"
+  text_case: upper
+  spacing_symbol: "¢"
+  schedule_order: [column, footing, floor_framing, lintel, masonry_lintel, bracing, roof_framing, notes, notice_to_owner]

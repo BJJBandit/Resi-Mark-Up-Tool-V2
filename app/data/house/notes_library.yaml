@@ -1,0 +1,110 @@
+# Plan-sheet notes, verbatim from Arete's 2024–2026 sets. Each note has a key, the sheets
+# it applies to, and the conditions under which it is included. Claude may adapt wording
+# only where `adaptable: true`; everything else is emitted exactly as written.
+
+notes:
+  - key: member_layout_only
+    sheets: [all]
+    text: "THIS DRAWING IS A MEMBER LAYOUT PLAN ONLY. BUILDER TO CONSULT ARCHITECTURAL DRAWINGS FOR DIMENSIONS, SECTIONS AND CONNECTION CONFIGURATION"
+
+  - key: steel_corrosion
+    sheets: [all]
+    when: {has_steel: true}
+    text: "STEEL WORK TO BE CLEANED TO A SUITABLE AS 1627 CLASS AND COATED WITH AN APPROVED CORROSION PROTECTION PRODUCT TO NCC CL 6.3.9 OF THE ABCB HOUSING PROVISIONS"
+    citation_to_verify: "older sets quote BCA 3.4.4.4 TABLE 3.4.4.2"
+
+  - key: site_prep
+    sheets: [footing, floor]
+    text: "SITE PREPARATION AND FILL CONSTRUCTION IN ACCORDANCE WITH AS 2870 AND AS 3798"
+
+  - key: step_footings
+    sheets: [footing]
+    text: "STEP FOOTINGS TO AS 2870 5.4.3"
+
+  - key: subfloor_vent_dpc
+    sheets: [footing, floor]
+    when: {masonry_veneer_or_full: true}
+    text: "PROVIDE SUB-FLOOR VENTILATION, FLASHING AND DAMP-PROOF COURSE TO AS 4773"
+
+  - key: articulate_masonry
+    sheets: [footing, wall]
+    when: {masonry_veneer_or_full: true}
+    text: "ARTICULATE MASONRY WALLS TO AS 4773"
+
+  - key: ground_falls
+    sheets: [footing]
+    text: "ALL GROUND LEVELS TO SLOPE MIN. 2% AWAY FROM FOOTINGS WHERE SEALED AND MIN. 5% AWAY FROM FOOTINGS WHERE UNSEALED"
+
+  - key: ag_drains
+    sheets: [footing]
+    text: "AG DRAINS TO BE INSTALLED PRIOR TO COMMENCEMENT OF FOOTING EXCAVATION"
+
+  - key: trench_fall
+    sheets: [footing]
+    text: "BASE OF ALL TRENCHES TO FALL MIN. 1% AWAY FROM BUILDINGS"
+
+  - key: bolts_timber
+    sheets: [floor, wall, roof]
+    when: {has_bolted_timber: true}
+    text: "BOLTED CONNECTIONS TO BE IN ACCORDANCE WITH AS 1720.1 TIMBER STRUCTURES INCLUDING WASHER SIZES, EDGE DISTANCE AND END DISTANCES"
+
+  - key: bolts_steel
+    sheets: [floor, wall, roof]
+    when: {has_steel: true}
+    text: "BOLTED CONNECTIONS TO BE IN ACCORDANCE WITH AS 4100 2020 INCLUDING ALL EDGE AND END DISTANCES"
+
+  - key: bearer_cleat_rule
+    sheets: [floor]
+    when: {bearers_on_columns: true}
+    text: "FOR 140 DEEP BEARERS CLEAT CONNECT TO CONTINUOUS COLUMNS WITH 2/M10 4.6/S BOLTS. FOR 190 DEEP BEARERS CLEAT CONNECT TO COLUMNS WITH 3/M10 4.6/S BOLTS. FOR 240 DEEP BEARERS CLEAT CONNECT TO COLUMNS WITH 3/M12 4.6/S BOLTS"
+
+  - key: trusses_manufacturer
+    sheets: [wall, roof]
+    when: {roof_trussed: true}
+    text: "TRUSSES TO MANUFACTURERS SPECIFICATIONS"
+
+  - key: truss_confirm_lintels
+    sheets: [wall]
+    when: {roof_trussed: true}
+    text: "TRUSS MANUFACTURER TO CONFIRM LINTEL CAPACITY FOR CONCENTRATED LOADS"
+
+  - key: internal_walls_nlb
+    sheets: [wall]
+    text: "UNLESS NOTED OTHERWISE, INTERNAL WALLS ARE ASSUMED TO BE NON-LOAD BEARING"
+
+  - key: jamb_studs
+    sheets: [wall]
+    text: "UNLESS NOTED OTHERWISE, MIN. F17 STUDS TO SIDES OF OPENING GREATER THAN 1500 WIDE. PROVIDE MIN. 2/90x35 F17/LVL STUDS TO SIDE OF OPENING GREATER THAN 2000 WIDE"
+
+  - key: tall_studs
+    sheets: [wall]
+    text: "ALL STUDS GREATER THAN 2600 HIGH TO BE F17"
+
+  - key: tie_down_lintels
+    sheets: [wall]
+    when: {storeys: 1}
+    text: "TYPICAL TIE DOWN TO SIDES OF LINTELS 30x0.8 G.I. STRAP WITH 6/30x2.8 DIAMETER NAILS EACH END OF STRAP AND M10 BOLTS TO FLOOR"
+
+  - key: tie_down_lintels_two_storey
+    sheets: [wall]
+    when: {storeys: 2}
+    text: "TYPICAL TIE DOWN (TYPE A) TO BOTH SIDES OF LINTELS 30x0.8 G.I. STRAP WITH 6/30x2.8 DIAMETER NAILS EACH END OF STRAP AND M10 BOLTS TO FLOOR. PROVIDE DOUBLE STRAP TIE DOWN (TYPE B) AND M12 BOLT TO FLOOR FRAMING TO ALL LINTELS SPANNING 1800 AND GREATER ON THE TOP FLOOR"
+
+  - key: bracing_comply
+    sheets: [wall]
+    text: "ALL BRACING MATERIALS AND FIXINGS SHALL COMPLY WITH OR EXCEED REQUIREMENTS OF AS 1684.2"
+
+  - key: bracing_schedule_note
+    sheets: [wall]
+    text: "ALL BRACING TO BE INSTALLED IN ACCORDANCE WITH AS 1684.2:2021"
+
+  - key: masonry_lintel_bearing
+    sheets: [wall]
+    when: {masonry_veneer_or_full: true}
+    text: "ALL LINTELS TO BEAR MINIMUM 150 INTO BRICKWORK"
+
+notice_to_owner:
+  sheets: [footing]
+  title: "NOTICE TO OWNER:"
+  text: "PLEASE NOTE THAT FOUNDATION AND ASSOCIATED DRAINAGE IN ALL SITES REQUIRES ONGOING MAINTENANCE TO ENSURE FOOTING PERFORMANCE. IT IS THE OWNERS RESPONSIBILITY TO MAINTAIN THE SITE IN ACCORDANCE WITH THE ADVICE PROVIDED IN THE CSIRO TECHNOLOGY FILE 18"
+  citation_to_verify: "CSIRO BTF 18 – Foundation maintenance and footing performance"
