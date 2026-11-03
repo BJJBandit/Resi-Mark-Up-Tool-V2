@@ -78,7 +78,7 @@ hold even if Claude slips:
 
 ## Limits
 
-- Architectural sets can have up to 20 pages, and each upload must be under 30 MB.
+- Architectural sets can have up to 60 pages (`MAX_DRAWING_PAGES`), and each upload must be under 30 MB. Use **Drawing pages to review** (e.g. `3-12, 15`) to skip covers, 3D renders and BASIX pages: fewer pages is faster and cheaper. Large sets are sent at a lower image resolution so they fit in one request.
 - Reference documents can be up to 100 MB each and 500 pages in total. Every page is
   read on every step, so upload only the relevant chapters (for example AS 1684.2
   bracing and tie-down, and the AS 2870 footing tables). That keeps the review faster

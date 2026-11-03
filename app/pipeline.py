@@ -24,6 +24,7 @@ class JobInput:
     references: list[tuple[str, bytes]] = field(default_factory=list)  # (filename, pdf)
     job_no: str = ""
     title_block: bool = False
+    pages: list[int] = field(default_factory=list)  # selected drawing pages (1-based); empty = all
     rev: str = "A"
     made_by: str = ""
 
@@ -41,7 +42,7 @@ class JobResult:
 
 def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobResult:
     progress("Rendering architectural drawings")
-    pages = render_pages(job.arch_pdf)
+    pages = render_pages(job.arch_pdf, job.pages or None)
 
     refs: list[claude.Reference] = []
     if job.references:

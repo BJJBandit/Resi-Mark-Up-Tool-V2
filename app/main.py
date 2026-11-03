@@ -14,6 +14,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from . import pipeline
+from .pdf import check_pages
 from .schemas import SHEET_TITLES
 
 app = FastAPI(title="Resi Mark-Up Tool")
@@ -86,6 +87,7 @@ async def create_job(
     notes: str = Form(""),
     references: list[UploadFile] = File([]),
     title_block: bool = Form(False),
+    drawing_pages: str = Form(""),
     job_no: str = Form(""),
     rev: str = Form("A"),
     made_by: str = Form(""),
@@ -93,6 +95,10 @@ async def create_job(
     arch = await _read(architectural, "Architectural drawings")
     if arch is None:
         raise HTTPException(400, "Architectural drawings are required.")
+    try:
+        selected = check_pages(arch, drawing_pages)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
     refs: list[tuple[str, bytes]] = []
     ref_pages = 0
@@ -122,6 +128,7 @@ async def create_job(
         notes=notes.strip(),
         references=refs,
         title_block=title_block,
+        pages=selected,
         job_no=job_no.strip(),
         rev=rev.strip() or "A",
         made_by=made_by.strip().upper(),

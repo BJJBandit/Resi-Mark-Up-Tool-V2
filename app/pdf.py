@@ -19,38 +19,83 @@ from .schemas import (
     SheetKind,
 )
 
-MAX_PAGES = 20
+# Claude accepts up to 100 images and 32 MB per request; stay well inside both.
+MAX_PAGES = int(os.environ.get("MAX_DRAWING_PAGES", "60"))
 MAX_EDGE_PX = 1568  # long edge sent to Claude; keeps detail without oversizing
+IMAGE_BUDGET_BYTES = 18 * 1024 * 1024  # total JPEG bytes (~24 MB once base64-encoded)
+
 
 @dataclass
 class PageImage:
-    number: int  # 1-based
+    number: int  # 1-based page number in the uploaded set
     width: int
     height: int
     jpeg: bytes
     text: str
 
 
-def render_pages(pdf_bytes: bytes) -> list[PageImage]:
-    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-    if doc.page_count == 0:
+def parse_page_range(spec: str, page_count: int) -> list[int]:
+    """'3-12, 15' -> [3..12, 15] (1-based). Empty -> every page. Raises ValueError."""
+    spec = (spec or "").strip()
+    if not spec or spec.lower() == "all":
+        return list(range(1, page_count + 1))
+    spec = re.sub(r"\s*(?:-|–|to)\s*", "-", spec)  # '1 - 2', '1–2', '1 to 2' -> '1-2'
+    pages: list[int] = []
+    for part in re.split(r"[,;\s]+", spec):
+        if not part:
+            continue
+        m = re.fullmatch(r"(\d+)(?:\s*-\s*(\d+))?", part)
+        if not m:
+            raise ValueError(f"Could not read page range '{part}'. Use e.g. 3-12, 15.")
+        a = int(m.group(1))
+        b = int(m.group(2) or a)
+        if a > b:
+            a, b = b, a
+        if a < 1 or b > page_count:
+            raise ValueError(f"Page range '{part}' is outside the drawing set (1-{page_count}).")
+        pages += [p for p in range(a, b + 1) if p not in pages]
+    if not pages:
+        raise ValueError("No drawing pages selected.")
+    return sorted(pages)
+
+
+def check_pages(pdf_bytes: bytes, spec: str = "") -> list[int]:
+    """Validate the set and selection up front so problems show at upload time."""
+    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as doc:
+        count = doc.page_count
+    if count == 0:
         raise ValueError("Architectural PDF has no pages.")
-    if doc.page_count > MAX_PAGES:
-        raise ValueError(f"Architectural PDF has {doc.page_count} pages; limit is {MAX_PAGES}.")
-    out = []
-    for i, page in enumerate(doc):
-        rect = page.rect  # rotated (as displayed) page size in points
-        zoom = MAX_EDGE_PX / max(rect.width, rect.height)
-        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
-        out.append(
-            PageImage(
-                number=i + 1,
-                width=pix.width,
-                height=pix.height,
-                jpeg=pix.tobytes("jpeg", jpg_quality=85),
-                text=page.get_text("text").strip(),
-            )
+    pages = parse_page_range(spec, count)
+    if len(pages) > MAX_PAGES:
+        raise ValueError(
+            f"{len(pages)} drawing pages selected; the limit is {MAX_PAGES}. Use 'Drawing pages "
+            "to review' to pick the plans, elevations and sections (e.g. 3-12)."
         )
+    return pages
+
+
+def render_pages(pdf_bytes: bytes, page_numbers: list[int] | None = None) -> list[PageImage]:
+    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    numbers = page_numbers or list(range(1, doc.page_count + 1))
+    # Large sets: step resolution / quality down until the images fit the request budget.
+    for edge, quality in ((MAX_EDGE_PX, 85), (1400, 80), (1250, 75), (1100, 70), (1000, 65)):
+        out = []
+        for n in numbers:
+            page = doc[n - 1]
+            rect = page.rect  # rotated (as displayed) page size in points
+            zoom = edge / max(rect.width, rect.height)
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
+            out.append(
+                PageImage(
+                    number=n,
+                    width=pix.width,
+                    height=pix.height,
+                    jpeg=pix.tobytes("jpeg", jpg_quality=quality),
+                    text=page.get_text("text").strip(),
+                )
+            )
+        if sum(len(p.jpeg) for p in out) <= IMAGE_BUDGET_BYTES:
+            break
     return out
 
 
