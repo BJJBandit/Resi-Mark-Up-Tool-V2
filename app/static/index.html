@@ -138,6 +138,7 @@ async function poll(id) {
       <li>Footing: ${esc(s.footing)}</li>
       <li>Floor: ${esc(s.floor)}</li>
     </ul>
+    ${(j.warnings || []).length ? `<p class="err">Warnings (also listed on the summary sheet): ${j.warnings.map(esc).join('; ')}</p>` : ''}
     ${errs.length ? `<p class="err">Sheets not produced: ${errs.map(([k,v]) => esc(k) + ' (' + esc(v) + ')').join('; ')}</p>` : ''}
     <b>Engineer to check</b>
     <ul>${s.engineer_checks.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
