@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resi Mark-Up Tool</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1b1f24; --muted:#5b6470; --line:#d9dde3; --accent:#1f5fbf; --err:#b42318; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171b; --card:#1d2126; --ink:#e8eaed; --muted:#9aa3ad; --line:#333a42; --accent:#6ea4ff; --err:#ff8a80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 24px; }
+  form, .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  label { display:block; font-weight:600; margin: 14px 0 4px; }
+  label small { font-weight: 400; color: var(--muted); }
+  input[type=text], select, textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit; }
+  textarea { min-height: 70px; }
+  .row { display:grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  button { margin-top: 20px; padding: 10px 18px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .card { margin-top: 20px; display: none; }
+  .err { color: var(--err); }
+  ul { padding-left: 20px; }
+  a.btn { display:inline-block; margin: 8px 12px 0 0; color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Resi Mark-Up Tool</h1>
+  <p class="lead">Upload the geotechnical report and architectural drawings. Claude reviews them and produces a preliminary structural mark-up set for engineer review.</p>
+
+  <form id="f">
+    <label>Project name</label>
+    <input type="text" name="project" placeholder="e.g. 12 Smith St, Ipswich">
+
+    <label>Architectural drawings (PDF) *</label>
+    <input type="file" name="architectural" accept="application/pdf" required>
+
+    <label>Geotechnical report (PDF) <small>optional</small></label>
+    <input type="file" name="geotech" accept="application/pdf">
+
+    <div class="row">
+      <div>
+        <label>Wind classification <small>AS 4055, if known</small></label>
+        <select name="wind_class">
+          <option value="">Not provided</option>
+          <option>N1</option><option>N2</option><option>N3</option><option>N4</option><option>N5</option><option>N6</option>
+          <option>C1</option><option>C2</option><option>C3</option><option>C4</option>
+        </select>
+      </div>
+      <div>
+        <label>Site class override <small>AS 2870</small></label>
+        <select name="site_class">
+          <option value="">Use geotech report</option>
+          <option>A</option><option>S</option><option>M</option><option>M-D</option><option>H1</option><option>H1-D</option>
+          <option>H2</option><option>H2-D</option><option>E</option><option>E-D</option><option>P</option>
+        </select>
+      </div>
+    </div>
+
+    <label>Construction material / standard</label>
+    <select name="construction">
+      <option>Timber frame to AS 1684</option>
+      <option>Light gauge steel frame to NASH Standard</option>
+      <option>Brick veneer - timber frame to AS 1684, masonry to AS 4773</option>
+      <option>Double brick / masonry to AS 4773 and AS 3700</option>
+      <option>Reinforced concrete blockwork to AS 3700 / AS 4773</option>
+    </select>
+
+    <label>Notes for the review <small>optional</small></label>
+    <textarea name="notes" placeholder="Anything the drawings don't show, e.g. 'trusses by supplier', 'sloping site, cut 1.2 m'"></textarea>
+
+    <button id="go" type="submit">Run review</button>
+  </form>
+
+  <div class="card" id="status"></div>
+</main>
+<script>
+const f = document.getElementById('f'), go = document.getElementById('go'), box = document.getElementById('status');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+f.addEventListener('submit', async e => {
+  e.preventDefault();
+  go.disabled = true;
+  box.style.display = 'block';
+  box.innerHTML = 'Uploading…';
+  try {
+    const r = await fetch('/jobs', { method: 'POST', body: new FormData(f) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || r.statusText);
+    poll(j.id);
+  } catch (err) {
+    box.innerHTML = `<p class="err">${esc(err.message)}</p>`;
+    go.disabled = false;
+  }
+});
+
+async function poll(id) {
+  const r = await fetch(`/jobs/${id}`);
+  const j = await r.json();
+  if (!r.ok) { box.innerHTML = `<p class="err">${esc(j.detail)}</p>`; go.disabled = false; return; }
+  if (j.status === 'error') { box.innerHTML = `<p class="err">Review failed: ${esc(j.error)}</p>`; go.disabled = false; return; }
+  if (j.status !== 'done') {
+    box.innerHTML = `<p>${esc(j.step || 'Queued')}… <small>(a full review takes several minutes)</small></p>`;
+    return setTimeout(() => poll(id), 4000);
+  }
+  const s = j.summary, errs = Object.entries(j.sheet_errors || {});
+  box.innerHTML = `
+    <h3 style="margin-top:0">Review complete</h3>
+    <ul>
+      <li>Site class: <b>${esc(s.site_class)}</b> · Wind: <b>${esc(s.wind_class || 'not provided')}</b></li>
+      <li>Roof: ${esc(s.roof)}</li>
+      <li>Walls: ${esc(s.walls)}</li>
+      <li>Footing: ${esc(s.footing)}</li>
+      <li>Floor: ${esc(s.floor)}</li>
+    </ul>
+    ${errs.length ? `<p class="err">Sheets not produced: ${errs.map(([k,v]) => esc(k) + ' (' + esc(v) + ')').join('; ')}</p>` : ''}
+    <b>Engineer to check</b>
+    <ul>${s.engineer_checks.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
+    <a class="btn" href="/jobs/${id}/markup.pdf">Download mark-up PDF</a>
+    <a class="btn" href="/jobs/${id}/review.json" target="_blank">Raw review (JSON)</a>`;
+  go.disabled = false;
+}
+</script>
+</body>
+</html>

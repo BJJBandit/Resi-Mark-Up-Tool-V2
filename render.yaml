@@ -1,7 +1,7 @@
 # Render Blueprint
 # Docs: https://render.com/docs/blueprint-spec
 
-# Shared Claude API settings. Any service can pull these in with:
+# Shared Claude API settings (non-secret). Any service can pull these in with:
 #
 #   envVars:
 #     - fromGroup: claude-api
@@ -9,26 +9,26 @@
 envVarGroups:
   - name: claude-api
     envVars:
-      # Secret: Render prompts for the value when the Blueprint is first
-      # created. Get a key at https://platform.claude.com/settings/keys
-      - key: ANTHROPIC_API_KEY
-        sync: false
       # Default model the app should use for Claude requests.
       - key: ANTHROPIC_MODEL
         value: claude-opus-5-5
 
-# Add services below as the app takes shape. Example web service:
-#
-#   services:
-#     - type: web
-#       name: resi-mark-up-tool
-#       runtime: node
-#       plan: free
-#       buildCommand: npm install && npm run build
-#       startCommand: npm start
-#       envVars:
-#         - fromGroup: claude-api
-#         - key: NODE_ENV
-#           value: production
-
-services: []
+services:
+  - type: web
+    name: resi-mark-up-tool
+    runtime: python
+    plan: starter  # free instances sleep and lose in-progress jobs
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - fromGroup: claude-api
+      # Secret: Render prompts for the value when the Blueprint is first
+      # created. Get a key at https://platform.claude.com/settings/keys
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.13.1
+      # Reasoning depth for each Claude call: low | medium | high | xhigh | max
+      - key: ANTHROPIC_EFFORT
+        value: high
