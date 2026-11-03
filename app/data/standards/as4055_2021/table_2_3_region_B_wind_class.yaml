@@ -1,0 +1,17 @@
+# TEMPLATE – values to be transcribed from AS 4055:2021. Rows are empty on purpose.
+# Region B is outside the practice's work (Tasmania = Region A); the engine reports
+# "not supported" while this table is empty.
+standard: AS 4055
+edition: 2021
+table: "2.3"
+title: Wind classification for Region B – terrain category, shielding and topographic class
+inputs: [terrain_category, shielding, topographic_class]
+outputs: [wind_class]
+units: {}
+allowed:
+  terrain_category: [TC1, TC2, TC2.5, TC3]
+  shielding: [FS, PS, NS]
+  topographic_class: [T0, T1, T2, T3, T4, T5]
+  wind_class: [N1, N2, N3, N4, N5, N6, C1, C2, C3, C4]
+source_checked_by: ""
+rows: []

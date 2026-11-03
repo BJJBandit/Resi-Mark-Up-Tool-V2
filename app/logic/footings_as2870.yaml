@@ -1,0 +1,202 @@
+# Footing-system selection to AS 2870:2011 – decision tree read by app/engines/footings.py.
+# The engine computes the derived inputs (construction_type from the wall construction,
+# strip_founds_on_rock from rock depth vs the practice strip depth) and builds the practice
+# proposal from preferences.yaml using result.proposal_key (*).
+engine: footings_as2870
+title: Footing system selection (AS 2870:2011 Section 3)
+standard: AS 2870:2011
+description: >
+  Chooses between stiffened raft, footing slab, strip footings on piers and piers to rock
+  from the site class, the floor construction and the AS 2870 construction type, then looks
+  up the standard design table for that system. Class P leaves the standard designs and is
+  flagged for engineering design.
+inputs: [site_class, construction_type, floor_kind, slab_system, strip_founds_on_rock, rock_depth_mm, trees_or_abnormal_moisture]
+tables:
+  - as2870_2011/table_2_3_site_class_by_ys
+  - as2870_2011/table_3_1_stiffened_raft
+  - as2870_2011/table_3_3_footing_slab
+  - as2870_2011/table_3_4_strip_footings
+start: scope
+nodes:
+  - id: scope
+    title: Site class
+    ask: site_class
+    citation: AS 2870:2011 cl 2.1 / Table 2.1
+    branches:
+      - when: {eq: P}
+        goto: class_p
+      - when: {in: [A, S, M, M-D, H1, H1-D, H2, H2-D, E, E-D]}
+        goto: abnormal_moisture
+      - else: true
+        goto: site_class_unknown
+
+  - id: site_class_unknown
+    title: Site class unknown – geotech classification required
+    end: true
+    status: blocked
+    citation: AS 2870:2011 Section 2
+    rule: >-
+      Footings cannot be selected without a site classification (geotechnical report or engineer's classification to Section 2).
+
+  # --- Class P -------------------------------------------------------------------
+  - id: class_p
+    title: Class P – standard designs do not apply
+    citation: AS 2870:2011 cl 1.3.3 / Section 4
+    result: {footing_system: piers_to_rock, design_basis: engineered}
+    flag: >-
+      Class P site – the standard designs of Section 3 do not apply; the footing system requires engineering design (Section 4). Practice standard proposed – strip footings / beams on Ø450 bored piers to rock or refusal – to be confirmed by the engineer against the geotech report.
+    goto: class_p_floor
+
+  - id: class_p_floor
+    title: Floor construction (Class P)
+    ask: floor_kind
+    branches:
+      - when: {eq: slab_on_ground}
+        goto: class_p_slab
+      - when: {in: [suspended_timber, suspended_timber_on_steel, suspended_slab, bondek_slab]}
+        goto: class_p_strip
+      - else: true
+        goto: floor_unknown
+
+  - id: class_p_slab               # (*)
+    title: Slab on ground on piers to rock
+    result: {proposal_key: slab_on_piers_class_p}
+    preference: footings.pier
+    rule: >-
+      Edge and internal beams carried on Ø450 bored piers to rock / refusal (practice P3 tapered pier under slab); slab per practice standard. Engineered design – engineer to size piers for bearing and beam spans.
+    end: true
+
+  - id: class_p_strip              # (*)
+    title: Strip footings on piers to rock
+    result: {proposal_key: strip_and_piers_class_p}
+    preference: footings.strip_footing.depth_min_class_P
+    rule: >-
+      Strip footing under load-bearing walls, deepened to the practice Class P depth, on Ø450 bored piers at corners and max 3000 ctrs to rock / refusal, 1/N16 central. Engineered design – engineer to confirm pier capacity.
+    end: true
+
+  # --- Classes A to E -----------------------------------------------------------------
+  - id: abnormal_moisture
+    title: Trees or abnormal moisture conditions?
+    ask: trees_or_abnormal_moisture
+    citation: AS 2870:2011 cl 2.4 / App D
+    branches:
+      - when: {eq: true}
+        goto: moisture_flag
+      - else: true
+        goto: floor_kind
+
+  - id: moisture_flag
+    title: Abnormal moisture – site class may need upgrading
+    citation: AS 2870:2011 cl 2.4
+    flag: >-
+      Trees / abnormal moisture conditions reported. Confirm the geotech classification has allowed for them (cl 2.4, App D); otherwise upgrade the class before selecting the footing.
+    goto: floor_kind
+
+  - id: floor_kind
+    title: Floor construction
+    ask: floor_kind
+    branches:
+      - when: {eq: slab_on_ground}
+        goto: slab_system
+      - when: {in: [suspended_timber, suspended_timber_on_steel, suspended_slab, bondek_slab]}
+        goto: rock_check
+      - else: true
+        goto: floor_unknown
+
+  - id: floor_unknown
+    title: Floor construction unknown
+    end: true
+    status: blocked
+    rule: >-
+      The ground-floor construction (slab on ground or suspended) must be decided before a footing system can be selected.
+
+  # --- slab on ground -----------------------------------------------------------------
+  - id: slab_system
+    title: Slab system
+    ask: slab_system               # from preferences.yaml footing_systems_in_use; stiffened_raft is the practice standard
+    citation: AS 2870:2011 cl 3.1
+    branches:
+      - when: {eq: footing_slab}
+        goto: footing_slab
+      - when: {eq: waffle_raft}
+        goto: waffle_not_supported
+      - else: true
+        goto: stiffened_raft
+
+  - id: waffle_not_supported
+    title: Waffle raft – not used by the practice
+    end: true
+    status: not_supported
+    citation: AS 2870:2011 Table 3.2
+    rule: >-
+      Waffle rafts were excluded by practice decision (3 Nov 2026); the branch is kept so the choice is visible, not to size one.
+
+  - id: stiffened_raft             # (*)
+    title: Stiffened raft slab
+    result: {footing_system: stiffened_raft, proposal_key: stiffened_raft}
+    preference: footings.edge_beam
+    rule: >-
+      Slab on ground with edge beams (EB1) and internal beams (IB1) per the practice standard; verified against the standard design for the site class and construction type.
+    goto: raft_lookup
+
+  - id: raft_lookup
+    title: Standard stiffened raft design
+    lookup: as2870_2011/table_3_1_stiffened_raft
+    with: {site_class: site_class, construction_type: construction_type}
+    into: standard_design
+    citation: AS 2870:2011 Table 3.1 / Fig 3.1
+    goto: done
+
+  - id: footing_slab               # (*)
+    title: Footing slab
+    result: {footing_system: footing_slab, proposal_key: footing_slab}
+    preference: footings.edge_beam
+    rule: >-
+      Footing slab (edge footing with slab) – standard designs exist for Classes A, S and M only.
+    goto: footing_slab_lookup
+
+  - id: footing_slab_lookup
+    title: Standard footing slab design
+    lookup: as2870_2011/table_3_3_footing_slab
+    with: {site_class: site_class, construction_type: construction_type}
+    into: standard_design
+    citation: AS 2870:2011 Table 3.3 / Fig 3.3
+    goto: done
+
+  # --- suspended floor ----------------------------------------------------------------
+  - id: rock_check
+    title: Rock within the strip footing depth?
+    ask: strip_founds_on_rock      # rock_depth_mm <= practice strip depth (computed by footings.py)
+    branches:
+      - when: {eq: true}
+        goto: strip_on_rock
+      - else: true
+        goto: strip_and_piers
+
+  - id: strip_on_rock              # (*)
+    title: Strip footings founded on rock
+    result: {footing_system: strip_on_rock, proposal_key: strip_on_rock}
+    preference: footings.pier.omit_where_strip_on_rock
+    rule: >-
+      Rock is within the standard strip footing depth, so the strip footing founds directly on rock and the bored piers are omitted (practice). Depth may be reduced and top mesh omitted where founded on rock (practice note) – engineer to confirm on site.
+    goto: strip_lookup
+
+  - id: strip_and_piers            # (*)
+    title: Strip footings on bored piers
+    result: {footing_system: strip_and_piers, proposal_key: strip_and_piers}
+    preference: footings.strip_footing
+    rule: >-
+      Suspended floor – strip footings (SF1) under all load-bearing walls on Ø450 bored piers at corners and max 3000 ctrs to rock / refusal (practice standard); verified against the standard strip footing design for the site class and construction type.
+    goto: strip_lookup
+
+  - id: strip_lookup
+    title: Standard strip footing design
+    lookup: as2870_2011/table_3_4_strip_footings
+    with: {site_class: site_class, construction_type: construction_type}
+    into: standard_design
+    citation: AS 2870:2011 Table 3.4 / Fig 3.4
+    goto: done
+
+  - id: done
+    title: Footing system selected
+    end: true

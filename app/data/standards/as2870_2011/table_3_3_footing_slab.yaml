@@ -1,0 +1,15 @@
+# TEMPLATE – values to be transcribed from AS 2870:2011. Rows are empty on purpose.
+# Table number marked (confirm) in docs/standards-data-required.md.
+standard: AS 2870
+edition: 2011
+table: "3.3"
+title: Standard footing slab designs by site class and construction type (with Fig 3.3)
+inputs: [site_class, construction_type]
+outputs: [edge_footing_depth_mm, edge_footing_width_mm, edge_footing_reinforcement, slab_thickness_mm, slab_mesh]
+units: {edge_footing_depth_mm: mm, edge_footing_width_mm: mm, slab_thickness_mm: mm}
+allowed:
+  site_class: [A, S, M]
+  construction_type: [clad_frame, articulated_masonry_veneer, masonry_veneer, articulated_full_masonry, full_masonry]
+source_checked_by: ""
+notes: Column names are a guess at the table's headings – rename to match the licensed page.
+rows: []

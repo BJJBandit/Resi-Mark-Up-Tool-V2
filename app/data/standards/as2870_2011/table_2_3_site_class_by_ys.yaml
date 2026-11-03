@@ -1,0 +1,16 @@
+# TEMPLATE – values to be transcribed from AS 2870:2011. Rows are empty on purpose.
+standard: AS 2870
+edition: 2011
+table: "2.3"
+title: Site classification by characteristic surface movement ys
+inputs: [ys_mm]
+outputs: [site_class]
+units: {ys_mm: mm}
+numeric_rule: {ys_mm: ceil}   # the class whose upper ys bound is at or above the reported ys
+allowed:
+  site_class: [S, M, H1, H2, E]
+source_checked_by: ""
+notes: One row per class with ys_mm = the class's UPPER bound. Class A (sand/rock) and P are not ys-based.
+rows: []
+# Example of a filled row (illustrative only – not a real value):
+# - {ys_mm: 20, site_class: S}

@@ -1,0 +1,27 @@
+# TEMPLATE – values to be transcribed from AS 2870:2011. Rows are empty on purpose.
+standard: AS 2870
+edition: 2011
+table: "3.1"
+title: Standard stiffened raft designs – beam sizes and reinforcement by site class and construction type (with Fig 3.1)
+inputs: [site_class, construction_type]
+outputs:
+  - edge_beam_depth_mm
+  - edge_beam_width_mm
+  - edge_beam_reinforcement
+  - internal_beam_depth_mm
+  - internal_beam_width_mm
+  - internal_beam_reinforcement
+  - slab_thickness_mm
+  - slab_mesh
+  - max_beam_spacing_mm
+units: {edge_beam_depth_mm: mm, edge_beam_width_mm: mm, internal_beam_depth_mm: mm, internal_beam_width_mm: mm, slab_thickness_mm: mm, max_beam_spacing_mm: mm}
+allowed:
+  site_class: [A, S, M, M-D, H1, H1-D, H2, H2-D, E, E-D]
+  construction_type: [clad_frame, articulated_masonry_veneer, masonry_veneer, articulated_full_masonry, full_masonry]
+source_checked_by: ""
+notes: >
+  Column names are a guess at the table's headings – rename or add columns to match the
+  licensed page. The footing engine compares edge_beam_depth_mm, edge_beam_width_mm,
+  internal_beam_depth_mm, internal_beam_width_mm and slab_thickness_mm against the practice
+  standard (the larger wins) and reports reinforcement for the engineer to compare.
+rows: []

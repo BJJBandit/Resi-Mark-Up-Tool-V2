@@ -1,0 +1,20 @@
+# TEMPLATE – values to be transcribed from AS 4055:2021. Rows are empty on purpose.
+# Table number marked (confirm) in docs/standards-data-required.md.
+standard: AS 4055
+edition: 2021
+table: "2.1"
+title: Topographic class from site slope (position on hill per Figs 2.2–2.3 taken at its worst)
+inputs: [site_slope_deg]
+outputs: [topographic_class]
+units: {site_slope_deg: degrees}
+numeric_rule: {site_slope_deg: ceil}   # read at the slope band whose upper bound is at or above the site slope
+allowed:
+  topographic_class: [T0, T1, T2, T3, T4, T5]
+source_checked_by: ""
+notes: >
+  One row per slope band: site_slope_deg = the band's UPPER bound. If the standard
+  distinguishes position on the hill, enter the most severe class for each band here and
+  refine the engine later with a position input.
+rows: []
+# Example of a filled row (illustrative only – not a real value):
+# - {site_slope_deg: 5, topographic_class: T0}

@@ -1,0 +1,181 @@
+# Wind classification to AS 4055:2021 – decision tree read by app/engines/wind.py.
+# Edit freely: node ids are referenced by the engine only where noted (*).
+engine: wind_as4055
+title: Wind classification (AS 4055:2021 Section 2)
+standard: AS 4055:2021
+description: >
+  Derives the N-class from region, terrain category, shielding and topographic class via
+  Table 2.2 (Region A). Compares with the class stated by the architect / geotech. Falls back
+  to the stated class, flagged, when the site inputs are missing.
+inputs: [scope_check, region, terrain_category, shielding, topographic_class, site_slope_deg, stated_class, inputs_complete]
+tables:
+  - as4055_2021/table_2_1_topographic_class
+  - as4055_2021/table_2_2_region_A_wind_class
+  - as4055_2021/table_2_3_region_B_wind_class
+  - as4055_2021/table_2_4_region_C_wind_class
+  - as4055_2021/table_2_5_region_D_wind_class
+start: scope
+nodes:
+  - id: scope
+    title: Building within AS 4055 limits of application?
+    ask: scope_check            # pass | fail | unverified – computed by wind.py from geometry and cl 1.2 limits
+    citation: AS 4055:2021 cl 1.2
+    branches:
+      - when: {eq: pass}
+        goto: inputs_check
+      - when: {eq: fail}
+        goto: out_of_scope
+      - else: true
+        goto: scope_unverified
+
+  - id: out_of_scope
+    title: Outside AS 4055 – design wind to AS/NZS 1170.2
+    end: true
+    status: blocked
+    citation: AS 4055:2021 cl 1.2
+    rule: >-
+      Building exceeds a cl 1.2 limit (height, width or roof pitch). AS 4055 classes do not apply; wind actions must be derived from AS/NZS 1170.2 by the engineer.
+
+  - id: scope_unverified
+    title: Scope limits not yet confirmed
+    citation: AS 4055:2021 cl 1.2
+    status: blocked
+    rule: >-
+      The cl 1.2 limit values are not yet entered in wind.py (TODO(standard: AS 4055:2021 cl 1.2)) or the building geometry is incomplete, so the scope check could not be made. Classification continues but is provisional.
+    goto: inputs_check
+
+  - id: inputs_check
+    title: Site inputs complete?
+    ask: inputs_complete        # terrain_category and shielding present, and topographic_class or site_slope_deg
+    citation: AS 4055:2021 cl 2.2
+    branches:
+      - when: {eq: true}
+        goto: topo_source
+      - else: true
+        goto: have_stated
+
+  - id: have_stated
+    title: Wind class stated by architect / geotech?
+    ask: stated_class
+    branches:
+      - when: {missing: true}
+        goto: inputs_missing
+      - else: true
+        goto: use_stated
+
+  - id: inputs_missing
+    title: Cannot classify – inputs missing
+    end: true
+    status: blocked
+    citation: AS 4055:2021 Section 2
+    rule: >-
+      Terrain category (cl 2.3), shielding (cl 2.4) and topographic class (cl 2.5) are required. The practice defaults in preferences.yaml (TC3 / PS / T0) are not applied automatically because they would not be verified site inputs – enter the site values or a stated class.
+
+  - id: use_stated                # (*) wind.py reads result.wind_class_source
+    title: Adopt the stated wind class
+    citation: AS 4055:2021 cl 2.2
+    result: {wind_class: {var: stated_class}, wind_class_source: stated}
+    flag: >-
+      Wind class taken from architect / geotech – AS 4055 inputs not verified. Enter terrain, shielding and topography to verify.
+    end: true
+
+  - id: topo_source
+    title: Topographic class given, or derive from slope?
+    ask: topographic_class
+    citation: AS 4055:2021 cl 2.5
+    branches:
+      - when: {missing: false}
+        goto: region
+      - else: true
+        goto: topo_lookup
+
+  - id: topo_lookup
+    title: Topographic class from site slope
+    lookup: as4055_2021/table_2_1_topographic_class
+    with: {site_slope_deg: site_slope_deg}
+    into: topography
+    rule: >-
+      Table 2.1 read conservatively – the slope band at or above the site slope; position on the hill (Figs 2.2–2.3) is taken at its worst.
+    goto: region
+
+  - id: region
+    title: Wind region
+    ask: region
+    citation: AS 4055:2021 Fig 2.1
+    branches:
+      - when: {eq: A}
+        goto: class_lookup_a
+      - when: {eq: B}
+        goto: class_lookup_b
+      - when: {eq: C}
+        goto: class_lookup_c
+      - when: {eq: D}
+        goto: class_lookup_d
+
+  - id: class_lookup_a
+    title: Wind class – Region A
+    lookup: as4055_2021/table_2_2_region_A_wind_class
+    with: {terrain_category: terrain_category, shielding: shielding, topographic_class: topographic_class}
+    into: classification
+    goto: compare
+
+  - id: class_lookup_b
+    title: Wind class – Region B (not used by the practice)
+    lookup: as4055_2021/table_2_3_region_B_wind_class
+    with: {terrain_category: terrain_category, shielding: shielding, topographic_class: topographic_class}
+    into: classification
+    on_not_loaded: not_supported
+    goto: compare
+
+  - id: class_lookup_c
+    title: Wind class – Region C (cyclonic, not supported)
+    lookup: as4055_2021/table_2_4_region_C_wind_class
+    with: {terrain_category: terrain_category, shielding: shielding, topographic_class: topographic_class}
+    into: classification
+    on_not_loaded: not_supported
+    goto: compare
+
+  - id: class_lookup_d
+    title: Wind class – Region D (cyclonic, not supported)
+    lookup: as4055_2021/table_2_5_region_D_wind_class
+    with: {terrain_category: terrain_category, shielding: shielding, topographic_class: topographic_class}
+    into: classification
+    on_not_loaded: not_supported
+    goto: compare
+
+  - id: compare
+    title: Compare derived class with stated class
+    ask: stated_class
+    branches:
+      - when: {var: wind_class, missing: true}
+        goto: no_derived
+      - when: {missing: true}
+        goto: derived_only
+      - when: {same_as: wind_class}
+        goto: agrees
+      - else: true
+        goto: disagrees
+
+  - id: no_derived
+    title: Lookup did not yield a class
+    result: {wind_class: {var: stated_class}, wind_class_source: stated_provisional}
+    flag: >-
+      Table lookup could not be completed; the stated class (if any) is carried as provisional only.
+    end: true
+
+  - id: derived_only
+    title: Derived class adopted (no stated class to compare)
+    result: {wind_class_source: derived}
+    end: true
+
+  - id: agrees
+    title: Derived class agrees with stated class
+    result: {wind_class_source: derived}
+    end: true
+
+  - id: disagrees                 # (*) wind.py adds the conservatism step after this node
+    title: Derived class differs from stated class
+    result: {wind_class_source: derived}
+    flag: >-
+      Derived AS 4055 class differs from the class stated on the drawings / geotech report – resolve with the architect before issuing.
+    end: true

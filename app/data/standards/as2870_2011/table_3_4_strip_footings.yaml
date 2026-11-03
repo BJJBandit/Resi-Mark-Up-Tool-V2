@@ -1,0 +1,20 @@
+# TEMPLATE – values to be transcribed from AS 2870:2011. Rows are empty on purpose.
+# Table number marked (confirm) in docs/standards-data-required.md.
+standard: AS 2870
+edition: 2011
+table: "3.4"
+title: Standard strip footing designs by site class and construction type (with Fig 3.4)
+inputs: [site_class, construction_type]
+outputs: [depth_mm, width_mm, reinforcement]
+units: {depth_mm: mm, width_mm: mm}
+allowed:
+  site_class: [A, S, M, M-D, H1, H1-D, H2, H2-D, E, E-D]
+  construction_type: [clad_frame, articulated_masonry_veneer, masonry_veneer, articulated_full_masonry, full_masonry]
+source_checked_by: ""
+notes: >
+  depth_mm is the footing depth D, width_mm the footing width (from the figure / clause if
+  the table only gives D), reinforcement the bar callout as printed. The footing engine
+  compares depth_mm and width_mm against the practice SF1 (450 W x 450 D) – the larger wins.
+rows: []
+# Example of a filled row (illustrative only – not a real value):
+# - {site_class: M, construction_type: articulated_masonry_veneer, depth_mm: 400, width_mm: 300, reinforcement: "3-L8TM"}
