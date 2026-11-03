@@ -14,7 +14,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from . import pipeline
-from .pdf import check_pages
+from .pdf import check_pages, extract_pages, format_ranges, parse_page_range
 from .schemas import SHEET_TITLES
 
 app = FastAPI(title="Resi Mark-Up Tool")
@@ -86,6 +86,7 @@ async def create_job(
     construction: str = Form("Timber frame to AS 1684"),
     notes: str = Form(""),
     references: list[UploadFile] = File([]),
+    reference_pages: list[str] = Form([]),
     title_block: bool = Form(False),
     drawing_pages: str = Form(""),
     job_no: str = Form(""),
@@ -102,21 +103,33 @@ async def create_job(
 
     refs: list[tuple[str, bytes]] = []
     ref_pages = 0
-    for f in references:
+    for i, f in enumerate(references):
         data = await _read(f, f"Reference '{f.filename}'", MAX_REF_UPLOAD)
         if data is None:
             continue
+        name = f.filename or "reference.pdf"
+        spec = reference_pages[i] if i < len(reference_pages) else ""
         try:
             with pymupdf.open(stream=data, filetype="pdf") as doc:
-                ref_pages += doc.page_count
+                count = doc.page_count
         except Exception:
-            raise HTTPException(400, f"Reference '{f.filename}' could not be opened as a PDF.")
-        refs.append((f.filename or "reference.pdf", data))
+            raise HTTPException(400, f"Reference '{name}' could not be opened as a PDF.")
+        try:
+            ref_sel = parse_page_range(spec, count, "document")
+        except ValueError as e:
+            raise HTTPException(400, f"Reference '{name}': {e}")
+        ref_pages += len(ref_sel)
+        if len(ref_sel) < count:
+            stem = name.rsplit(".", 1)[0]
+            name = f"{stem} (pages {format_ranges(ref_sel)} of {count}).pdf"
+            data = extract_pages(data, ref_sel)
+        refs.append((name, data))
     if ref_pages > MAX_REF_PAGES:
         raise HTTPException(
             413,
-            f"Reference documents total {ref_pages} pages; the limit is {MAX_REF_PAGES}. "
-            "Upload only the relevant sections (e.g. the AS 1684 bracing and tie-down chapters).",
+            f"Reference documents total {ref_pages} selected pages; the limit is {MAX_REF_PAGES}. "
+            "Use each document's 'Pages to review' box to pick the relevant sections "
+            "(e.g. the AS 1684 bracing and tie-down chapters).",
         )
     inp = pipeline.JobInput(
         project=project.strip(),

@@ -56,6 +56,16 @@ class ClaudeError(RuntimeError):
     pass
 
 
+class CutOff(ClaudeError):
+    """The response hit max_tokens (thinking counts toward the limit)."""
+
+
+# Opus-class models think before answering and the thinking counts toward
+# max_tokens, so leave plenty of room; retry once at the model's maximum.
+MAX_TOKENS = int(os.environ.get("ANTHROPIC_MAX_TOKENS", "64000"))
+MAX_TOKENS_RETRY = 128000
+
+
 def _schema(model: type[BaseModel]) -> dict:
     return model.model_json_schema()
 
@@ -80,7 +90,7 @@ def _request(messages: list[dict], max_tokens: int, schema: dict | None) -> str:
         detail = getattr(message, "stop_details", None)
         raise ClaudeError(f"Claude declined the request: {detail}")
     if message.stop_reason == "max_tokens":
-        raise ClaudeError("Claude's response was cut off (max_tokens reached).")
+        raise CutOff(f"Claude's response was cut off at {max_tokens} tokens.")
     text = "".join(b.text for b in message.content if b.type == "text").strip()
     if not text:
         raise ClaudeError("Claude returned no text content.")
@@ -94,13 +104,29 @@ def _extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
-def _call(content: list[dict], out: type[T], max_tokens: int = 32000) -> T:
+def _request_retrying(messages: list[dict], max_tokens: int, schema: dict | None) -> str:
+    try:
+        return _request(messages, max_tokens, schema)
+    except CutOff:
+        if max_tokens >= MAX_TOKENS_RETRY:
+            raise
+        return _request(messages, MAX_TOKENS_RETRY, schema)
+
+
+def _call(content: list[dict], out: type[T], step: str, max_tokens: int = MAX_TOKENS) -> T:
     """Structured-output request. If the API rejects the schema (e.g. compiled
-    grammar too large), fall back to plain JSON validated locally."""
+    grammar too large), fall back to plain JSON validated locally. Errors name the step."""
+    try:
+        return _call_inner(content, out, max_tokens)
+    except ClaudeError as e:
+        raise ClaudeError(f"{step}: {e}") from e
+
+
+def _call_inner(content: list[dict], out: type[T], max_tokens: int) -> T:
     schema = _schema(out)
     messages = [{"role": "user", "content": content}]
     try:
-        return out.model_validate_json(_request(messages, max_tokens, schema))
+        return out.model_validate_json(_request_retrying(messages, max_tokens, schema))
     except anthropic.BadRequestError as e:
         if "grammar" not in str(e).lower() and "schema" not in str(e).lower():
             raise
@@ -113,7 +139,7 @@ def _call(content: list[dict], out: type[T], max_tokens: int = 32000) -> T:
     messages = [{"role": "user", "content": [*content, {"type": "text", "text": instruction}]}]
     last_error: Exception | None = None
     for _ in range(2):
-        text = _request(messages, max_tokens, None)
+        text = _request_retrying(messages, max_tokens, None)
         try:
             return out.model_validate_json(_extract_json(text))
         except (ValueError, ValidationError) as err:
@@ -167,7 +193,9 @@ def _ref_blocks(refs: list[Reference]) -> list[dict]:
         {
             "type": "text",
             "text": "Reference standards, guides and codes supplied by the engineer "
-            "(use these in preference to memory and cite their clause / table numbers):",
+            "(use these in preference to memory and cite their clause / table numbers). "
+            "Where a title says 'pages X of Y', it is an extract of those pages of the "
+            "original document:",
         }
     ]
     blocks += [
@@ -248,7 +276,7 @@ def review_geotech(
             ),
         }
     )
-    return _call(content, GeotechReview, max_tokens=16000)
+    return _call(content, GeotechReview, "Step 1 (geotech review)")
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +317,7 @@ def assess_design(
             ),
         }
     )
-    return _call(content, DesignAssessment)
+    return _call(content, DesignAssessment, "Step 2 (architectural review)")
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +340,8 @@ HOUSE_STYLE = """House style for mark-ups (follow it closely - it matches the en
   '6 CFW 8 PLATE CLEAT TO C2. CLEAT CONNECT VB1 TO C2 WITH 3/M10 BOLTS. MIN 50 BETWEEN BOLTS AND
   BETWEEN BOLTS AND TIMBER END. TYPICAL.' Point each callout's start at the element it describes.
   Use 'TYPICAL.' instead of repeating a callout. Keep to about 4-12 callouts per sheet.
+- Be economical: one element per real member (no duplicates), tag repeated items once and
+  rely on 'TYPICAL.', and aim for under ~150 elements per sheet.
 - Schedule items: tag + UPPERCASE size/grade/spacing, e.g. 'B1': '2/240x45 F7 TP CONTINUOUS BEARER',
   'J1': '140x45 F7 TP JOISTS AT 450 CTRS', 'L2': '120x35 F17/LVL LINTEL', 'C1': '89x3.5 SHS COLUMN'.
 - Notes: UPPERCASE, each starting with '-', e.g. '-THIS DRAWING IS A MEMBER LAYOUT PLAN ONLY. BUILDER TO
@@ -391,4 +421,4 @@ def plan_sheet(
             ),
         }
     )
-    return _call(content, MarkupSheet)
+    return _call(content, MarkupSheet, f"Step 3 ({SHEET_TITLES[kind]})")

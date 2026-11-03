@@ -33,6 +33,9 @@
   ul { padding-left: 20px; }
   ul.files { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
   ul.files:empty { display: none; }
+  ul.files { list-style: none; padding-left: 0; }
+  li.ref { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 6px; color: var(--ink); }
+  li.ref label { margin: 6px 0 0; font-size: 13px; }
   a.btn { display:inline-block; margin: 8px 12px 0 0; color: var(--accent); font-weight: 600; }
 </style>
 </head>
@@ -61,7 +64,7 @@
     <label>Geotechnical report (PDF) <small>optional</small></label>
     <input type="file" name="geotech" accept="application/pdf">
 
-    <label>Standards, guides &amp; codes (PDF) <small>optional, select several &middot; max 500 pages total</small></label>
+    <label>Standards, guides &amp; codes (PDF) <small>optional, select several &middot; max 500 selected pages total</small></label>
     <input type="file" name="references" accept="application/pdf" multiple id="refs">
     <ul id="refList" class="files"></ul>
 
@@ -107,7 +110,12 @@ const tb = document.getElementById('tb'), tbFields = document.getElementById('tb
 tb.addEventListener('change', () => { tbFields.hidden = !tb.checked; });
 const refs = document.getElementById('refs'), refList = document.getElementById('refList');
 refs.addEventListener('change', () => {
-  refList.innerHTML = [...refs.files].map(f => `<li>${esc(f.name)} (${(f.size / 1048576).toFixed(1)} MB)</li>`).join('');
+  refList.innerHTML = [...refs.files].map(f => `
+    <li class="ref">
+      <span>${esc(f.name)} (${(f.size / 1048576).toFixed(1)} MB)</span>
+      <label>Pages to review <small>e.g. 45-60, 72 &middot; blank = all</small>
+        <input type="text" name="reference_pages" placeholder="all"></label>
+    </li>`).join('');
 });
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 

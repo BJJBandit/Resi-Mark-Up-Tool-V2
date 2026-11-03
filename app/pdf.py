@@ -34,7 +34,7 @@ class PageImage:
     text: str
 
 
-def parse_page_range(spec: str, page_count: int) -> list[int]:
+def parse_page_range(spec: str, page_count: int, what: str = "drawing set") -> list[int]:
     """'3-12, 15' -> [3..12, 15] (1-based). Empty -> every page. Raises ValueError."""
     spec = (spec or "").strip()
     if not spec or spec.lower() == "all":
@@ -52,11 +52,34 @@ def parse_page_range(spec: str, page_count: int) -> list[int]:
         if a > b:
             a, b = b, a
         if a < 1 or b > page_count:
-            raise ValueError(f"Page range '{part}' is outside the drawing set (1-{page_count}).")
+            raise ValueError(f"Page range '{part}' is outside the {what} (1-{page_count}).")
         pages += [p for p in range(a, b + 1) if p not in pages]
     if not pages:
         raise ValueError("No drawing pages selected.")
     return sorted(pages)
+
+
+def format_ranges(pages: list[int]) -> str:
+    """[3,4,5,9] -> '3-5, 9'."""
+    out, start = [], None
+    for i, p in enumerate(pages):
+        if start is None:
+            start = p
+        if i == len(pages) - 1 or pages[i + 1] != p + 1:
+            out.append(f"{start}-{p}" if p != start else str(p))
+            start = None
+    return ", ".join(out)
+
+
+def extract_pages(pdf_bytes: bytes, pages: list[int]) -> bytes:
+    """New PDF holding only the selected (1-based) pages, in order."""
+    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as src:
+        if pages == list(range(1, src.page_count + 1)):
+            return pdf_bytes
+        out = pymupdf.open()
+        for p in pages:
+            out.insert_pdf(src, from_page=p - 1, to_page=p - 1)
+        return out.tobytes(garbage=3, deflate=True)
 
 
 def check_pages(pdf_bytes: bytes, spec: str = "") -> list[int]:
