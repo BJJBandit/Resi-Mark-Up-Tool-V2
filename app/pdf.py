@@ -155,7 +155,10 @@ def _text(
     border: float = 0,
     fill=None,
     callout=None,
-) -> pymupdf.Annot:
+) -> pymupdf.Annot | None:
+    rect = pymupdf.Rect(rect) & A3
+    if rect.is_empty or rect.is_infinite or rect.height < fs * 0.8:
+        return None
     kw = {}
     if callout:
         kw.update(callout=callout, line_end=pymupdf.PDF_ANNOT_LE_CLOSED_ARROW)
@@ -205,23 +208,39 @@ def _title(page, project: str, sheet_title: str) -> None:
     _text(page, pymupdf.Rect(TITLE.x0, TITLE.y0 + 40, TITLE.x1, TITLE.y1), sheet_title, 20, BLACK, "Title")
 
 
-def _notes(page, classification: str, notes: list[str]) -> None:
+def _notes(page, classification: str, notes: list[str]) -> list[str]:
+    """Classification + notes column. Returns notes that did not fit (never dropped)."""
     y = NOTES.y0
     if classification:
         cls = classification.upper()
-        lines = _wrap(cls, NOTES.width - 8, 10)
-        h = _text_height(len(lines), 10)
-        _text(page, pymupdf.Rect(NOTES.x0, y, NOTES.x1, y + h), "\n".join(lines), 10, BLACK, "Classification")
-        y += h + 8
-    if not notes:
-        return
-    body = "NOTES:\n\n" + "\n\n".join(n if n.lstrip().startswith("-") else f"-{n}" for n in notes)
-    for fs in (8.5, 8, 7.5, 7, 6.5, 6, 5.5, 5):
-        lines = _wrap(body, NOTES.width - 8, fs)
+        for fs in (10, 9, 8, 7):
+            lines = _wrap(cls, NOTES.width - 8, fs)
+            if len(lines) <= 4:
+                break
+        lines = lines[:4]
         h = _text_height(len(lines), fs)
-        if y + h <= NOTES.y1:
+        _text(page, pymupdf.Rect(NOTES.x0, y, NOTES.x1, y + h), "\n".join(lines), fs, BLACK, "Classification")
+        y += h + 8
+    notes = [n if n.lstrip().startswith("-") else f"-{n}" for n in notes]
+    if not notes:
+        return []
+    avail = NOTES.y1 - y
+    for fs in (8.5, 8, 7.5, 7, 6.5, 6, 5.5, 5):
+        lines = _wrap("NOTES:\n\n" + "\n\n".join(notes), NOTES.width - 8, fs)
+        if _text_height(len(lines), fs) <= avail:
+            _text(page, pymupdf.Rect(NOTES.x0, y, NOTES.x1, y + _text_height(len(lines), fs)), "\n".join(lines), fs, BLACK, "Notes")
+            return []
+    # Still too long at the smallest size: place as many whole notes as fit.
+    fs, kept = 5, []
+    for n in notes:
+        lines = _wrap("NOTES:\n\n" + "\n\n".join(kept + [n]), NOTES.width - 8, fs)
+        if _text_height(len(lines), fs) > avail:
             break
-    _text(page, pymupdf.Rect(NOTES.x0, y, NOTES.x1, min(y + h, NOTES.y1)), "\n".join(lines), fs, BLACK, "Notes")
+        kept.append(n)
+    if kept:
+        lines = _wrap("NOTES:\n\n" + "\n\n".join(kept), NOTES.width - 8, fs)
+        _text(page, pymupdf.Rect(NOTES.x0, y, NOTES.x1, y + _text_height(len(lines), fs)), "\n".join(lines), fs, BLACK, "Notes")
+    return notes[len(kept):]
 
 
 def _title_block(page, project: str, dwg_title: str, dwg_no: str, job_no: str, rev: str, made_by: str, date: str) -> None:
@@ -501,13 +520,19 @@ def _new_sheet(out: pymupdf.Document, meta: SheetMeta, title: str, dwg_no: str) 
     return page
 
 
-def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet, dwg_no: str) -> None:
+def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet, dwg_no: str) -> tuple[list[str], list[str]]:
+    """Draw one sheet. Returns (notes that did not fit, warnings)."""
+    warnings: list[str] = []
     page = _new_sheet(out, meta, SHEET_TITLES[kind], dwg_no)
     idx = min(max(sheet.source_page_number, 1), src.page_count) - 1
     m = PlanMap(src[idx], sheet.plan_region)
-    m.draw_background(page, src)
+    try:
+        m.draw_background(page, src)
+    except Exception as e:
+        warnings.append(f"{dwg_no}: architectural background not shown ({e})")
     callouts: list[Element] = []
     off_plan: list[str] = []
+    skipped = 0
     for e in sheet.elements:
         on_plan = m.inside(e.start) and m.inside(e.end)
         if e.kind == "callout":
@@ -516,11 +541,25 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
             else:
                 off_plan.append(e.text or e.tag)
         elif on_plan:
-            _draw_element(page, e, m)
-    unplaced = _draw_callouts(page, callouts, m) + [t.upper() for t in off_plan if t]
+            try:
+                _draw_element(page, e, m)
+            except Exception:
+                skipped += 1
+    if skipped:
+        warnings.append(f"{dwg_no}: {skipped} plan element(s) could not be drawn")
+    try:
+        unplaced = _draw_callouts(page, callouts, m)
+    except Exception as e:
+        warnings.append(f"{dwg_no}: callouts moved to notes ({e})")
+        unplaced = [(c.text or c.tag).upper() for c in callouts]
+    unplaced += [t.upper() for t in off_plan if t]
     notes = list(sheet.notes) + [f"-{t}" for t in unplaced]  # never drop a note
-    _notes(page, sheet.classification, notes)
-    _schedule(page, sheet.schedule_title, sheet.schedule, sheet.legend_title, sheet.legend)
+    overflow = _notes(page, sheet.classification, notes)
+    try:
+        _schedule(page, sheet.schedule_title, sheet.schedule, sheet.legend_title, sheet.legend)
+    except Exception as e:
+        warnings.append(f"{dwg_no}: schedule not drawn ({e})")
+    return [f"{dwg_no}: {n.lstrip('-')}" for n in overflow], warnings
 
 
 def _summary_sections(geotech: GeotechReview, d: DesignAssessment, references: list[str]) -> list[tuple[str, list[str]]]:
@@ -565,23 +604,34 @@ def _summary_sections(geotech: GeotechReview, d: DesignAssessment, references: l
     ]
 
 
-def _summary_sheet(out, meta: SheetMeta, geotech, design, references) -> None:
-    page = _new_sheet(out, meta, "STRUCTURAL REVIEW SUMMARY", "SSK-0")
-    cols = [pymupdf.Rect(15, 95, 395, 832), pymupdf.Rect(405, 95, 785, 676), pymupdf.Rect(795, 95, 1180, 676)]
-    sections = _summary_sections(geotech, design, references)
-    _text(page, pymupdf.Rect(800, 20, 1180, 70), "PRELIMINARY - FOR ENGINEER REVIEW.\nNOT FOR CONSTRUCTION.", 12, RED, "Status")
-    fs = 7.5
-    col, y = 0, cols[0].y0
+SUMMARY_COLS = [pymupdf.Rect(15, 95, 395, 832), pymupdf.Rect(405, 95, 785, 676), pymupdf.Rect(795, 95, 1180, 676)]
+SUMMARY_FS = 7.5
+
+
+def _summary_sheets(out, meta: SheetMeta, sections: list[tuple[str, list[str]]]) -> int:
+    """Summary text flowed through three columns, adding continuation sheets as needed.
+    Returns the number of pages added."""
+    width = min(c.width for c in SUMMARY_COLS) - 8
+    lines: list[str] = []
     for heading, body in sections:
-        text = heading + "\n" + "\n".join(body).upper()
-        lines = _wrap(text, cols[col].width - 8, fs)
-        h = _text_height(len(lines), fs)
-        while y + h > cols[col].y1 and col < len(cols) - 1:
-            col += 1
-            y = cols[col].y0
-        r = pymupdf.Rect(cols[col].x0, y, cols[col].x1, min(y + h, cols[col].y1))
-        _text(page, r, "\n".join(lines), fs, BLACK, "Summary")
-        y += h + 6
+        if not body:
+            continue
+        lines += _wrap(heading + "\n" + "\n".join(body).upper(), width, SUMMARY_FS) + [""]
+    per_line = SUMMARY_FS * 1.18
+    pages = 0
+    while lines or pages == 0:
+        title = "STRUCTURAL REVIEW SUMMARY" + (" (CONT.)" if pages else "")
+        page = _new_sheet(out, meta, title, f"SSK-0{chr(ord('A') + pages) if pages else ''}")
+        _text(page, pymupdf.Rect(800, 20, 1180, 70), "PRELIMINARY - FOR ENGINEER REVIEW.\nNOT FOR CONSTRUCTION.", 12, RED, "Status")
+        pages += 1
+        for col in SUMMARY_COLS:
+            if not lines:
+                break
+            n = max(1, int((col.height - 6) / per_line))
+            chunk, lines = lines[:n], lines[n:]
+            _text(page, pymupdf.Rect(col.x0, col.y0, col.x1, col.y0 + _text_height(len(chunk), SUMMARY_FS)),
+                  "\n".join(chunk), SUMMARY_FS, BLACK, "Summary")
+    return pages
 
 
 def build_markup_pdf(
@@ -594,14 +644,34 @@ def build_markup_pdf(
     job_no: str = "",
     rev: str = "A",
     made_by: str = "",
-) -> bytes:
+) -> tuple[bytes, list[str]]:
+    """Returns (pdf bytes, warnings). Never fails because of one bad element."""
     src = pymupdf.open(stream=arch_pdf, filetype="pdf")
     out = pymupdf.open()
     meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"))
-    _summary_sheet(out, meta, geotech, design, references)
+    overflow: list[str] = []
+    warnings: list[str] = []
     n = 1
     for kind in SheetKind:
-        if kind in sheets:
-            _markup_sheet(out, src, meta, kind, sheets[kind], f"SSK-{n}")
-            n += 1
-    return out.tobytes(garbage=3, deflate=True)
+        if kind not in sheets:
+            continue
+        dwg_no = f"SSK-{n}"
+        before = out.page_count
+        try:
+            o, w = _markup_sheet(out, src, meta, kind, sheets[kind], dwg_no)
+            overflow += o
+            warnings += w
+        except Exception as e:  # keep the rest of the set
+            while out.page_count > before:
+                out.delete_page(-1)
+            warnings.append(f"{SHEET_TITLES[kind]} not produced: {e}")
+            continue
+        n += 1
+    sections = _summary_sections(geotech, design, references)
+    sections.append(("SHEET NOTES CONTINUED (DID NOT FIT ON SHEET)", [f"- {x}" for x in overflow]))
+    sections.append(("MARK-UP WARNINGS", [f"- {x}" for x in warnings]))
+    marked = out.page_count
+    added = _summary_sheets(out, meta, sections)
+    for i in range(added):  # move summary sheet(s) to the front
+        out.move_page(marked + i, i)
+    return out.tobytes(garbage=3, deflate=True), warnings

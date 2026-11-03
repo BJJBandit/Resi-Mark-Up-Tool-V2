@@ -33,6 +33,7 @@ class JobResult:
     sheets: dict[SheetKind, MarkupSheet] = field(default_factory=dict)
     sheet_errors: dict[SheetKind, str] = field(default_factory=dict)
     references: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     pdf: bytes = b""
 
 
@@ -72,7 +73,7 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
         list(pool.map(make, kinds[1:]))
 
     progress("Building mark-up PDF")
-    result.pdf = build_markup_pdf(
+    result.pdf, result.warnings = build_markup_pdf(
         job.arch_pdf,
         job.project,
         geotech,

@@ -143,6 +143,7 @@ def job_status(job_id: str) -> dict:
     body: dict = {"status": job.status, "step": job.step, "error": job.error}
     if job.result:
         body["references"] = job.result.references
+        body["warnings"] = job.result.warnings
         body["sheet_errors"] = {SHEET_TITLES[k]: v for k, v in job.result.sheet_errors.items()}
         body["summary"] = {
             "site_class": job.result.geotech.site_classification,
@@ -183,6 +184,7 @@ def job_json(job_id: str) -> JSONResponse:
                     "design": r.design.model_dump(),
                     "sheets": {k.value: v.model_dump() for k, v in r.sheets.items()},
                     "sheet_errors": {k.value: v for k, v in r.sheet_errors.items()},
+                    "warnings": r.warnings,
                 }
             )
         )
