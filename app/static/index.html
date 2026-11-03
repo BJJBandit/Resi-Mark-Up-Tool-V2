@@ -19,6 +19,9 @@
   label small { font-weight: 400; color: var(--muted); }
   input[type=text], select, textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit; }
   textarea { min-height: 70px; }
+  [hidden] { display: none !important; }
+  label.check { display:flex; gap:8px; align-items:center; font-weight:600; margin-top:14px; }
+  label.check small { font-weight:400; color: var(--muted); }
   .row3 { display:grid; grid-template-columns: 2fr 1fr 1fr; gap: 0 16px; }
   @media (max-width: 560px) { .row3 { grid-template-columns: 1fr; } }
   .row { display:grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
@@ -42,7 +45,8 @@
     <label>Project / site address</label>
     <input type="text" name="project" placeholder="e.g. 31 Pulfers Road">
 
-    <div class="row3">
+    <label class="check"><input type="checkbox" name="title_block" value="true" id="tb"> Add title block to sheets <small>optional</small></label>
+    <div class="row3" id="tbFields" hidden>
       <div><label>Job No</label><input type="text" name="job_no"></div>
       <div><label>Rev</label><input type="text" name="rev" value="A"></div>
       <div><label>Made by</label><input type="text" name="made_by" placeholder="Initials"></div>
@@ -96,6 +100,8 @@
 </main>
 <script>
 const f = document.getElementById('f'), go = document.getElementById('go'), box = document.getElementById('status');
+const tb = document.getElementById('tb'), tbFields = document.getElementById('tbFields');
+tb.addEventListener('change', () => { tbFields.hidden = !tb.checked; });
 const refs = document.getElementById('refs'), refList = document.getElementById('refList');
 refs.addEventListener('change', () => {
   refList.innerHTML = [...refs.files].map(f => `<li>${esc(f.name)} (${(f.size / 1048576).toFixed(1)} MB)</li>`).join('');
@@ -138,7 +144,7 @@ async function poll(id) {
       <li>Footing: ${esc(s.footing)}</li>
       <li>Floor: ${esc(s.floor)}</li>
     </ul>
-    ${(j.warnings || []).length ? `<p class="err">Warnings (also listed on the summary sheet): ${j.warnings.map(esc).join('; ')}</p>` : ''}
+    ${(j.warnings || []).length ? `<p class="err">Warnings : ${j.warnings.map(esc).join('; ')}</p>` : ''}
     ${errs.length ? `<p class="err">Sheets not produced: ${errs.map(([k,v]) => esc(k) + ' (' + esc(v) + ')').join('; ')}</p>` : ''}
     <b>Engineer to check</b>
     <ul>${s.engineer_checks.map(c => `<li>${esc(c)}</li>`).join('')}</ul>

@@ -21,7 +21,6 @@ checked before use. It is not for construction.
      on memory. They are uploaded once per review through the Files API and deleted
      when the review finishes.
 3. **Mark-up drawings.** Produces one PDF with:
-   - a summary page
    - one marked-up sheet each for load paths, roof (rafters only, including the deck),
      wall framing / racking / blockwork joints, footings (AS 2870) and floor framing or slab
 
@@ -30,7 +29,11 @@ checked before use. It is not for construction.
    with colour-coded member lines and tags (B, J, L, VB, R, C, DS, EB ...), piers,
    columns, bracing panels (`h(b) - 900`, `g - 600`, dashed `d - 2400`), boxed red
    callouts with arrow leaders, the schedule / bracing legend on the right and the title
-   block (Job No, Dwg No SSK-x, Rev, Date, Made by) bottom-right.
+   block bottom-right if you tick **Add title block** (Job No, Dwg No SSK-x, Rev, Date,
+   Made by). Without it the schedule and callouts use that space.
+
+   The review summary (geotech, roof/wall/footing assessment, engineer checks) is shown
+   in the app and in `review.json`; it is not added to the PDF.
 
    **Everything added is a PDF annotation** (title, notes, schedules, title block,
    members, tags, callouts), so the whole mark-up can be moved, edited or deleted in
