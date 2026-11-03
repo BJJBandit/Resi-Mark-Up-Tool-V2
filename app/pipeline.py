@@ -22,6 +22,7 @@ class JobInput:
     notes: str
     references: list[tuple[str, bytes]] = field(default_factory=list)  # (filename, pdf)
     job_no: str = ""
+    title_block: bool = False
     rev: str = "A"
     made_by: str = ""
 
@@ -83,5 +84,6 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
         job_no=job.job_no,
         rev=job.rev,
         made_by=job.made_by,
+        title_block=job.title_block,
     )
     return result

@@ -72,7 +72,9 @@ PLAN = pymupdf.Rect(345, 150, 905, 600)
 BAND_TOP = pymupdf.Rect(345, 84, 1180, 146)
 BAND_RIGHT = pymupdf.Rect(912, 150, 1180, 455)
 BAND_BOTTOM = pymupdf.Rect(345, 606, 728, 832)
+BAND_BOTTOM_NO_TB = pymupdf.Rect(345, 606, 905, 832)
 SCHEDULE = pymupdf.Rect(915, 460, 1180, 676)
+SCHEDULE_NO_TB = pymupdf.Rect(915, 460, 1180, 832)
 TITLE_BLOCK = pymupdf.Rect(735, 682, 1182, 834)
 
 COMPANY = os.environ.get("TITLE_BLOCK_COMPANY", "ARETE")
@@ -287,8 +289,7 @@ def _title_block(page, project: str, dwg_title: str, dwg_no: str, job_no: str, r
     cell(tb.x0 + 95, mid_y, tb.x1, tb.y1, dwg_title)
 
 
-def _schedule(page, title: str, items: list[ScheduleItem], legend_title: str, legend: list[ScheduleItem]) -> None:
-    box = SCHEDULE
+def _schedule(page, title: str, items: list[ScheduleItem], legend_title: str, legend: list[ScheduleItem], box=SCHEDULE) -> None:
     entries: list[tuple[str, tuple, bool, str]] = []  # text, colour, is_heading, legend tag
     if items:
         entries.append((title or "SCHEDULE:", BLACK, True, ""))
@@ -300,7 +301,6 @@ def _schedule(page, title: str, items: list[ScheduleItem], legend_title: str, le
         entries += [(i.text, TEAL, False, i.tag) for i in legend]
     if not entries:
         return
-    _rect(page, box, BLACK, 1, "Schedule")
     inner = box.width - 12
     for fs in (10, 9, 8.5, 8, 7.5, 7, 6.5, 6, 5.5, 5):
         blocks = []
@@ -311,6 +311,8 @@ def _schedule(page, title: str, items: list[ScheduleItem], legend_title: str, le
             blocks.append((lines, colour, head, ltag, height))
         if sum(b[4] for b in blocks) + 10 <= box.height:
             break
+    used = sum(b[4] for b in blocks) + 12
+    _rect(page, pymupdf.Rect(box.x0, box.y0, box.x1, min(box.y1, box.y0 + used)), BLACK, 1, "Schedule")
     y = box.y0 + 5
     for lines, colour, head, ltag, h in blocks:
         if lines != [""]:
@@ -461,8 +463,8 @@ class _Band:
         return box
 
 
-def _draw_callouts(page: pymupdf.Page, callouts: list[Element], m: PlanMap) -> list[str]:
-    top, right, bottom = _Band(BAND_TOP, True), _Band(BAND_RIGHT, False), _Band(BAND_BOTTOM, True)
+def _draw_callouts(page: pymupdf.Page, callouts: list[Element], m: PlanMap, bottom_band=BAND_BOTTOM) -> list[str]:
+    top, right, bottom = _Band(BAND_TOP, True), _Band(BAND_RIGHT, False), _Band(bottom_band, True)
     centre_y = (m.placed.y0 + m.placed.y1) / 2
     right_x = m.placed.x1 - m.placed.width * 0.25
     groups: dict[int, list] = {0: [], 1: [], 2: []}
@@ -511,12 +513,14 @@ class SheetMeta:
     rev: str
     made_by: str
     date: str
+    title_block: bool = False
 
 
 def _new_sheet(out: pymupdf.Document, meta: SheetMeta, title: str, dwg_no: str) -> pymupdf.Page:
     page = out.new_page(width=A3.width, height=A3.height)
     _title(page, meta.project, title)
-    _title_block(page, meta.project, title, dwg_no, meta.job_no, meta.rev, meta.made_by, meta.date)
+    if meta.title_block:
+        _title_block(page, meta.project, title, dwg_no, meta.job_no, meta.rev, meta.made_by, meta.date)
     return page
 
 
@@ -548,7 +552,7 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     if skipped:
         warnings.append(f"{dwg_no}: {skipped} plan element(s) could not be drawn")
     try:
-        unplaced = _draw_callouts(page, callouts, m)
+        unplaced = _draw_callouts(page, callouts, m, BAND_BOTTOM if meta.title_block else BAND_BOTTOM_NO_TB)
     except Exception as e:
         warnings.append(f"{dwg_no}: callouts moved to notes ({e})")
         unplaced = [(c.text or c.tag).upper() for c in callouts]
@@ -556,82 +560,35 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     notes = list(sheet.notes) + [f"-{t}" for t in unplaced]  # never drop a note
     overflow = _notes(page, sheet.classification, notes)
     try:
-        _schedule(page, sheet.schedule_title, sheet.schedule, sheet.legend_title, sheet.legend)
+        _schedule(page, sheet.schedule_title, sheet.schedule, sheet.legend_title, sheet.legend,
+                  SCHEDULE if meta.title_block else SCHEDULE_NO_TB)
     except Exception as e:
         warnings.append(f"{dwg_no}: schedule not drawn ({e})")
     return [f"{dwg_no}: {n.lstrip('-')}" for n in overflow], warnings
 
 
-def _summary_sections(geotech: GeotechReview, d: DesignAssessment, references: list[str]) -> list[tuple[str, list[str]]]:
-    g = geotech
-    return [
-        ("PROJECT", [d.project_summary, "", "REFERENCES SUPPLIED:", *([f"- {r}" for r in references] or ["- none"])]),
-        ("1. GEOTECHNICAL & WIND", [
-            f"REPORT PROVIDED: {'YES' if g.report_provided else 'NO'}",
-            f"AS2870 SITE CLASS: {g.site_classification}   ys: {g.ys}",
-            f"BEARING: {g.bearing_capacity}",
-            f"FOUNDING: {g.founding}",
-            f"FILL: {g.fill}",
-            f"GROUNDWATER: {g.groundwater}",
-            f"TREES / MOISTURE: {g.trees_or_moisture}",
-            f"AS4055 WIND CLASS: {g.wind_classification} ({g.wind_source})",
-            "RECOMMENDATIONS:", *[f"- {x}" for x in g.recommendations],
-            "CONCERNS:", *[f"- {x}" for x in g.concerns],
-        ]),
-        ("2. ROOF / WALLS / FLOOR", [
-            f"ROOF: {d.roof_form}; {d.roof_construction}; PITCH {d.roof_pitch}; {d.roof_cladding}",
-            *[f"- DECK: {x}" for x in d.deck_areas],
-            f"WALLS: EXT {d.external_wall_type}; INT {d.internal_wall_type}",
-            f"FRAMING: {d.framing_material} TO {d.governing_standard}; {d.storeys} STOREY(S); HEIGHT {d.wall_height}",
-            f"FLOOR: {d.floor_system} - {d.floor_description}",
-        ]),
-        ("3. LOAD PATHS", [f"- {s.element}: {s.carries} -> {s.transfers_to}" for s in d.load_paths]),
-        ("4. FOOTINGS (AS2870)", [
-            f"{d.footing_system} (SITE CLASS {d.footing_site_class_used})",
-            f"BASIS: {d.footing_as2870_basis}",
-            *[f"- {x}" for x in d.footing_details],
-        ]),
-        ("5. WALL DESIGN / BRACING", [
-            f"WIND: {d.wind_classification_used}",
-            d.racking_summary,
-            *[f"- {b.location}: {b.bracing_type} ({b.capacity})" for b in d.bracing_walls],
-            f"TIE-DOWN: {d.tie_down}",
-            *[f"- LINTEL/BEAM: {x}" for x in d.lintels_and_beams],
-            *[f"- JOINT: {x}" for x in d.articulation_and_control_joints],
-        ]),
-        ("ASSUMPTIONS", [f"- {x}" for x in d.assumptions]),
-        ("ENGINEER TO CHECK", [f"- {x}" for x in d.engineer_checks]),
-    ]
+NOTES_COLS = [pymupdf.Rect(15, 95, 395, 832), pymupdf.Rect(405, 95, 785, 832), pymupdf.Rect(795, 95, 1180, 832)]
+NOTES_COLS_TB = [pymupdf.Rect(15, 95, 395, 832), pymupdf.Rect(405, 95, 785, 676), pymupdf.Rect(795, 95, 1180, 676)]
+CONT_FS = 7.5
 
 
-SUMMARY_COLS = [pymupdf.Rect(15, 95, 395, 832), pymupdf.Rect(405, 95, 785, 676), pymupdf.Rect(795, 95, 1180, 676)]
-SUMMARY_FS = 7.5
-
-
-def _summary_sheets(out, meta: SheetMeta, sections: list[tuple[str, list[str]]]) -> int:
-    """Summary text flowed through three columns, adding continuation sheets as needed.
-    Returns the number of pages added."""
-    width = min(c.width for c in SUMMARY_COLS) - 8
-    lines: list[str] = []
-    for heading, body in sections:
-        if not body:
-            continue
-        lines += _wrap(heading + "\n" + "\n".join(body).upper(), width, SUMMARY_FS) + [""]
-    per_line = SUMMARY_FS * 1.18
-    pages = 0
-    while lines or pages == 0:
-        title = "STRUCTURAL REVIEW SUMMARY" + (" (CONT.)" if pages else "")
-        page = _new_sheet(out, meta, title, f"SSK-0{chr(ord('A') + pages) if pages else ''}")
-        _text(page, pymupdf.Rect(800, 20, 1180, 70), "PRELIMINARY - FOR ENGINEER REVIEW.\nNOT FOR CONSTRUCTION.", 12, RED, "Status")
-        pages += 1
-        for col in SUMMARY_COLS:
+def _notes_continuation(out, meta: SheetMeta, notes: list[str]) -> None:
+    """Only used when a sheet's notes do not fit its notes column - nothing is dropped."""
+    cols = NOTES_COLS_TB if meta.title_block else NOTES_COLS
+    width = min(c.width for c in cols) - 8
+    lines = _wrap("NOTES:\n\n" + "\n\n".join(f"-{n}" for n in notes), width, CONT_FS)
+    per_line = CONT_FS * 1.18
+    n_page = 0
+    while lines:
+        n_page += 1
+        page = _new_sheet(out, meta, "SHEET NOTES (CONT.)", f"SSK-N{n_page}")
+        for col in cols:
             if not lines:
                 break
             n = max(1, int((col.height - 6) / per_line))
             chunk, lines = lines[:n], lines[n:]
-            _text(page, pymupdf.Rect(col.x0, col.y0, col.x1, col.y0 + _text_height(len(chunk), SUMMARY_FS)),
-                  "\n".join(chunk), SUMMARY_FS, BLACK, "Summary")
-    return pages
+            _text(page, pymupdf.Rect(col.x0, col.y0, col.x1, col.y0 + _text_height(len(chunk), CONT_FS)),
+                  "\n".join(chunk), CONT_FS, BLACK, "Notes")
 
 
 def build_markup_pdf(
@@ -644,11 +601,13 @@ def build_markup_pdf(
     job_no: str = "",
     rev: str = "A",
     made_by: str = "",
+    title_block: bool = False,
 ) -> tuple[bytes, list[str]]:
-    """Returns (pdf bytes, warnings). Never fails because of one bad element."""
+    """Mark-up sheets only (the review summary stays in the app / review.json).
+    Returns (pdf bytes, warnings). Never fails because of one bad element."""
     src = pymupdf.open(stream=arch_pdf, filetype="pdf")
     out = pymupdf.open()
-    meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"))
+    meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"), title_block)
     overflow: list[str] = []
     warnings: list[str] = []
     n = 1
@@ -667,11 +626,6 @@ def build_markup_pdf(
             warnings.append(f"{SHEET_TITLES[kind]} not produced: {e}")
             continue
         n += 1
-    sections = _summary_sections(geotech, design, references)
-    sections.append(("SHEET NOTES CONTINUED (DID NOT FIT ON SHEET)", [f"- {x}" for x in overflow]))
-    sections.append(("MARK-UP WARNINGS", [f"- {x}" for x in warnings]))
-    marked = out.page_count
-    added = _summary_sheets(out, meta, sections)
-    for i in range(added):  # move summary sheet(s) to the front
-        out.move_page(marked + i, i)
+    if overflow:
+        _notes_continuation(out, meta, overflow)
     return out.tobytes(garbage=3, deflate=True), warnings
