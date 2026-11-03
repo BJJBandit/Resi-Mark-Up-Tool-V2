@@ -8,7 +8,7 @@ import os
 from typing import TypeVar
 
 import anthropic
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from .pdf import PageImage
 from .schemas import (
@@ -51,19 +51,19 @@ def _schema(model: type[BaseModel]) -> dict:
     return model.model_json_schema()
 
 
-def _call(content: list[dict], out: type[T], max_tokens: int = 32000) -> T:
-    """Run one structured-output request, streamed to avoid HTTP timeouts."""
+def _request(messages: list[dict], max_tokens: int, schema: dict | None) -> str:
+    """One streamed request (avoids HTTP timeouts); returns the text output."""
+    output_config: dict = {"effort": EFFORT}
+    if schema is not None:
+        output_config["format"] = {"type": "json_schema", "schema": schema}
     with client.beta.messages.stream(
         model=MODEL,
         max_tokens=max_tokens,
         system=SYSTEM,
         betas=["server-side-fallback-2026-07-01"],
         fallbacks="default",
-        output_config={
-            "effort": EFFORT,
-            "format": {"type": "json_schema", "schema": _schema(out)},
-        },
-        messages=[{"role": "user", "content": content}],
+        output_config=output_config,
+        messages=messages,
     ) as stream:
         message = stream.get_final_message()
 
@@ -72,11 +72,51 @@ def _call(content: list[dict], out: type[T], max_tokens: int = 32000) -> T:
         raise ClaudeError(f"Claude declined the request: {detail}")
     if message.stop_reason == "max_tokens":
         raise ClaudeError("Claude's response was cut off (max_tokens reached).")
-
-    text = next((b.text for b in message.content if b.type == "text"), None)
-    if text is None:
+    text = "".join(b.text for b in message.content if b.type == "text").strip()
+    if not text:
         raise ClaudeError("Claude returned no text content.")
-    return out.model_validate(json.loads(text))
+    return text
+
+
+def _extract_json(text: str) -> str:
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end < start:
+        raise ValueError("no JSON object in response")
+    return text[start : end + 1]
+
+
+def _call(content: list[dict], out: type[T], max_tokens: int = 32000) -> T:
+    """Structured-output request. If the API rejects the schema (e.g. compiled
+    grammar too large), fall back to plain JSON validated locally."""
+    schema = _schema(out)
+    messages = [{"role": "user", "content": content}]
+    try:
+        return out.model_validate_json(_request(messages, max_tokens, schema))
+    except anthropic.BadRequestError as e:
+        if "grammar" not in str(e).lower() and "schema" not in str(e).lower():
+            raise
+
+    instruction = (
+        "Respond with ONLY a single JSON object (no prose, no code fences) that "
+        "validates against this JSON schema. Every property is required.\n"
+        + json.dumps(schema)
+    )
+    messages = [{"role": "user", "content": [*content, {"type": "text", "text": instruction}]}]
+    last_error: Exception | None = None
+    for _ in range(2):
+        text = _request(messages, max_tokens, None)
+        try:
+            return out.model_validate_json(_extract_json(text))
+        except (ValueError, ValidationError) as err:
+            last_error = err
+            messages += [
+                {"role": "assistant", "content": text},
+                {
+                    "role": "user",
+                    "content": f"That JSON was invalid: {err}. Reply with the corrected JSON object only.",
+                },
+            ]
+    raise ClaudeError(f"Claude's JSON did not match the expected structure: {last_error}")
 
 
 def _pdf_block(pdf_bytes: bytes, title: str) -> dict:

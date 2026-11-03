@@ -116,10 +116,10 @@ def job_status(job_id: str) -> dict:
         body["summary"] = {
             "site_class": job.result.geotech.site_classification,
             "wind_class": job.result.geotech.wind_classification,
-            "roof": job.result.design.roof.roof_form,
-            "walls": job.result.design.walls.external_wall_type,
-            "footing": job.result.design.footing.system,
-            "floor": job.result.design.floor.system,
+            "roof": f"{job.result.design.roof_form} - {job.result.design.roof_construction}",
+            "walls": job.result.design.external_wall_type,
+            "footing": job.result.design.footing_system,
+            "floor": job.result.design.floor_system,
             "engineer_checks": job.result.design.engineer_checks,
         }
     return body
