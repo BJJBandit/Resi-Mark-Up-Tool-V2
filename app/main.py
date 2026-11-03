@@ -85,6 +85,9 @@ async def create_job(
     construction: str = Form("Timber frame to AS 1684"),
     notes: str = Form(""),
     references: list[UploadFile] = File([]),
+    job_no: str = Form(""),
+    rev: str = Form("A"),
+    made_by: str = Form(""),
 ) -> dict:
     arch = await _read(architectural, "Architectural drawings")
     if arch is None:
@@ -117,6 +120,9 @@ async def create_job(
         construction=construction.strip(),
         notes=notes.strip(),
         references=refs,
+        job_no=job_no.strip(),
+        rev=rev.strip() or "A",
+        made_by=made_by.strip().upper(),
     )
     job_id = uuid.uuid4().hex
     JOBS[job_id] = Job(project=inp.project)
