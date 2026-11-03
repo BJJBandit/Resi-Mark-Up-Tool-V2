@@ -1,43 +1,36 @@
 # Resi Mark-Up Tool
 
-Web app that uses the Claude API to prepare **preliminary** structural mark-ups for
-residential projects. All output is a design aid for the engineer and must be
-checked before use. It is not for construction.
+Web app that prepares **preliminary** structural mark-ups for Class 1 and 10 residential
+projects to the NCC and Australian Standards. All output is a design aid for the engineer
+and must be checked before use. It is not for construction.
 
-## What it does
+## How it works (v2)
 
-1. **Geotechnical review and wind.** Reads the geotech report (PDF) and records the
-   AS 2870 site class, ys, bearing capacity, founding depth, fill, groundwater and the
-   report's recommendations. Uses the AS 4055 wind class you enter, or the one in the report.
-2. **Architectural review.** Reads every drawing page as an image plus its extracted text, then works out:
-   - roof type
-   - wall type
-   - load paths
-   - footing type, based on the geotech report and AS 2870
-   - wall design, including bracing, to the material standard you choose
-     (AS 1684, NASH, AS 3700 / AS 4773)
-   - Optionally takes your own **standards, guides and codes** (PDFs, several at once).
-     Every step reads them and cites their clause and table numbers instead of relying
-     on memory. They are uploaded once per review through the Files API and deleted
-     when the review finishes.
-3. **Mark-up drawings.** Produces one PDF with:
-   - one marked-up sheet each for load paths, roof (rafters only, including the deck),
-     wall framing / racking / blockwork joints, footings (AS 2870) and floor framing or slab
+Two stages, with the engineer in between:
 
-   Sheets follow the house mark-up style: A3, address and sheet name top-left,
-   classification and notes down the left, the architectural plan faded in the middle
-   with colour-coded member lines and tags (B, J, L, VB, R, C, DS, EB ...), piers,
-   columns, bracing panels (`h(b) - 900`, `g - 600`, dashed `d - 2400`), boxed red
-   callouts with arrow leaders, the schedule / bracing legend on the right and the title
-   block bottom-right if you tick **Add title block** (Job No, Dwg No SSK-x, Rev, Date,
-   Made by). Without it the schedule and callouts use that space.
+1. **Model** – the architectural PDF is read deterministically: vector line work,
+   dimension strings and scale give walls, openings and plan frames; title-block text
+   gives site class, wind class and BAL. Claude (Sonnet) is then asked only what needs
+   judgement: which internal walls are load-bearing (by wall ID, on a plan image with the
+   IDs drawn on it), the roof form, and what the geotech report says. The result is a
+   structural model you **review and correct in the browser** before anything is designed.
+2. **Design** – no tokens. A fixed dependency graph decides which engines run (AS 4055
+   wind → AS 1684 racking / tie-down; AS 2870 footings → piers; openings → lintels →
+   AS 4100 steel). Each engine walks a YAML decision tree over tables transcribed from
+   the standards, records every step in a **design trace** with its citation, and the
+   layout rules place footings, piers, bracing panels and tags on the plan. The sheets
+   are drawn as PDF annotations so they stay editable in Bluebeam / Acrobat.
 
-   The review summary (geotech, roof/wall/footing assessment, engineer checks) is shown
-   in the app and in `review.json`; it is not added to the PDF.
+Standards tables ship **empty**: values come from the practice's licensed copies (see
+`docs/standards-data-required.md`). Until a table is loaded the engine proposes the
+practice standard from `app/data/house/preferences.yaml`, marks it unverified, and says
+exactly which table it needs. Where a loaded table is more conservative than the
+preference, the table wins and the trace says so.
 
-   **Everything added is a PDF annotation** (title, notes, schedules, title block,
-   members, tags, callouts), so the whole mark-up can be moved, edited or deleted in
-   Bluebeam or Acrobat. Only the faded architectural background is page content.
+`docs/architecture.md` has the module map; `/design-logic` in the running app shows
+every decision tree and the loaded / not-loaded state of every table.
+
+A **legacy mode** (Claude reads page images, as in v1) remains for scanned drawing sets.
 
 ## Run locally
 
@@ -46,43 +39,50 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 export ANTHROPIC_API_KEY=sk-ant-...
 uvicorn app.main:app --reload
+pytest -q           # 50+ unit tests; fixture tests skip when PDFs are absent
 ```
 
-Then open http://localhost:8000.
+Then open http://localhost:8000. Past jobs for regression testing go in `fixtures/`
+(see `fixtures/README.md`).
 
 ## Deploy on Render
 
-`render.yaml` is a Render Blueprint. In Render, choose **New → Blueprint** and pick
-this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
+`render.yaml` is a Render Blueprint. In Render, choose **New → Blueprint** and pick this
+repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 
 | Env var | Default | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | (none, secret) | Claude API key |
-| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model used for every step |
-| `ANTHROPIC_EFFORT` | `high` | Reasoning depth: `low` / `medium` / `high` / `xhigh` / `max` |
+| `ANTHROPIC_MODEL_LABEL` | `claude-sonnet-5-5` | Model for the labelling stage (v2) |
+| `ANTHROPIC_EFFORT_LABEL` | `medium` | Reasoning effort for labelling |
+| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model for legacy mode |
+| `ANTHROPIC_EFFORT` | `high` | Reasoning effort for legacy mode |
 | `TITLE_BLOCK_COMPANY` | `ARETE` | Company name in the title block |
 | `TITLE_BLOCK_COMPANY_SUB` | `ENGINEERING` | Second line under the company name |
 | `MARKUP_AUTHOR` | `Resi Mark-Up Tool` | Author shown on every annotation in Bluebeam's markup list |
 
 ## Limits
 
-- Architectural sets can have up to 20 pages, and each upload must be under 30 MB.
-- Reference documents can be up to 100 MB each and 500 pages in total. Every page is
-  read on every step, so upload only the relevant chapters (for example AS 1684.2
-  bracing and tie-down, and the AS 2870 footing tables). That keeps the review faster
-  and cheaper.
-- Mark-up positions come from Claude reading the page image. They are approximate,
-  so check them and drag them into place in your PDF editor.
-- Jobs are kept in memory only, so download the results before the service restarts
-  or redeploys.
+- Uploads must be PDFs under 30 MB; the model stage needs vector drawings (CAD / Revit
+  exports). Image-only pages are flagged; use legacy mode for those.
+- Jobs are kept in memory only, so download the results before the service restarts.
 
 ## Code layout
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `app/main.py` | FastAPI routes and the background job runner |
-| `app/pipeline.py` | Runs steps 1 to 3 in order |
-| `app/claude.py` | Prompts and Claude API calls (structured outputs) |
-| `app/schemas.py` | Output schema for each step |
-| `app/pdf.py` | Renders pages and draws the mark-up PDF |
-| `app/static/index.html` | Upload page |
+| `app/main.py` | Routes: upload, model review, design, outputs |
+| `app/model/` | The structural model schema (reviewable JSON with provenance) |
+| `app/extract/` | Deterministic PDF geometry: vectors, dimensions, scale, walls, openings |
+| `app/label/` | Claude labelling (load-bearing walls, roof, geotech) and roof-text parsing |
+| `app/design/` | Planner (dependency graph), runner, layout, annotator |
+| `app/engines/` | Standards engines, tables loader, trace, YAML decision-tree interpreter |
+| `app/logic/` | Decision trees as YAML, rendered on `/design-logic` |
+| `app/calc/` | AS 4100 beam / column checks and the steel section catalogue |
+| `app/data/house/` | Practice preferences and notes library (editable data) |
+| `app/data/standards/` | Standards tables (transcribed by the engineer) |
+| `app/pdf.py` | Draws the A3 mark-up sheets as PDF annotations |
+| `app/pipeline.py`, `app/claude.py`, `app/schemas.py` | Legacy v1 pipeline |
+| `app/static/` | Upload, review and trace pages |
+| `docs/` | Standards data checklist, extracted house style, architecture |
+| `fixtures/` | Past jobs as regression tests (manifest committed, PDFs synced) |
