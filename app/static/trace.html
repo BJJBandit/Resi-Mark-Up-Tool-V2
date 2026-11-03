@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design trace – Resi Mark-Up Tool</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1b1f24; --muted:#5b6470; --line:#d9dde3; --accent:#1f5fbf; --err:#b42318; --warn:#b54708; --ok:#027a48; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171b; --card:#1d2126; --ink:#e8eaed; --muted:#9aa3ad; --line:#333a42; --accent:#6ea4ff; --err:#ff8a80; --warn:#f8b26a; --ok:#6fd39a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 system-ui, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 0 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 16px; overflow-x:auto; }
+  .status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; border:1px solid var(--line); }
+  .status.ok { color: var(--ok); border-color: var(--ok);} .status.flag { color: var(--warn); border-color: var(--warn);} .status.blocked { color: var(--err); border-color: var(--err);} .status.not_supported { color: var(--muted); }
+  details { margin: 4px 0 4px 0; } details details { margin-left: 18px; border-left: 2px solid var(--line); padding-left: 10px; }
+  summary { cursor: pointer; }
+  .meta { color: var(--muted); font-size: 12px; }
+  dl { display:grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 6px 0; font-size: 13px; }
+  dt { color: var(--muted); } dd { margin:0; font-family: ui-monospace, monospace; white-space: pre-wrap; }
+  .rule { margin: 4px 0; } .cite { color: var(--accent); }
+  .lp { font-family: ui-monospace, monospace; }
+  nav a { margin-right: 14px; color: var(--accent); }
+  ul.plain { padding-left: 18px; margin: 4px 0; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+</head>
+<body>
+<main>
+  <h1 id="title">Design trace</h1>
+  <nav><a id="back" href="#">← Model review</a><a id="pdf" href="#">Mark-up PDF</a><a id="json" href="#">review.json</a><a id="md" href="#">trace.md</a><a href="/design-logic">Design logic</a></nav>
+
+  <div class="card" id="summary"></div>
+  <div class="card"><h2>Process map (this job)</h2><pre class="mermaid" id="planmm">loading…</pre></div>
+  <div class="card"><h2>Steps</h2><div id="steps"></div></div>
+  <div class="card"><h2>Load paths</h2><ul class="plain lp" id="lp"></ul></div>
+</main>
+<script>
+const jobId = location.pathname.split('/').filter(Boolean)[1];
+for (const [id, href] of [['back',`/jobs/${jobId}/review`],['pdf',`/jobs/${jobId}/markup.pdf`],['json',`/jobs/${jobId}/review.json`],['md',`/jobs/${jobId}/trace.md`]]) document.getElementById(id).href = href;
+const el = (tag, attrs={}, ...kids) => { const e=document.createElement(tag); for (const [k,v] of Object.entries(attrs)) { if (k==='class') e.className=v; else e.setAttribute(k,v);} for (const k of kids.flat()) e.append(k?.nodeType ? k : document.createTextNode(k ?? '')); return e; };
+const fmt = o => Object.entries(o||{}).filter(([k,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>[k, typeof v==='object'? JSON.stringify(v) : String(v)]);
+
+function rolled(s) { let worst = s.status; const rank = {ok:0, flag:1, not_supported:2, blocked:3}; for (const c of s.children||[]) { const r = rolled(c); if (rank[r] > rank[worst]) worst = r; } return worst; }
+function stepNode(s, open) {
+  const d = el('details', open ? {open:''} : {});
+  const st = rolled(s);
+  d.append(el('summary', {}, el('span', {class:'status '+st}, st), ' ', el('b', {}, s.title), ' ', el('span', {class:'meta'}, s.engine + (s.citation ? ' · ' : ''), el('span',{class:'cite'}, s.citation||''))));
+  if (s.rule) d.append(el('p', {class:'rule'}, s.rule));
+  if (s.preference_applied) d.append(el('p', {class:'meta'}, 'preference: ' + s.preference_applied));
+  if (s.conservatism_note) d.append(el('p', {class:'meta'}, '⚠ ' + s.conservatism_note));
+  const inputs = fmt(s.inputs), result = fmt(s.result);
+  if (inputs.length) { const dl = el('dl'); for (const [k,v] of inputs) dl.append(el('dt',{},k), el('dd',{},v)); d.append(el('div',{class:'meta'},'inputs'), dl); }
+  if (result.length) { const dl = el('dl'); for (const [k,v] of result) dl.append(el('dt',{},k), el('dd',{},v)); d.append(el('div',{class:'meta'},'result'), dl); }
+  for (const c of s.children||[]) d.append(stepNode(c, st !== 'ok'));
+  return d;
+}
+async function load() {
+  const r = await fetch(`/jobs/${jobId}/review.json`); const j = await r.json();
+  if (!j.trace) { document.getElementById('summary').textContent = 'Design has not run yet.'; return; }
+  document.getElementById('title').textContent = `Design trace – ${j.model.project_name || jobId}`;
+  const d = j.design;
+  const sm = document.getElementById('summary');
+  sm.append(el('p', {}, el('span', {class:'status '+d.status}, d.status), ` ${d.steps_run} engine step(s) run, ${d.steps_skipped} skipped. Claude tokens: ${j.usage.input_tokens.toLocaleString()} in / ${j.usage.output_tokens.toLocaleString()} out.`));
+  if (d.blocked_on?.length) sm.append(el('h2', {}, 'Blocked on'), el('ul', {class:'plain'}, ...d.blocked_on.map(b => el('li', {}, b))));
+  if (d.flags?.length) sm.append(el('h2', {}, 'Flags'), el('ul', {class:'plain'}, ...d.flags.map(b => el('li', {}, b))));
+  if (j.warnings?.length) sm.append(el('h2', {}, 'Sheet warnings'), el('ul', {class:'plain'}, ...j.warnings.map(b => el('li', {}, b))));
+  const steps = document.getElementById('steps');
+  for (const s of j.trace.steps) steps.append(stepNode(s, rolled(s) !== 'ok'));
+  const lp = document.getElementById('lp');
+  const walk = (s) => { if (s.kind === 'load_path') lp.append(el('li', {}, `${s.load_from} → ${s.load_to}`, el('span', {class:'meta'}, s.rule ? '  — ' + s.rule : ''))); (s.children||[]).forEach(walk); };
+  j.trace.steps.forEach(walk);
+  const mm = await (await fetch(`/jobs/${jobId}/plan.mmd`)).text();
+  document.getElementById('planmm').textContent = mm;
+  mermaid.initialize({ startOnLoad: false, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });
+  await mermaid.run({ nodes: [document.getElementById('planmm')] });
+}
+load();
+</script>
+</body>
+</html>

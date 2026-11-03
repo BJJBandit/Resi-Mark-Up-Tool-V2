@@ -52,6 +52,12 @@
       <div><label>Made by</label><input type="text" name="made_by" placeholder="Initials"></div>
     </div>
 
+    <label>Mode</label>
+    <select name="mode">
+      <option value="model" selected>Model (vector geometry + review, minimal tokens)</option>
+      <option value="legacy">Legacy (Claude reads page images - for scanned sets)</option>
+    </select>
+
     <label>Architectural drawings (PDF) *</label>
     <input type="file" name="architectural" accept="application/pdf" required>
 
@@ -129,6 +135,7 @@ async function poll(id) {
   const j = await r.json();
   if (!r.ok) { box.innerHTML = `<p class="err">${esc(j.detail)}</p>`; go.disabled = false; return; }
   if (j.status === 'error') { box.innerHTML = `<p class="err">Review failed: ${esc(j.error)}</p>`; go.disabled = false; return; }
+  if (j.status === 'review') { location.href = `/jobs/${id}/review`; return; }
   if (j.status !== 'done') {
     box.innerHTML = `<p>${esc(j.step || 'Queued')}… <small>(a full review takes several minutes)</small></p>`;
     return setTimeout(() => poll(id), 4000);
