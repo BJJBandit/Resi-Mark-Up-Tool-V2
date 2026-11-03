@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 import anthropic
+import httpx2
 from pydantic import BaseModel, ValidationError
 
 from .pdf import PageImage
@@ -22,9 +23,13 @@ from .schemas import (
 )
 
 MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5-5")
-EFFORT = os.environ.get("ANTHROPIC_EFFORT", "high")
+EFFORT = os.environ.get("ANTHROPIC_EFFORT", "high")  # steps 1-2: engineering judgement
+SHEET_EFFORT = os.environ.get("ANTHROPIC_SHEET_EFFORT", "medium")  # step 3: placing mark-ups
 
-client = anthropic.Anthropic()
+# Long thinking can leave a stream quiet for a while; allow 30 min between bytes
+# (the SDK default is 10) and handle the timeout ourselves below.
+TIMEOUT_S = float(os.environ.get("ANTHROPIC_TIMEOUT_S", "1800"))
+client = anthropic.Anthropic(timeout=httpx2.Timeout(TIMEOUT_S, connect=15.0))
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -60,6 +65,10 @@ class CutOff(ClaudeError):
     """The response hit max_tokens (thinking counts toward the limit)."""
 
 
+# Network-level failures mid-stream are not retried by the SDK.
+_TRANSIENT = (anthropic.APITimeoutError, anthropic.APIConnectionError, httpx2.TimeoutException, httpx2.TransportError)
+
+
 # Opus-class models think before answering and the thinking counts toward
 # max_tokens, so leave plenty of room; retry once at the model's maximum.
 MAX_TOKENS = int(os.environ.get("ANTHROPIC_MAX_TOKENS", "64000"))
@@ -70,9 +79,9 @@ def _schema(model: type[BaseModel]) -> dict:
     return model.model_json_schema()
 
 
-def _request(messages: list[dict], max_tokens: int, schema: dict | None) -> str:
+def _request(messages: list[dict], max_tokens: int, schema: dict | None, effort: str = EFFORT) -> str:
     """One streamed request (avoids HTTP timeouts); returns the text output."""
-    output_config: dict = {"effort": EFFORT}
+    output_config: dict = {"effort": effort}
     if schema is not None:
         output_config["format"] = {"type": "json_schema", "schema": schema}
     with client.beta.messages.stream(
@@ -81,6 +90,9 @@ def _request(messages: list[dict], max_tokens: int, schema: dict | None) -> str:
         system=SYSTEM,
         betas=["server-side-fallback-2026-07-01"],
         fallbacks="default",
+        # Summarised thinking streams text while Claude works, so the connection
+        # never sits silent long enough to time out. Billed the same as omitted.
+        thinking={"type": "adaptive", "display": "summarized"},
         output_config=output_config,
         messages=messages,
     ) as stream:
@@ -104,29 +116,35 @@ def _extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
-def _request_retrying(messages: list[dict], max_tokens: int, schema: dict | None) -> str:
+def _request_retrying(messages: list[dict], max_tokens: int, schema: dict | None, effort: str) -> str:
+    """Retry once on a cut-off (at the model maximum) or a dropped / timed-out stream."""
     try:
-        return _request(messages, max_tokens, schema)
+        return _request(messages, max_tokens, schema, effort)
     except CutOff:
         if max_tokens >= MAX_TOKENS_RETRY:
             raise
-        return _request(messages, MAX_TOKENS_RETRY, schema)
+        return _request(messages, MAX_TOKENS_RETRY, schema, effort)
+    except _TRANSIENT:
+        try:
+            return _request(messages, max_tokens, schema, effort)
+        except _TRANSIENT as e:
+            raise ClaudeError(f"the connection to Claude timed out or dropped twice ({type(e).__name__}).") from e
 
 
-def _call(content: list[dict], out: type[T], step: str, max_tokens: int = MAX_TOKENS) -> T:
+def _call(content: list[dict], out: type[T], step: str, max_tokens: int = MAX_TOKENS, effort: str = EFFORT) -> T:
     """Structured-output request. If the API rejects the schema (e.g. compiled
     grammar too large), fall back to plain JSON validated locally. Errors name the step."""
     try:
-        return _call_inner(content, out, max_tokens)
+        return _call_inner(content, out, max_tokens, effort)
     except ClaudeError as e:
         raise ClaudeError(f"{step}: {e}") from e
 
 
-def _call_inner(content: list[dict], out: type[T], max_tokens: int) -> T:
+def _call_inner(content: list[dict], out: type[T], max_tokens: int, effort: str) -> T:
     schema = _schema(out)
     messages = [{"role": "user", "content": content}]
     try:
-        return out.model_validate_json(_request_retrying(messages, max_tokens, schema))
+        return out.model_validate_json(_request_retrying(messages, max_tokens, schema, effort))
     except anthropic.BadRequestError as e:
         if "grammar" not in str(e).lower() and "schema" not in str(e).lower():
             raise
@@ -139,7 +157,7 @@ def _call_inner(content: list[dict], out: type[T], max_tokens: int) -> T:
     messages = [{"role": "user", "content": [*content, {"type": "text", "text": instruction}]}]
     last_error: Exception | None = None
     for _ in range(2):
-        text = _request_retrying(messages, max_tokens, None)
+        text = _request_retrying(messages, max_tokens, None, effort)
         try:
             return out.model_validate_json(_extract_json(text))
         except (ValueError, ValidationError) as err:
@@ -421,4 +439,4 @@ def plan_sheet(
             ),
         }
     )
-    return _call(content, MarkupSheet, f"Step 3 ({SHEET_TITLES[kind]})")
+    return _call(content, MarkupSheet, f"Step 3 ({SHEET_TITLES[kind]})", effort=SHEET_EFFORT)

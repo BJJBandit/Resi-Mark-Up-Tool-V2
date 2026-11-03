@@ -73,7 +73,7 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
             sheet_warnings[kind] = apply_strip_rule(sheet, SHEET_TITLES[kind])
             result.sheets[kind] = sheet
         except Exception as e:  # keep the other sheets if one fails
-            result.sheet_errors[kind] = str(e)
+            result.sheet_errors[kind] = str(e) or type(e).__name__
 
     kinds = list(SheetKind)
     progress("Step 3: marking up sheets (1 of 5)")
