@@ -1,0 +1,18 @@
+# Render Blueprint
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Add services, databases and environment groups below as the app takes shape.
+# Example web service:
+#
+#   services:
+#     - type: web
+#       name: resi-mark-up-tool
+#       runtime: node
+#       plan: free
+#       buildCommand: npm install && npm run build
+#       startCommand: npm start
+#       envVars:
+#         - key: NODE_ENV
+#           value: production
+
+services: []
