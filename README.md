@@ -60,6 +60,7 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `ANTHROPIC_API_KEY` | (none, secret) | Claude API key |
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model used for every step |
 | `ANTHROPIC_EFFORT` | `high` | Reasoning depth: `low` / `medium` / `high` / `xhigh` / `max` |
+| `ANTHROPIC_MAX_TOKENS` | `64000` | Output cap per Claude call (thinking counts toward it); a cut-off call retries once at 128000 |
 | `MIN_STRIP_FOOTING_WIDTH_MM` | `450` | Firm minimum strip footing width (see Design rules) |
 | `TITLE_BLOCK_COMPANY` | `ARETE` | Company name in the title block |
 | `TITLE_BLOCK_COMPANY_SUB` | `ENGINEERING` | Second line under the company name |
