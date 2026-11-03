@@ -155,6 +155,9 @@ _KIND_RULES: list[tuple[str, str]] = [
 ]
 
 
+_TITLE_WORDS = re.compile("|".join(p for p, _ in _KIND_RULES) + r"|SLAB|FOOTING|BRACING|LINTEL|FRAMING|LAYOUT")
+
+
 def guess_kind(title: str, lines: list[Line]) -> str:
     """Kind from the drawing title; if that gives nothing, from the biggest text."""
     for pattern, kind in _KIND_RULES:
@@ -196,27 +199,32 @@ def _norm_label(s: str) -> str:
 
 
 def _value_for(label: Line, lines: list[Line]) -> str:
-    """Value is either the nearest text to the right on the same row or the first
-    non-label line just below the label; both layouts occur, so take the closer."""
+    """Value is either the nearest text to the right on the same row, or the line
+    immediately below the label when that line is left-aligned with it and is not
+    itself a label. Both layouts occur (Maveric: below; Another Perspective: right).
+    When both exist the closer one wins."""
     lx0, ly0, lx1, ly1 = label.bbox
     h = max(ly1 - ly0, 4.0)
     cy = (ly0 + ly1) / 2
-    best: tuple[float, str] | None = None
+    right: tuple[float, str] | None = None
+    below: tuple[float, Line] | None = None
     for ln in lines:
-        if ln is label or ln.vertical or _is_label(ln.text):
+        if ln is label or ln.vertical:
             continue
         same_row = abs((ln.bbox[1] + ln.bbox[3]) / 2 - cy) < h * 0.8 and ln.bbox[0] >= lx1 - 1
-        if same_row and ln.bbox[0] - lx1 < 220:
+        if same_row and ln.bbox[0] - lx1 < 220 and not _is_label(ln.text):
             d = ln.bbox[0] - lx1
-        else:
-            gap = ly0 - ln.bbox[3]
-            below = -1 < gap < h * 2.5 and ln.bbox[0] < lx1 + 40 and ln.bbox[2] > lx0 - 5
-            if not below:
-                continue
-            d = gap
-        if best is None or d < best[0]:
-            best = (d, ln.text.strip())
-    return best[1] if best else ""
+            if right is None or d < right[0]:
+                right = (d, ln.text.strip())
+            continue
+        gap = ly0 - ln.bbox[3]
+        if -1 < gap < h * 2.5 and ln.bbox[0] < lx1 + 40 and ln.bbox[2] > lx0 - 5:
+            if below is None or gap < below[0]:
+                below = (gap, ln)
+    below_ok = below is not None and not _is_label(below[1].text) and abs(below[1].bbox[0] - lx0) <= 8
+    if below_ok and (right is None or below[0] < right[0]):
+        return below[1].text.strip()
+    return right[1] if right else ""
 
 
 def _is_label(text: str) -> bool:
@@ -286,9 +294,13 @@ def scan_page(page: pymupdf.Page, drawing_count: int | None = None) -> PageScan:
     if not scan.title:
         # biggest text in the title block that names a drawing kind, else anywhere
         in_block = [ln for ln in lines if in_title_block_region(ln.bbox, scan.width, scan.height)]
+
+        def rank(ln: Line) -> tuple[float, float]:  # biggest first, then nearest the bottom-right corner
+            return (-round(ln.size, 1), (scan.width - ln.bbox[2]) + ln.bbox[1])
+
         for pool in (in_block, lines):
-            for ln in sorted(pool, key=lambda ln: -ln.size):
-                if any(re.search(p, ln.text.upper()) for p, _ in _KIND_RULES):
+            for ln in sorted(pool, key=rank):
+                if _TITLE_WORDS.search(ln.text.upper()):
                     scan.title = ln.text
                     break
             if scan.title:

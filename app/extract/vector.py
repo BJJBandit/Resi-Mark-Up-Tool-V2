@@ -46,12 +46,16 @@ class VectorSet:
 
 
 def page_to_pdf(page: pymupdf.Page) -> pymupdf.Matrix:
-    """Matrix taking PyMuPDF page coordinates (top-left, y down) to PDF user space."""
-    return page.transformation_matrix
+    """Matrix taking PyMuPDF page coordinates (top-left, y down) to our y-up frame:
+    points with the origin at the bottom-left corner of the visible page
+    (`page.rect`). We do not use `page.transformation_matrix` because PDFs with an
+    off-centre MediaBox (seen in practice) make it return nonsense; this frame is
+    always `(x, page.rect.height - y)` and is its own inverse."""
+    return pymupdf.Matrix(1, 0, 0, -1, 0, page.rect.height)
 
 
 def pdf_to_page(page: pymupdf.Page) -> pymupdf.Matrix:
-    return ~page.transformation_matrix
+    return page_to_pdf(page)
 
 
 def _luma(rgb) -> float:
