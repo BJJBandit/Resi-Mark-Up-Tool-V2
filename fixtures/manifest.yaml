@@ -1,0 +1,136 @@
+# Regression test cases: architectural input -> Arete structural output.
+# The PDFs themselves are not in plain git (see fixtures/README.md); this manifest is.
+# `expected` values are read off the Arete sets and are what the engines must reproduce
+# (or justify departing from - correctness over preference).
+
+jobs:
+  - id: bay_rd_2024-C07-PR01
+    name: 65 Bay Road, New Town - 3-unit development
+    client: Maveric Builders / Impact Industries
+    files:
+      architectural: architectural.pdf          # Maveric DA drawings J2109, 23 pages, A3 1:100
+      structural_arete: structural_arete.pdf    # 2024-C07-PR01 rev C1, 20 pages
+    buildings:
+      - unit: 1
+        storeys: 1
+        construction: brick_veneer_timber_frame   # brick veneer + cement sheet, suspended timber floor
+        roof: {form: hip, construction: truss, pitch_deg: 22.5, cladding: sheet}
+        floor: suspended_timber
+        decks: true
+      - unit: 2
+        storeys: 1
+        construction: brick_veneer_timber_frame
+        roof: {form: hip, construction: truss, pitch_deg: 22.5, cladding: sheet}
+        floor: suspended_timber
+      - unit: 3
+        storeys: 2
+        construction: brick_veneer_timber_frame   # blockwork retaining to garage
+        roof: {form: gable_hip, construction: truss, pitch_deg: 22.5, cladding: sheet}
+        floor: {ground: slab_on_ground, first: suspended_timber_on_steel}
+        decks: true
+    expected:
+      site_class: M
+      wind_class: N2
+      strip_footing: "450W x min 450D, 4/L11TM T&B, 50 cover"
+      piers: "450 dia bored to refusal, corners and max 3000 ctrs"
+      edge_beam_unit3: "450W x 450D 4/L11TM T&B + 1/N16 top"
+      internal_beam_unit3: "300W x 400D 3/L11TM bottom"
+      bracing_types: [d, "h(B)"]
+      lintels: ["90x35", "140x35", "190x35", "190x45", "240x35", "250 PFC"]
+      columns: {C1: "89x5 SHS"}
+    arch_pages:
+      floor_plans: {unit1: 8, unit2: 9, unit3: 10}
+      elevations: {unit1: 11, unit2: 12, unit3: 13}
+    notes: "DA set, not BA - minor plan differences from the final are possible."
+
+  - id: schouten_st_2024-C07-PR03
+    name: 19 Schouten Street, Warrane - proposed Unit 2
+    client: Maveric Builders / L & R Marshall
+    files:
+      architectural: architectural.pdf          # Maveric working drawings J2114, 21 pages
+      structural_arete: structural_arete.pdf    # 2024-C07-PR03 rev 0, 9 pages (1:50 @ A1)
+    buildings:
+      - unit: 2
+        storeys: 1
+        construction: brick_veneer_timber_frame
+        roof: {form: hip, construction: truss, pitch_deg: 22.5, cladding: sheet}
+        floor: slab_on_ground
+        porch_posts: "89x89 SHS"
+    expected:
+      site_class: M
+      wind_class: N2
+      slab: "100 thick SL82 top 30 cover 25 MPa"
+      edge_beam: "450W x min 450D strip, 4/L11TM T&B, 50 cover"
+      internal_beam: "300W x min 400D, 3/L11TM bottom"
+      piers: "450 dia to rock, corners and max 3000 ctrs, 1/N16; omit where on rock"
+      bracing_types: [d, "h(B)", g]
+      lintels: ["90x35", "120x35", "140x35", "190x45"]
+      verandah_beams: ["90x45 F17/LVL max 3000 RLW", "190x45 F17/LVL max 1200 RLW"]
+      columns: {C1: "89x3.5 SHS"}
+    arch_pages:
+      site_plan: 3
+      floor_plan: 5
+      roof_plan: 7
+      section: 8
+      elevations: 9
+
+  - id: bridgeview_rd_2024-C07-PR05
+    name: 5 Bridgeview Road, Granton - two-storey dwelling, garage and shed
+    client: Maveric Builders
+    files:
+      architectural: null                       # still to come
+      structural_arete: structural_arete.pdf    # 2024-C07-PR05 rev 1, 15 pages
+    buildings:
+      - unit: house
+        storeys: 2
+        construction: lightweight_timber_frame
+        roof: {form: hip, construction: truss, cladding: sheet}
+        floor: {ground: suspended_timber_on_columns, first: suspended_timber}
+        decks: true
+      - unit: garage
+        class: 10a
+        floor: slab_on_ground_150
+      - unit: shed
+        class: 10a
+    expected:
+      site_class: P
+      wind_class: N3
+      strip_footing: "450W x min 500D, 4/L11TM T&B, 50 cover"
+      piers: "450 dia bored to rock; P3 with 600 taper under slab"
+      garage_slab: "150 RC, SL92 T&B, 30 cover, 32 MPa"
+      bracing_types: [d, "h(B)", g]
+      lintels: ["90x35", "140x35/140x45", "190x35", "240x45", "2/290x45", "250 PFC"]
+      bearers_steel: ["250UB37", "310UB40"]
+      columns: {C1: "89x3.5 SHS", C2: "89x5 SHS"}
+
+  - id: rada_rd_2024-C19-PR01
+    name: Lot 2 Rada Road, Kettering - Reynolds residence
+    client: Another Perspective (designer) - certified by Arete
+    files:
+      architectural: architectural.pdf          # AP2023-2310 rev E, 31 pages, floor plan 1:100 @ A2
+      structural_certified_third_party: structural_certified_third_party.pdf
+    third_party_design: true   # NOT an Arete design - use for check-mode and geometry tests only
+    buildings:
+      - unit: house
+        storeys: 1
+        construction: lightweight_timber_frame_on_block_subfloor
+        roof: {form: hip, construction: truss, pitch_deg: 15, cladding: sheet}
+        floor: suspended_bondek_slab_160
+        decks: true
+      - unit: garage
+        class: 10a
+        floor: slab_on_ground
+    expected:
+      site_class: S
+      wind_class: N3
+      bal: 29
+      bracing_types: [d, "h(B)", g]
+    arch_pages:
+      cover: 1
+      site_plan: 3
+      floor_plan: 7
+      structural_slab_lower: 12
+      structural_slab_upper: 13
+      section: 14
+      bracing_lintel_plan: 19
+      roof_plan: 23

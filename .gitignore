@@ -2,3 +2,5 @@
 __pycache__/
 *.pyc
 .env
+# fixture PDFs are synced separately (LFS blocked from the cloud sandbox); manifest + README are committed
+fixtures/**/*.pdf

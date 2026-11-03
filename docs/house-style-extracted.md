@@ -153,15 +153,21 @@ useful in three ways:
    - A stud tie-down table (MGP10 / MGP12 / F17 × size × RLW × strap spacing) that looks
      supplier-derived. If you'd like it in the library, tell me its source.
 
-## Open points for you
+## Decisions (3 Nov 2026)
 
-1. Load Path sheet – keep or drop?
-2. Banner wording for wind: "WIND CLASSIFICATION"?
-3. Steel trigger (span / load) and whether you want option A (matrix) or B (AS 4100 engine).
-4. Do you ever use waffle rafts, tile roofs, or MGP grades? If not I leave those branches out.
-5. Tie-down: encode your Table 4 variants (recommended) – send N1 / N4 / tile / lower-storey
-   versions if you have them.
-6. Test fixtures: the architectural + certified pair for Rada Rd is ~21 MB each. I'd keep
-   fixtures out of plain git (LFS or a gitignored `fixtures/` folder you sync separately).
-   Ideally I'd also get the **architectural PDFs** for Bay Rd, Schouten St and Bridgeview Rd
-   so all four become regression tests.
+1. **Steel** – option B: AS 4100 elastic beam/column engine with section catalogue.
+   Deflection limits and load assumptions in `preferences.yaml` are placeholders to confirm.
+2. **Load Path sheet** – not issued; load paths are computed and kept in the per-job trace.
+3. **Wind banner** – "AS 4055:2021 WIND CLASSIFICATION: Nx".
+4. **Grades / systems** – MGP10 for studs; otherwise F7 TP, F17, LVL. No MGP12, no tile
+   roofs, no waffle rafts, no cyclonic classes. Those branches are left out of the engines
+   (they report "not supported" rather than guessing).
+5. **Fixtures** – Git LFS or synced folder, see `fixtures/README.md`. Pairs now held:
+   Bay Rd (DA drawings ↔ PR01), Schouten St (working drawings ↔ PR03), Rada Rd (BA plans ↔
+   third-party cert). Bridgeview Rd architectural set still to come.
+
+## Still open
+
+- Tie-down: send Table 4 variants beyond N2/N3 sheet-roof if you keep any.
+- Source of the masonry lintel schedule.
+- Confirm steel deflection limits / load assumptions in `preferences.yaml`.

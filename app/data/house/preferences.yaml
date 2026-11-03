@@ -17,18 +17,41 @@ editions:
 
 banner:
   footing_sheets: "AS 2870:2011 SITE CLASSIFICATION: {site_class}"
-  framing_sheets: "AS 4055:2021 WIND CLASSIFICATION: {wind_class}"   # confirm wording
+  framing_sheets: "AS 4055:2021 WIND CLASSIFICATION: {wind_class}"   # decided
 
 sheets:
   single_storey: [footing_floor, wall, roof]
   two_storey: [footing_slab, wall_gf, floor_ff, wall_ff, roof]
   outbuilding: [footing_slab, roof_wall]
-  include_load_path_sheet: false   # confirm – not in your sets
+  include_load_path_sheet: false   # decided: load paths computed and kept in the trace, not issued as a sheet
+
+steel:
+  design_method: as4100_engine     # decided: option B - elastic beam/column engine, not a lookup matrix
+  sections_catalogue: "app/data/standards/steel_sections/"   # AS/NZS 3679.1 UB/PFC, AS/NZS 1163 SHS
+  deflection_limits:               # to confirm - typical residential serviceability
+    floor_beam_total: "span/300"
+    floor_beam_live: "span/360"
+    roof_beam_total: "span/250"
+    lintel_over_openings: "span/360, max 10 mm"
+  load_assumptions:                # to confirm against your calc sheets
+    roof_sheet_dead_kpa: 0.40
+    roof_tile_dead_kpa: 0.90
+    roof_live_kpa: 0.25
+    floor_timber_dead_kpa: 0.50
+    floor_live_residential_kpa: 1.5
+    floor_live_balcony_kpa: 2.0
+    floor_live_garage_kpa: 2.5
+    ceiling_dead_kpa: 0.25
 
 materials:
   internal_timber_grade: "F17/LVL"
   external_timber_grade: "F7 TP"
   deck_timber_grade: "F7 TP"
+  stud_grade: "MGP10"              # decided: MGP10 studs (F17 where notes require)
+  grades_in_use: ["F7 TP", "F17", "LVL", "MGP10"]   # no MGP12, no F5/F8/F11
+  roof_cladding_in_use: [sheet]    # no tile roofs
+  footing_systems_in_use: [strip_and_piers, stiffened_raft, slab_on_ground, piers_to_rock]   # no waffle rafts
+  wind_classes_in_use: [N1, N2, N3, N4]   # no cyclonic
   lvl_treatment: equivalent_to_f17   # F17 tables govern; LVL offered as equivalent
   prefer_doubled_timber_before_steel: true
   steel_lintel_section: "250 PFC"
