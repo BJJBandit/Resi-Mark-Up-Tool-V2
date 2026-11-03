@@ -8,7 +8,8 @@ from typing import Callable
 
 from . import claude
 from .pdf import build_markup_pdf, render_pages
-from .schemas import DesignAssessment, GeotechReview, MarkupSheet, SheetKind
+from .rules import apply_strip_rule, check_geotech_strip
+from .schemas import SHEET_TITLES, DesignAssessment, GeotechReview, MarkupSheet, SheetKind
 
 
 @dataclass
@@ -59,10 +60,17 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
     progress("Step 2: reviewing architectural drawings")
     design = claude.assess_design(pages, geotech, job.construction, job.notes, refs)
     result = JobResult(geotech=geotech, design=design, references=[r.title for r in refs])
+    # Firm rules are enforced on the output, not just requested in the prompt.
+    result.warnings += check_geotech_strip([*geotech.recommendations, geotech.founding])
+    result.warnings += apply_strip_rule(design, "Design assessment")
+
+    sheet_warnings: dict[SheetKind, list[str]] = {}
 
     def make(kind: SheetKind) -> None:
         try:
-            result.sheets[kind] = claude.plan_sheet(kind, pages, geotech, design, refs)
+            sheet = claude.plan_sheet(kind, pages, geotech, design, refs)
+            sheet_warnings[kind] = apply_strip_rule(sheet, SHEET_TITLES[kind])
+            result.sheets[kind] = sheet
         except Exception as e:  # keep the other sheets if one fails
             result.sheet_errors[kind] = str(e)
 
@@ -73,8 +81,11 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(make, kinds[1:]))
 
+    for kind in SheetKind:
+        result.warnings += sheet_warnings.get(kind, [])
+
     progress("Building mark-up PDF")
-    result.pdf, result.warnings = build_markup_pdf(
+    result.pdf, build_warnings = build_markup_pdf(
         job.arch_pdf,
         job.project,
         geotech,
@@ -86,4 +97,5 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
         made_by=job.made_by,
         title_block=job.title_block,
     )
+    result.warnings += build_warnings
     return result
