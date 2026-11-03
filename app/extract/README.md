@@ -108,7 +108,9 @@ details at a second scale produces a second cluster (reported).
    external wall's band over ≥ 300 mm are an opening.
 9. **Tags** - every opening takes the nearest unused tag text (`A1524`,
    `15-24AW (DG)`, `820`, `820 CSD`, `21-27 Roller Door`, `W05*`) whose encoded
-   width, if any, matches the gap within 35 %. Tag width overrides the measured
+   width, if any, matches the gap within 35 %. Numbers already identified as
+   dimensions (on a dimension line, agreeing with the scale) and levels
+   (`CL2400`, `FFL`, `RL`) are never tags. Tag width overrides the measured
    gap; the measured gap is kept in the opening's provenance note.
 
 Nominal thicknesses: 90, 110, 140, 190, 230, 250, 270, 290 mm ± 15 mm (90 and

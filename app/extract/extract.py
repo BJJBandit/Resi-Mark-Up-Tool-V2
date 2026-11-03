@@ -333,7 +333,7 @@ def extract_pages(doc: pymupdf.Document, plan_pages: set[int] | None = None) -> 
             pe.dims = analyse_dimensions(scan, vectors)
             pe.scale, pe.scale_source, scale_notes = choose_scale(scan, pe.dims)
             pe.notes.extend(scale_notes)
-            pe.walls = detect_walls(scan, vectors, pe.scale, [d.word.bbox for d in pe.dims.dims])
+            pe.walls = detect_walls(scan, vectors, pe.scale, [d.word.bbox for d in pe.dims.dims if d.consistent])
             pe.notes.extend(pe.walls.notes)
             for tag in pe.walls.unmatched_tags:
                 pe.notes.append(f"page {scan.number}: opening tag '{tag}' was not matched to any opening")

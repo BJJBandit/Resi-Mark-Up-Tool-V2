@@ -629,7 +629,7 @@ def cluster_plans(runs: list[Run], ppm: float) -> tuple[list[Plan], int]:
     if not runs:
         return [], 0
     foot = [r.footprint(end_extension=r.thickness / 2) for r in runs]
-    union = unary_union(foot)
+    union = unary_union(foot).buffer(0.5).buffer(-0.5)  # close hairline gaps between footprints
     plans: list[Plan] = []
     dropped = 0
     min_size = PLAN_MIN_SIZE_MM * ppm
