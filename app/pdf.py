@@ -524,10 +524,10 @@ def _new_sheet(out: pymupdf.Document, meta: SheetMeta, title: str, dwg_no: str) 
     return page
 
 
-def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet, dwg_no: str) -> tuple[list[str], list[str]]:
+def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet, dwg_no: str, title: str | None = None) -> tuple[list[str], list[str]]:
     """Draw one sheet. Returns (notes that did not fit, warnings)."""
     warnings: list[str] = []
-    page = _new_sheet(out, meta, SHEET_TITLES[kind], dwg_no)
+    page = _new_sheet(out, meta, title or SHEET_TITLES[kind], dwg_no)
     idx = min(max(sheet.source_page_number, 1), src.page_count) - 1
     m = PlanMap(src[idx], sheet.plan_region)
     try:
@@ -626,6 +626,38 @@ def build_markup_pdf(
             warnings.append(f"{SHEET_TITLES[kind]} not produced: {e}")
             continue
         n += 1
+    if overflow:
+        _notes_continuation(out, meta, overflow)
+    return out.tobytes(garbage=3, deflate=True), warnings
+
+
+def build_sheets_pdf(
+    arch_pdf: bytes,
+    project: str,
+    sheets: list[tuple[str, MarkupSheet]],
+    job_no: str = "",
+    rev: str = "A",
+    made_by: str = "",
+    title_block: bool = False,
+) -> tuple[bytes, list[str]]:
+    """v2 entry point: an ordered list of (sheet title, MarkupSheet), e.g. one footing /
+    wall / roof sheet per building. Same drawing code as `build_markup_pdf`."""
+    src = pymupdf.open(stream=arch_pdf, filetype="pdf")
+    out = pymupdf.open()
+    meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"), title_block)
+    overflow: list[str] = []
+    warnings: list[str] = []
+    for n, (title, sheet) in enumerate(sheets, start=1):
+        dwg_no = f"SSK-{n}"
+        before = out.page_count
+        try:
+            o, w = _markup_sheet(out, src, meta, SheetKind.FOOTINGS, sheet, dwg_no, title=title)
+            overflow += o
+            warnings += w
+        except Exception as e:
+            while out.page_count > before:
+                out.delete_page(-1)
+            warnings.append(f"{title} not produced: {e}")
     if overflow:
         _notes_continuation(out, meta, overflow)
     return out.tobytes(garbage=3, deflate=True), warnings
