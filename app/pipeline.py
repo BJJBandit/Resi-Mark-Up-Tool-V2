@@ -21,6 +21,9 @@ class JobInput:
     construction: str
     notes: str
     references: list[tuple[str, bytes]] = field(default_factory=list)  # (filename, pdf)
+    job_no: str = ""
+    rev: str = "A"
+    made_by: str = ""
 
 
 @dataclass
@@ -70,6 +73,14 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
 
     progress("Building mark-up PDF")
     result.pdf = build_markup_pdf(
-        job.arch_pdf, job.project, geotech, design, result.sheets, result.references
+        job.arch_pdf,
+        job.project,
+        geotech,
+        design,
+        result.sheets,
+        result.references,
+        job_no=job.job_no,
+        rev=job.rev,
+        made_by=job.made_by,
     )
     return result

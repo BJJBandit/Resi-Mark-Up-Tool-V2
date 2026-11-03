@@ -119,25 +119,64 @@ class SheetKind(str, Enum):
 
 
 SHEET_TITLES: dict[SheetKind, str] = {
-    SheetKind.LOAD_PATHS: "LOAD PATHS",
-    SheetKind.ROOF: "ROOF FRAMING (RAFTERS / DECK)",
-    SheetKind.WALLS: "WALL FRAMING, RACKING & BLOCKWORK JOINTS",
-    SheetKind.FOOTINGS: "FOOTINGS (AS 2870)",
-    SheetKind.FLOOR: "FLOOR FRAMING / SLAB",
+    SheetKind.LOAD_PATHS: "LOAD PATH PLAN",
+    SheetKind.ROOF: "ROOF FRAMING PLAN",
+    SheetKind.WALLS: "WALL FRAMING PLAN",
+    SheetKind.FOOTINGS: "FOOTING PLAN",
+    SheetKind.FLOOR: "FLOOR FRAMING PLAN",
 }
 
 
-class Mark(Strict):
-    shape: Literal["rect", "line", "arrow", "cloud", "text"]
-    x1: float = Field(description="Left / start x, normalised 0-1 across the page image width.")
-    y1: float = Field(description="Top / start y, normalised 0-1 down the page image height.")
-    x2: float = Field(description="Right / end x, normalised 0-1. Equal to x1 for text.")
-    y2: float = Field(description="Bottom / end y, normalised 0-1. Equal to y1 for text.")
-    label: str = Field(description="Short tag shown on the drawing, e.g. 'BW1 - 6.4 kN ply'.")
-    category: str = Field(description="Legend category, e.g. 'Bracing wall', 'Point load', 'Edge beam'.")
+class Point(Strict):
+    x: float = Field(description="Normalised 0-1 across the source page image width.")
+    y: float = Field(description="Normalised 0-1 down the source page image height.")
+
+
+class Element(Strict):
+    kind: Literal["member", "span", "pier", "column", "bracing", "cloud", "callout", "tag"] = Field(
+        description=(
+            "member: thick line along a structural member (bearer, lintel, beam, footing) from start to end. "
+            "span: double-arrow line showing span / load direction (joists, rafters, trusses). "
+            "pier: bored pier / pad at start. column: post / column at start. "
+            "bracing: line along a bracing wall panel from start to end. "
+            "cloud: revision cloud around the box start-end. "
+            "callout: note text with a leader arrow pointing at start. "
+            "tag: text label placed at start."
+        )
+    )
+    tag: str = Field(
+        description="Schedule tag, e.g. B1, J1, L2, VB1, R1, C1, DS, EB1, P1, LP1. "
+        "For bracing use the type and length, e.g. 'h(b) - 900', 'g - 600', 'd - 2400'. Empty for callouts."
+    )
+    start: Point
+    end: Point = Field(description="End point for member / span / bracing / cloud; same as start otherwise.")
+    text: str = Field(description="Callout or tag text in UPPERCASE; empty for other kinds.")
+
+
+class ScheduleItem(Strict):
+    tag: str = Field(description="e.g. B1, L2, C1, or a bracing type such as h(b), g, d.")
+    text: str = Field(description="UPPERCASE description, e.g. '2/240x45 F7 TP CONTINUOUS BEARER'.")
+
+
+class Box(Strict):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
 
 
 class MarkupSheet(Strict):
-    source_page_number: int = Field(description="1-based page of the architectural set to mark up.")
-    marks: list[Mark]
-    notes: list[str] = Field(description="General notes printed in the notes panel of the sheet.")
+    source_page_number: int = Field(description="1-based page of the architectural set to mark up (a plan).")
+    plan_region: Box = Field(
+        description="Normalised box on that page around the plan drawing only (exclude the architect's "
+        "title block, notes and other views). This is cropped onto the mark-up sheet."
+    )
+    classification: str = Field(
+        description="e.g. 'AS2870 2011 SITE CLASSIFICATION: M' or 'AS4055 2021 WIND CLASSIFICATION: N3'."
+    )
+    schedule_title: str = Field(description="e.g. 'FLOOR FRAMING SCHEDULE:', 'LINTEL SCHEDULE:'.")
+    schedule: list[ScheduleItem]
+    legend_title: str = Field(description="e.g. 'BRACING LEGEND:'; empty if no legend.")
+    legend: list[ScheduleItem]
+    elements: list[Element]
+    notes: list[str] = Field(description="Sheet notes in UPPERCASE, each starting with '-'.")

@@ -19,6 +19,8 @@
   label small { font-weight: 400; color: var(--muted); }
   input[type=text], select, textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit; }
   textarea { min-height: 70px; }
+  .row3 { display:grid; grid-template-columns: 2fr 1fr 1fr; gap: 0 16px; }
+  @media (max-width: 560px) { .row3 { grid-template-columns: 1fr; } }
   .row { display:grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
   @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
   button { margin-top: 20px; padding: 10px 18px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
@@ -37,8 +39,14 @@
   <p class="lead">Upload the geotechnical report and architectural drawings. Claude reviews them and produces a preliminary structural mark-up set for engineer review.</p>
 
   <form id="f">
-    <label>Project name</label>
-    <input type="text" name="project" placeholder="e.g. 12 Smith St, Ipswich">
+    <label>Project / site address</label>
+    <input type="text" name="project" placeholder="e.g. 31 Pulfers Road">
+
+    <div class="row3">
+      <div><label>Job No</label><input type="text" name="job_no"></div>
+      <div><label>Rev</label><input type="text" name="rev" value="A"></div>
+      <div><label>Made by</label><input type="text" name="made_by" placeholder="Initials"></div>
+    </div>
 
     <label>Architectural drawings (PDF) *</label>
     <input type="file" name="architectural" accept="application/pdf" required>

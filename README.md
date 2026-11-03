@@ -25,8 +25,16 @@ checked before use. It is not for construction.
    - one marked-up sheet each for load paths, roof (rafters only, including the deck),
      wall framing / racking / blockwork joints, footings (AS 2870) and floor framing or slab
 
-   The mark-ups are real PDF annotations, so you can move, edit or delete them in
-   Bluebeam or Acrobat.
+   Sheets follow the house mark-up style: A3, address and sheet name top-left,
+   classification and notes down the left, the architectural plan faded in the middle
+   with colour-coded member lines and tags (B, J, L, VB, R, C, DS, EB ...), piers,
+   columns, bracing panels (`h(b) - 900`, `g - 600`, dashed `d - 2400`), boxed red
+   callouts with arrow leaders, the schedule / bracing legend on the right and the title
+   block (Job No, Dwg No SSK-x, Rev, Date, Made by) bottom-right.
+
+   **Everything added is a PDF annotation** (title, notes, schedules, title block,
+   members, tags, callouts), so the whole mark-up can be moved, edited or deleted in
+   Bluebeam or Acrobat. Only the faded architectural background is page content.
 
 ## Run locally
 
@@ -49,6 +57,9 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `ANTHROPIC_API_KEY` | (none, secret) | Claude API key |
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model used for every step |
 | `ANTHROPIC_EFFORT` | `high` | Reasoning depth: `low` / `medium` / `high` / `xhigh` / `max` |
+| `TITLE_BLOCK_COMPANY` | `ARETE` | Company name in the title block |
+| `TITLE_BLOCK_COMPANY_SUB` | `ENGINEERING` | Second line under the company name |
+| `MARKUP_AUTHOR` | `Resi Mark-Up Tool` | Author shown on every annotation in Bluebeam's markup list |
 
 ## Limits
 
