@@ -167,7 +167,9 @@ def _ref_blocks(refs: list[Reference]) -> list[dict]:
         {
             "type": "text",
             "text": "Reference standards, guides and codes supplied by the engineer "
-            "(use these in preference to memory and cite their clause / table numbers):",
+            "(use these in preference to memory and cite their clause / table numbers). "
+            "Where a title says 'pages X of Y', it is an extract of those pages of the "
+            "original document:",
         }
     ]
     blocks += [
