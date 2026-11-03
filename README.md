@@ -16,6 +16,10 @@ checked before use. It is not for construction.
    - footing type, based on the geotech report and AS 2870
    - wall design, including bracing, to the material standard you choose
      (AS 1684, NASH, AS 3700 / AS 4773)
+   - Optionally takes your own **standards, guides and codes** (PDFs, several at once).
+     Every step reads them and cites their clause and table numbers instead of relying
+     on memory. They are uploaded once per review through the Files API and deleted
+     when the review finishes.
 3. **Mark-up drawings.** Produces one PDF with:
    - a summary page
    - one marked-up sheet each for load paths, roof (rafters only, including the deck),
@@ -49,6 +53,10 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 ## Limits
 
 - Architectural sets can have up to 20 pages, and each upload must be under 30 MB.
+- Reference documents can be up to 100 MB each and 500 pages in total. Every page is
+  read on every step, so upload only the relevant chapters (for example AS 1684.2
+  bracing and tie-down, and the AS 2870 footing tables). That keeps the review faster
+  and cheaper.
 - Mark-up positions come from Claude reading the page image. They are approximate,
   so check them and drag them into place in your PDF editor.
 - Jobs are kept in memory only, so download the results before the service restarts

@@ -26,6 +26,8 @@
   .card { margin-top: 20px; display: none; }
   .err { color: var(--err); }
   ul { padding-left: 20px; }
+  ul.files { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+  ul.files:empty { display: none; }
   a.btn { display:inline-block; margin: 8px 12px 0 0; color: var(--accent); font-weight: 600; }
 </style>
 </head>
@@ -43,6 +45,10 @@
 
     <label>Geotechnical report (PDF) <small>optional</small></label>
     <input type="file" name="geotech" accept="application/pdf">
+
+    <label>Standards, guides &amp; codes (PDF) <small>optional, select several &middot; max 500 pages total</small></label>
+    <input type="file" name="references" accept="application/pdf" multiple id="refs">
+    <ul id="refList" class="files"></ul>
 
     <div class="row">
       <div>
@@ -82,6 +88,10 @@
 </main>
 <script>
 const f = document.getElementById('f'), go = document.getElementById('go'), box = document.getElementById('status');
+const refs = document.getElementById('refs'), refList = document.getElementById('refList');
+refs.addEventListener('change', () => {
+  refList.innerHTML = [...refs.files].map(f => `<li>${esc(f.name)} (${(f.size / 1048576).toFixed(1)} MB)</li>`).join('');
+});
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 f.addEventListener('submit', async e => {
@@ -113,6 +123,7 @@ async function poll(id) {
   box.innerHTML = `
     <h3 style="margin-top:0">Review complete</h3>
     <ul>
+      <li>References used: ${j.references.length ? j.references.map(esc).join(', ') : 'none'}</li>
       <li>Site class: <b>${esc(s.site_class)}</b> · Wind: <b>${esc(s.wind_class || 'not provided')}</b></li>
       <li>Roof: ${esc(s.roof)}</li>
       <li>Walls: ${esc(s.walls)}</li>

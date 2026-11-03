@@ -9,6 +9,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pymupdf
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
@@ -19,6 +20,8 @@ app = FastAPI(title="Resi Mark-Up Tool")
 
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text()
 MAX_UPLOAD = 30 * 1024 * 1024  # Claude request limit is 32 MB
+MAX_REF_UPLOAD = 100 * 1024 * 1024  # references go via the Files API, not inline
+MAX_REF_PAGES = 500  # Claude reads at most 600 PDF pages per request
 
 
 @dataclass
@@ -34,12 +37,12 @@ class Job:
 JOBS: dict[str, Job] = {}
 
 
-async def _read(f: UploadFile | None, name: str) -> bytes | None:
+async def _read(f: UploadFile | None, name: str, limit: int = MAX_UPLOAD) -> bytes | None:
     if f is None or not f.filename:
         return None
     data = await f.read()
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, f"{name} is larger than 30 MB.")
+    if len(data) > limit:
+        raise HTTPException(413, f"{name} is larger than {limit // (1024 * 1024)} MB.")
     if not data.startswith(b"%PDF"):
         raise HTTPException(400, f"{name} must be a PDF.")
     return data
@@ -81,10 +84,30 @@ async def create_job(
     site_class: str = Form(""),
     construction: str = Form("Timber frame to AS 1684"),
     notes: str = Form(""),
+    references: list[UploadFile] = File([]),
 ) -> dict:
     arch = await _read(architectural, "Architectural drawings")
     if arch is None:
         raise HTTPException(400, "Architectural drawings are required.")
+
+    refs: list[tuple[str, bytes]] = []
+    ref_pages = 0
+    for f in references:
+        data = await _read(f, f"Reference '{f.filename}'", MAX_REF_UPLOAD)
+        if data is None:
+            continue
+        try:
+            with pymupdf.open(stream=data, filetype="pdf") as doc:
+                ref_pages += doc.page_count
+        except Exception:
+            raise HTTPException(400, f"Reference '{f.filename}' could not be opened as a PDF.")
+        refs.append((f.filename or "reference.pdf", data))
+    if ref_pages > MAX_REF_PAGES:
+        raise HTTPException(
+            413,
+            f"Reference documents total {ref_pages} pages; the limit is {MAX_REF_PAGES}. "
+            "Upload only the relevant sections (e.g. the AS 1684 bracing and tie-down chapters).",
+        )
     inp = pipeline.JobInput(
         project=project.strip(),
         arch_pdf=arch,
@@ -93,6 +116,7 @@ async def create_job(
         site_class=site_class.strip() or None,
         construction=construction.strip(),
         notes=notes.strip(),
+        references=refs,
     )
     job_id = uuid.uuid4().hex
     JOBS[job_id] = Job(project=inp.project)
@@ -112,6 +136,7 @@ def job_status(job_id: str) -> dict:
     job = _job(job_id)
     body: dict = {"status": job.status, "step": job.step, "error": job.error}
     if job.result:
+        body["references"] = job.result.references
         body["sheet_errors"] = {SHEET_TITLES[k]: v for k, v in job.result.sheet_errors.items()}
         body["summary"] = {
             "site_class": job.result.geotech.site_classification,

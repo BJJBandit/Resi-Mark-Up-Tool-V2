@@ -189,7 +189,9 @@ def _write_lines(doc: pymupdf.Document, heading: str, lines: list[str]) -> None:
         page.insert_text((40, 70), "\n".join(wrapped[i : i + per_page]), fontsize=8.5, fontname="helv", lineheight=1.25)
 
 
-def _summary_lines(project: str, geotech: GeotechReview, design: DesignAssessment) -> list[str]:
+def _summary_lines(
+    project: str, geotech: GeotechReview, design: DesignAssessment, references: list[str]
+) -> list[str]:
     def bullets(items: list[str]) -> list[str]:
         return [f"  - {i}" for i in items] or ["  - none"]
 
@@ -198,6 +200,8 @@ def _summary_lines(project: str, geotech: GeotechReview, design: DesignAssessmen
         f"Project: {project or '-'}",
         f"Generated: {dt.datetime.now().strftime('%d/%m/%Y %H:%M')}",
         "PRELIMINARY - FOR ENGINEER REVIEW. NOT FOR CONSTRUCTION.",
+        "Reference documents supplied:",
+        *bullets(references),
         "",
         d.project_summary,
         "",
@@ -250,11 +254,12 @@ def build_markup_pdf(
     geotech: GeotechReview,
     design: DesignAssessment,
     sheets: dict[SheetKind, MarkupSheet],
+    references: list[str] = [],
 ) -> bytes:
     src = pymupdf.open(stream=arch_pdf, filetype="pdf")
     out = pymupdf.open()
 
-    _write_lines(out, "STRUCTURAL REVIEW SUMMARY", _summary_lines(project, geotech, design))
+    _write_lines(out, "STRUCTURAL REVIEW SUMMARY", _summary_lines(project, geotech, design, references))
 
     for kind in SheetKind:
         sheet = sheets.get(kind)

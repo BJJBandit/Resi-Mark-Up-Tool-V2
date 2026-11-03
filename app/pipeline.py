@@ -20,6 +20,7 @@ class JobInput:
     site_class: str | None
     construction: str
     notes: str
+    references: list[tuple[str, bytes]] = field(default_factory=list)  # (filename, pdf)
 
 
 @dataclass
@@ -28,6 +29,7 @@ class JobResult:
     design: DesignAssessment
     sheets: dict[SheetKind, MarkupSheet] = field(default_factory=dict)
     sheet_errors: dict[SheetKind, str] = field(default_factory=dict)
+    references: list[str] = field(default_factory=list)
     pdf: bytes = b""
 
 
@@ -35,16 +37,27 @@ def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobR
     progress("Rendering architectural drawings")
     pages = render_pages(job.arch_pdf)
 
+    refs: list[claude.Reference] = []
+    if job.references:
+        progress(f"Uploading {len(job.references)} reference document(s)")
+        refs = claude.upload_references(job.references)
+    try:
+        return _run(job, pages, refs, progress)
+    finally:
+        claude.delete_references(refs)
+
+
+def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResult:
     progress("Step 1: reviewing geotechnical report and wind")
-    geotech = claude.review_geotech(job.geotech_pdf, job.wind_class, job.site_class)
+    geotech = claude.review_geotech(job.geotech_pdf, job.wind_class, job.site_class, refs)
 
     progress("Step 2: reviewing architectural drawings")
-    design = claude.assess_design(pages, geotech, job.construction, job.notes)
-    result = JobResult(geotech=geotech, design=design)
+    design = claude.assess_design(pages, geotech, job.construction, job.notes, refs)
+    result = JobResult(geotech=geotech, design=design, references=[r.title for r in refs])
 
     def make(kind: SheetKind) -> None:
         try:
-            result.sheets[kind] = claude.plan_sheet(kind, pages, geotech, design)
+            result.sheets[kind] = claude.plan_sheet(kind, pages, geotech, design, refs)
         except Exception as e:  # keep the other sheets if one fails
             result.sheet_errors[kind] = str(e)
 
@@ -56,5 +69,7 @@ def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobR
         list(pool.map(make, kinds[1:]))
 
     progress("Building mark-up PDF")
-    result.pdf = build_markup_pdf(job.arch_pdf, job.project, geotech, design, result.sheets)
+    result.pdf = build_markup_pdf(
+        job.arch_pdf, job.project, geotech, design, result.sheets, result.references
+    )
     return result

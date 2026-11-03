@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+from dataclasses import dataclass
 from typing import TypeVar
 
 import anthropic
@@ -119,6 +120,57 @@ def _call(content: list[dict], out: type[T], max_tokens: int = 32000) -> T:
     raise ClaudeError(f"Claude's JSON did not match the expected structure: {last_error}")
 
 
+# ---------------------------------------------------------------------------
+# Reference documents (standards, guides, codes) supplied by the engineer
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Reference:
+    title: str
+    file_id: str
+
+
+def upload_references(files: list[tuple[str, bytes]]) -> list[Reference]:
+    """Upload once via the Files API so every step can cite them without resending bytes."""
+    refs: list[Reference] = []
+    try:
+        for name, data in files:
+            meta = client.files.upload(file=(name, data, "application/pdf"))
+            refs.append(Reference(title=name.rsplit(".", 1)[0], file_id=meta.id))
+    except Exception:
+        delete_references(refs)
+        raise
+    return refs
+
+
+def delete_references(refs: list[Reference]) -> None:
+    for r in refs:
+        try:
+            client.files.delete(r.file_id)
+        except Exception:
+            pass
+
+
+def _ref_blocks(refs: list[Reference]) -> list[dict]:
+    if not refs:
+        return []
+    blocks: list[dict] = [
+        {
+            "type": "text",
+            "text": "Reference standards, guides and codes supplied by the engineer "
+            "(use these in preference to memory and cite their clause / table numbers):",
+        }
+    ]
+    blocks += [
+        {"type": "document", "source": {"type": "file", "file_id": r.file_id}, "title": r.title}
+        for r in refs
+    ]
+    # Every step resends the references first, so cache them.
+    blocks[-1]["cache_control"] = {"type": "ephemeral"}
+    return blocks
+
+
 def _pdf_block(pdf_bytes: bytes, title: str) -> dict:
     return {
         "type": "document",
@@ -162,8 +214,13 @@ def _page_blocks(pages: list[PageImage]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def review_geotech(geotech_pdf: bytes | None, wind_class: str | None, site_class: str | None) -> GeotechReview:
-    content: list[dict] = []
+def review_geotech(
+    geotech_pdf: bytes | None,
+    wind_class: str | None,
+    site_class: str | None,
+    refs: list[Reference] = [],
+) -> GeotechReview:
+    content: list[dict] = _ref_blocks(refs)
     if geotech_pdf:
         content.append(_pdf_block(geotech_pdf, "Geotechnical report"))
     content.append(
@@ -196,8 +253,9 @@ def assess_design(
     geotech: GeotechReview,
     construction: str,
     extra_notes: str,
+    refs: list[Reference] = [],
 ) -> DesignAssessment:
-    content = _page_blocks(pages)
+    content = _ref_blocks(refs) + _page_blocks(pages)
     content.append(
         {
             "type": "text",
@@ -265,8 +323,9 @@ def plan_sheet(
     pages: list[PageImage],
     geotech: GeotechReview,
     design: DesignAssessment,
+    refs: list[Reference] = [],
 ) -> MarkupSheet:
-    content = _page_blocks(pages)
+    content = _ref_blocks(refs) + _page_blocks(pages)
     content.append(
         {
             "type": "text",
