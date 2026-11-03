@@ -60,9 +60,21 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `ANTHROPIC_API_KEY` | (none, secret) | Claude API key |
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model used for every step |
 | `ANTHROPIC_EFFORT` | `high` | Reasoning depth: `low` / `medium` / `high` / `xhigh` / `max` |
+| `MIN_STRIP_FOOTING_WIDTH_MM` | `450` | Firm minimum strip footing width (see Design rules) |
 | `TITLE_BLOCK_COMPANY` | `ARETE` | Company name in the title block |
 | `TITLE_BLOCK_COMPANY_SUB` | `ENGINEERING` | Second line under the company name |
 | `MARKUP_AUTHOR` | `Resi Mark-Up Tool` | Author shown on every annotation in Bluebeam's markup list |
+
+## Design rules
+
+Firm rules are given to Claude **and** enforced on its output (`app/rules.py`), so they
+hold even if Claude slips:
+
+- **Strip footings are at least 450 mm wide.** Any strip footing width below the minimum
+  in the design assessment, schedules, callouts or notes is raised to 450 mm, and each
+  change is listed as a warning on the results page. Internal beams, edge beams, piers and
+  depths are not touched. Narrower strip footings recommended in the geotech report are
+  flagged, not rewritten, because the report is quoted as written.
 
 ## Limits
 

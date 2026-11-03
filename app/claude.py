@@ -12,6 +12,7 @@ import anthropic
 from pydantic import BaseModel, ValidationError
 
 from .pdf import PageImage
+from .rules import MIN_STRIP_WIDTH_MM
 from .schemas import (
     SHEET_TITLES,
     DesignAssessment,
@@ -41,7 +42,14 @@ shown, say so and record a reasonable assumption rather than inventing detail.
 - Quote clause / table / figure references where you rely on them.
 - Your output is a preliminary design aid. Anything that needs engineering judgement \
 or site confirmation goes in the concerns / engineer_checks lists.
-- Use metric units (mm, kPa, kN)."""
+- Use metric units (mm, kPa, kN).
+"""
+
+SYSTEM += (
+    f"- FIRM RULE: every strip footing is at least {MIN_STRIP_WIDTH_MM} mm wide, even where "
+    "AS 2870 or the geotechnical report would allow narrower. Always state strip footing width "
+    "explicitly (e.g. '450W x MIN 450 DEEP STRIP FOOTING')."
+)
 
 
 class ClaudeError(RuntimeError):
@@ -340,7 +348,8 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
     SheetKind.FOOTINGS: (
         "FOOTING PLAN to AS 2870 and the geotech report. Edge beams / strip footings EB / SF "
         "as 'member' around the perimeter, internal beams IB, slab thickenings, bored piers "
-        "'pier' (corners and max spacing), pads under point loads, step-downs. Callouts give "
+        "'pier' (corners and max spacing), pads under point loads, step-downs. Strip footings "
+        f"are never narrower than {MIN_STRIP_WIDTH_MM} mm. Callouts give "
         "sizes and reinforcement, e.g. '450W x MIN 450 DEEP STRIP FOOTING. 4/L11TM TOP AND "
         "BOTTOM WITH 50 COVER.'. Schedule = 'FOOTING SCHEDULE:'. Notes include site prep / "
         "fill to AS2870 and AS3798, step footings to AS2870 5.4.3, articulate masonry to "
