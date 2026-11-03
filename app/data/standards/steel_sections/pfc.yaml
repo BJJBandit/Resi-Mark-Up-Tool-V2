@@ -1,0 +1,86 @@
+# Parallel Flange Channels – Grade 300 (300PLUS) to AS/NZS 3679.1.
+# Units: mm, mm², mm⁴, mm³, mm⁶, kg/m, MPa.  x = major axis, y = minor axis.
+# xL = centroid from the back of the web.  Zy is the elastic modulus to the flange TOE
+# (the smaller of the two, = Iy/(bf − xL)); Zy_back = Iy/xL is given for completeness.
+# fy by thickness per AS 4100 Table 2.1 for AS/NZS 3679.1 Grade 300 (see ub.yaml).
+# NOTHING BELOW IS VERIFIED against the InfraBuild / Liberty catalogue – see ub.yaml header.
+standard: AS/NZS 3679.1
+grade: "300 (300PLUS)"
+family: PFC
+residual_stress_category: HR
+units: {d: mm, bf: mm, tf: mm, tw: mm, r1: mm, xL: mm, Ag: mm2, I: mm4, Z: mm3, S: mm3, r: mm, J: mm4, Iw: mm6, mass: kg/m, fy: MPa}
+fy_rule: {"<=11": 320, "<=17": 300, ">17": 280}
+source_checked_by: ""
+sections:
+  - designation: 200 PFC
+    mass_kg_m: 22.9
+    d: 200
+    bf: 75
+    tf: 12.0
+    tw: 6.0
+    r1: 12.0
+    xL: 24.4
+    Ag: 2920
+    Ix: 19.1e6
+    Iy: 1.65e6
+    Zx: 191e3
+    Zy: 32.7e3
+    Zy_back: 67.6e3
+    Sx: 221e3
+    Sy: 60.5e3
+    rx: 80.9
+    ry: 23.8
+    J: 101e3
+    Iw: 10.6e9
+    fy_flange: 300        # tf 12 > 11 mm → 300 MPa
+    fy_web: 320
+    verified: false
+    source: "from memory – verify against InfraBuild catalogue before use. Web-search snippet (ketchep.ai, beamdimensions.com, 2026-11-03): Ag 2920, Ix 19.1e6, Zx 191e3, Iy 1.65e6, Zy 32.7e3, Sy 60.5e3, rx 80.9, ry 23.8, J 101e3, Iw 10.6e9; snippet gives Sx 216e3 vs 221e3 here – UNSURE, check."
+  - designation: 250 PFC
+    mass_kg_m: 35.5
+    d: 250
+    bf: 90
+    tf: 15.0
+    tw: 8.0
+    r1: 12.0
+    xL: 28.9
+    Ag: 4520
+    Ix: 45.1e6
+    Iy: 3.64e6
+    Zx: 361e3
+    Zy: 59.6e3
+    Zy_back: 126e3
+    Sx: 421e3
+    Sy: 107e3
+    rx: 99.9
+    ry: 28.4
+    J: 238e3
+    Iw: 35.8e9
+    fy_flange: 300        # tf 15 → 300 MPa
+    fy_web: 320
+    verified: false
+    source: "from memory – verify against InfraBuild catalogue before use. Web-search snippets (beamdimensions.com, 2026-11-03) agree: d 250, bf 90, tf 15, tw 8, r1 12, Ag 4520, Ix 45.1e6, Iy 3.64e6, Sx 421e3, Sy 107e3, J 238e3, Iw 35.8e9."
+  - designation: 300 PFC
+    mass_kg_m: 40.1
+    d: 300
+    bf: 90
+    tf: 16.0
+    tw: 8.0
+    r1: 14.0
+    xL: 27.5
+    Ag: 5110
+    Ix: 72.4e6
+    Iy: 4.04e6
+    Zx: 483e3
+    Zy: 64.6e3
+    Zy_back: 147e3
+    Sx: 564e3
+    Sy: 115e3
+    rx: 119
+    ry: 28.1
+    J: 290e3
+    Iw: 72.3e9
+    fy_flange: 300        # tf 16 → 300 MPa
+    fy_web: 320
+    verified: false
+    source: "from memory – verify against InfraBuild catalogue before use. Web-search snippets (infrabuild.com product page, steelforce, easysteel, beamdimensions, 2026-11-03) agree: 40.1 kg/m, tw 8, tf 16, r1 14, Ag 5110, Ix 72.4e6, Iy 4.04e6, J 290e3. Iw, Sx, Sy, xL not corroborated – UNSURE."

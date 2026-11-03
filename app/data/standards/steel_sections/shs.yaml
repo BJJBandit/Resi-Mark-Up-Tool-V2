@@ -1,0 +1,118 @@
+# Square Hollow Sections – Grade C350L0 to AS/NZS 1163 (cold-formed, e.g. DuraGal).
+# Units: mm, mm², mm⁴, mm³, kg/m, MPa.  Doubly symmetric: Ix = Iy, Zx = Zy, Sx = Sy, rx = ry.
+# Outside corner radius used for section properties: 2.0t for t ≤ 3 mm, 2.5t for t > 3 mm
+# (OneSteel/InfraBuild cold-formed catalogue note).  Iw taken as 0 (closed section).
+# fy = 350 MPa, fu = 430 MPa for C350L0 (AS 4100 Table 2.1 / AS/NZS 1163).
+# NOTHING BELOW IS VERIFIED against the InfraBuild DuraGal catalogue – see ub.yaml header.
+standard: AS/NZS 1163
+grade: C350L0
+family: SHS
+residual_stress_category: CF          # cold-formed, AS 4100 Tables 5.2 / 6.2.4; αb = −0.5 Table 6.3.3(1)
+units: {d: mm, b: mm, t: mm, r_ext: mm, Ag: mm2, I: mm4, Z: mm3, S: mm3, r: mm, J: mm4, C: mm3, mass: kg/m, fy: MPa}
+source_checked_by: ""
+sections:
+  - designation: 75x75x4.0 SHS
+    mass_kg_m: 8.49
+    d: 75
+    b: 75
+    t: 4.0
+    r_ext: 10.0
+    Ag: 1080
+    Ix: 0.882e6
+    Iy: 0.882e6
+    Zx: 23.5e3
+    Zy: 23.5e3
+    Sx: 28.2e3
+    Sy: 28.2e3
+    rx: 28.6
+    ry: 28.6
+    J: 1.48e6
+    C: 36.0e3
+    Iw: 0
+    fy: 350
+    verified: false
+    source: "from memory – verify against InfraBuild DuraGal catalogue before use. Web-search snippets (beamdimensions.com, optimalbeam.com, infrabuild.com page, 2026-11-03) agree: 8.49 kg/m, Ag 1080, Ix 0.882e6, Zx 23.5e3, Sx 28.2e3, rx 28.6, J 1.48e6."
+  - designation: 89x89x3.5 SHS
+    mass_kg_m: 9.07
+    d: 89
+    b: 89
+    t: 3.5
+    r_ext: 8.75
+    Ag: 1150
+    Ix: 1.37e6
+    Iy: 1.37e6
+    Zx: 30.8e3
+    Zy: 30.8e3
+    Sx: 36.5e3
+    Sy: 36.5e3
+    rx: 34.5
+    ry: 34.5
+    J: 2.24e6
+    C: 46.8e3
+    Iw: 0
+    fy: 350
+    verified: false
+    source: "from memory – verify against InfraBuild DuraGal catalogue before use. Web-search snippets (optimalbeam.com, structurecalcs.com, tonkinsteel.com, 2026-11-03) agree: 9.03–9.07 kg/m, Ag 1150, Ix 1.37e6, Zx 30.8–31.0e3, Sx 36.5e3, rx 34.5, J 2.24e6."
+  - designation: 89x89x5.0 SHS
+    mass_kg_m: 12.5
+    d: 89
+    b: 89
+    t: 5.0
+    r_ext: 12.5
+    Ag: 1590
+    Ix: 1.81e6
+    Iy: 1.81e6
+    Zx: 40.7e3
+    Zy: 40.7e3
+    Sx: 49.1e3
+    Sy: 49.1e3
+    rx: 33.7
+    ry: 33.7
+    J: 3.05e6
+    C: 62.0e3
+    Iw: 0
+    fy: 350
+    verified: false
+    source: "from memory – verify against InfraBuild DuraGal catalogue before use. Web-search snippets (optimalbeam.com, ketchep.ai, easysteel.co.nz, 2026-11-03) agree: 12.5 kg/m (12.7 in some DuraGal lists, incl. coating), Ag 1590, Ix 1.81e6, Zx 40.7e3, Sx 49.1e3 (one source 51.1e3), rx 33.7, J 3.05e6."
+  - designation: 100x100x4.0 SHS
+    mass_kg_m: 11.6
+    d: 100
+    b: 100
+    t: 4.0
+    r_ext: 10.0
+    Ag: 1480
+    Ix: 2.26e6
+    Iy: 2.26e6
+    Zx: 45.3e3
+    Zy: 45.3e3
+    Sx: 52.6e3
+    Sy: 52.6e3
+    rx: 39.1
+    ry: 39.1
+    J: 3.63e6
+    C: 66.3e3
+    Iw: 0
+    fy: 350
+    verified: false
+    source: "from memory – verify against InfraBuild DuraGal catalogue before use. Web-search snippets (tonkinsteel.com, steelforce, beamdimensions.com, 2026-11-03) agree: 11.6 kg/m, Ag 1480, Sx 52.6e3, J 3.63e6."
+  - designation: 100x100x5.0 SHS
+    mass_kg_m: 14.2
+    d: 100
+    b: 100
+    t: 5.0
+    r_ext: 12.5
+    Ag: 1810
+    Ix: 2.69e6
+    Iy: 2.69e6
+    Zx: 53.9e3
+    Zy: 53.9e3
+    Sx: 63.5e3
+    Sy: 63.5e3
+    rx: 38.6
+    ry: 38.6
+    J: 4.42e6
+    C: 79.1e3
+    Iw: 0
+    fy: 350
+    verified: false
+    source: "from memory – verify against InfraBuild DuraGal catalogue before use. Web-search snippets (tonkinsteel.com, steelforce, beamdimensions.com, 2026-11-03) agree: 14.2 kg/m, Ag 1810, Sx 63.5e3, J 4.42e6."

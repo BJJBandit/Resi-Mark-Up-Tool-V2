@@ -1,0 +1,150 @@
+# Universal Beams – Grade 300 (300PLUS) to AS/NZS 3679.1.
+# Units: mm, mm², mm⁴, mm³, mm⁶, kg/m, MPa.  x = major axis, y = minor axis.
+# fy by thickness per AS 4100 Table 2.1 for AS/NZS 3679.1 Grade 300:
+#   t ≤ 11 → 320 MPa; 11 < t ≤ 17 → 300 MPa; t > 17 → 280 MPa.  fu = 440 MPa.
+# NOTHING BELOW IS VERIFIED against the InfraBuild / Liberty (OneSteel) "Hot Rolled and
+# Structural Steel Products" catalogue.  The network in the authoring session could not
+# reach infrabuild.com; values were written from memory of the 7th edition catalogue and
+# cross-checked only against public web-search snippets (noted per section).  The engine
+# flags "section properties unverified" in its trace while verified is false.
+# Run `python -m app.calc.check_sections` for the geometric self-consistency check.
+standard: AS/NZS 3679.1
+grade: "300 (300PLUS)"
+family: UB
+residual_stress_category: HR          # hot-rolled, AS 4100 Tables 5.2 / 6.2.4
+units: {d: mm, bf: mm, tf: mm, tw: mm, r1: mm, Ag: mm2, I: mm4, Z: mm3, S: mm3, r: mm, J: mm4, Iw: mm6, mass: kg/m, fy: MPa}
+fy_rule: {"<=11": 320, "<=17": 300, ">17": 280}
+source_checked_by: ""
+sections:
+  - designation: 250UB25.7
+    mass_kg_m: 25.7
+    d: 248
+    bf: 124
+    tf: 8.0
+    tw: 5.0
+    r1: 12.0
+    Ag: 3270
+    Ix: 35.4e6
+    Iy: 2.55e6
+    Zx: 285e3
+    Zy: 41.1e3
+    Sx: 319e3
+    Sy: 63.6e3
+    rx: 104
+    ry: 27.9
+    J: 67.4e3
+    Iw: 36.7e9
+    fy_flange: 320
+    fy_web: 320
+    verified: false
+    source: "from memory – verify against InfraBuild catalogue before use. Web-search snippets (structurecalcs.com, ketchep.ai, 2026-11-03) agree: d 248, tw 5.0, tf 8.0, Ix 35.4e6, Iy 2.55e6, rx 104, ry 27.9, J 67e3, Iw 36.7e9, Zx 285e3, Sx 319e3."
+  - designation: 250UB31.4
+    mass_kg_m: 31.4
+    d: 252
+    bf: 146
+    tf: 8.6
+    tw: 6.1
+    r1: 8.9
+    Ag: 4010
+    Ix: 44.5e6
+    Iy: 4.47e6
+    Zx: 354e3
+    Zy: 61.2e3
+    Sx: 397e3
+    Sy: 94.2e3
+    rx: 105
+    ry: 33.4
+    J: 89.3e3
+    Iw: 65.9e9
+    fy_flange: 320
+    fy_web: 320
+    verified: false
+    source: "from memory – verify against InfraBuild catalogue before use. Web-search snippets (2026-11-03) agree: d 252, tw 6.1, tf 8.6, Ix 44.4–44.8e6, Iy 4.47e6, rx 105, ry 33.4, J 87–91e3, Iw ~66e9."
+  - designation: 250UB37.3
+    mass_kg_m: 37.3
+    d: 256
+    bf: 146
+    tf: 10.9
+    tw: 6.4
+    r1: 8.9
+    Ag: 4750
+    Ix: 55.7e6
+    Iy: 5.66e6
+    Zx: 435e3
+    Zy: 77.5e3
+    Sx: 486e3
+    Sy: 119e3
+    rx: 108
+    ry: 34.5
+    J: 158e3
+    Iw: 85.2e9
+    fy_flange: 320
+    fy_web: 320
+    verified: false
+    source: "from memory – verify against InfraBuild catalogue before use. Web-search snippets (2026-11-03) agree: d 256, bf 146, tw 6.4, tf 10.9, Ag 4750, Ix 55.6–55.7e6, Iy 5.66–5.71e6, rx 108, ry 34.5, J 155–158e3, Iw 85–86e9."
+  - designation: 310UB32.0
+    mass_kg_m: 32.0
+    d: 298
+    bf: 149
+    tf: 8.0
+    tw: 5.5
+    r1: 13.0
+    Ag: 4080
+    Ix: 63.2e6
+    Iy: 4.42e6
+    Zx: 424e3
+    Zy: 59.3e3
+    Sx: 475e3
+    Sy: 91.8e3
+    rx: 124
+    ry: 32.9
+    J: 86.5e3
+    Iw: 92.9e9
+    fy_flange: 320
+    fy_web: 320
+    verified: false
+    source: "from memory – verify against InfraBuild catalogue before use. Web-search snippets (beamdimensions.com, engineeringcivil.org, 2026-11-03) agree: d 298, bf 149, tf 8, tw 5.5, r1 13, Ag 4080, Ix 63.2e6, Sx 475.1e3, Zy 59.33e3, rx 124, ry 32.9, J 86.5e3, Iw 92.9e9."
+  - designation: 310UB40.4
+    mass_kg_m: 40.4
+    d: 304
+    bf: 165
+    tf: 10.2
+    tw: 6.1
+    r1: 11.4
+    Ag: 5210
+    Ix: 86.4e6
+    Iy: 7.65e6
+    Zx: 569e3
+    Zy: 92.7e3
+    Sx: 633e3
+    Sy: 142e3
+    rx: 129
+    ry: 38.3
+    J: 157e3
+    Iw: 165e9
+    fy_flange: 320
+    fy_web: 320
+    verified: false
+    source: "from memory – verify against InfraBuild catalogue before use. Web-search snippets (2026-11-03) agree: d 304, bf 165, Ag 5208–5210, Ix 86.4e6, Iy 7.65e6, Zx 568.6e3, Zy 92.68e3, Sx 632.7e3, Sy 142.1e3, J 157e3, Iw 165e9."
+  - designation: 310UB46.2
+    mass_kg_m: 46.2
+    d: 307
+    bf: 166
+    tf: 11.8
+    tw: 6.7
+    r1: 11.4
+    Ag: 5930
+    Ix: 100e6
+    Iy: 9.01e6
+    Zx: 654e3
+    Zy: 109e3
+    Sx: 729e3
+    Sy: 166e3
+    rx: 130
+    ry: 39.0
+    J: 233e3
+    Iw: 197e9
+    fy_flange: 300        # tf 11.8 > 11 mm → 300 MPa (AS 4100 Table 2.1)
+    fy_web: 320
+    verified: false
+    source: "from memory – verify against InfraBuild catalogue before use. Web-search snippets (2026-11-03) agree: d 307, bf 166, tf 11.8, tw 6.7, Ag 5928–5930, Ix 100e6, Zx 653.2e3, Zy 108.5e3, Sx 728.3e3, Sy 166.4e3, J 233e3, Iw 197e9."
