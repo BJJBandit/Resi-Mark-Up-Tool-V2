@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import traceback
 import uuid
@@ -15,6 +16,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from . import pipeline
 from .schemas import SHEET_TITLES
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="Resi Mark-Up Tool")
 

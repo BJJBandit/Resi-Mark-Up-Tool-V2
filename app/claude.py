@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 from dataclasses import dataclass
 from typing import TypeVar
@@ -24,6 +25,11 @@ MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5-5")
 EFFORT = os.environ.get("ANTHROPIC_EFFORT", "high")
 
 client = anthropic.Anthropic()
+log = logging.getLogger(__name__)
+
+# 1-hour cache: a single step can run past the default 5 minutes, which would
+# make every later call pay full price for the drawings and references again.
+CACHE = {"type": "ephemeral", "ttl": "1h"}
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -52,7 +58,7 @@ def _schema(model: type[BaseModel]) -> dict:
     return model.model_json_schema()
 
 
-def _request(messages: list[dict], max_tokens: int, schema: dict | None) -> str:
+def _request(messages: list[dict], max_tokens: int, schema: dict | None, label: str) -> str:
     """One streamed request (avoids HTTP timeouts); returns the text output."""
     output_config: dict = {"effort": EFFORT}
     if schema is not None:
@@ -67,6 +73,17 @@ def _request(messages: list[dict], max_tokens: int, schema: dict | None) -> str:
         messages=messages,
     ) as stream:
         message = stream.get_final_message()
+
+    u = message.usage
+    log.info(
+        "Claude usage [%s] model=%s input=%d cache_write=%d cache_read=%d output=%d",
+        label,
+        message.model,
+        u.input_tokens,
+        u.cache_creation_input_tokens or 0,
+        u.cache_read_input_tokens or 0,
+        u.output_tokens,
+    )
 
     if message.stop_reason == "refusal":
         detail = getattr(message, "stop_details", None)
@@ -86,13 +103,13 @@ def _extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
-def _call(content: list[dict], out: type[T], max_tokens: int = 32000) -> T:
+def _call(content: list[dict], out: type[T], label: str, max_tokens: int = 32000) -> T:
     """Structured-output request. If the API rejects the schema (e.g. compiled
     grammar too large), fall back to plain JSON validated locally."""
     schema = _schema(out)
     messages = [{"role": "user", "content": content}]
     try:
-        return out.model_validate_json(_request(messages, max_tokens, schema))
+        return out.model_validate_json(_request(messages, max_tokens, schema, label))
     except anthropic.BadRequestError as e:
         if "grammar" not in str(e).lower() and "schema" not in str(e).lower():
             raise
@@ -104,8 +121,8 @@ def _call(content: list[dict], out: type[T], max_tokens: int = 32000) -> T:
     )
     messages = [{"role": "user", "content": [*content, {"type": "text", "text": instruction}]}]
     last_error: Exception | None = None
-    for _ in range(2):
-        text = _request(messages, max_tokens, None)
+    for attempt in range(2):
+        text = _request(messages, max_tokens, None, f"{label} - plain-JSON fallback {attempt + 1}")
         try:
             return out.model_validate_json(_extract_json(text))
         except (ValueError, ValidationError) as err:
@@ -167,7 +184,7 @@ def _ref_blocks(refs: list[Reference]) -> list[dict]:
         for r in refs
     ]
     # Every step resends the references first, so cache them.
-    blocks[-1]["cache_control"] = {"type": "ephemeral"}
+    blocks[-1]["cache_control"] = CACHE
     return blocks
 
 
@@ -205,7 +222,7 @@ def _page_blocks(pages: list[PageImage]) -> list[dict]:
         )
     # Cache the drawing set: steps 2 and 3 resend the same pages several times.
     if blocks:
-        blocks[-1]["cache_control"] = {"type": "ephemeral"}
+        blocks[-1]["cache_control"] = CACHE
     return blocks
 
 
@@ -240,7 +257,7 @@ def review_geotech(
             ),
         }
     )
-    return _call(content, GeotechReview, max_tokens=16000)
+    return _call(content, GeotechReview, "step 1 geotech", max_tokens=16000)
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +298,7 @@ def assess_design(
             ),
         }
     )
-    return _call(content, DesignAssessment)
+    return _call(content, DesignAssessment, "step 2 design")
 
 
 # ---------------------------------------------------------------------------
@@ -382,4 +399,4 @@ def plan_sheet(
             ),
         }
     )
-    return _call(content, MarkupSheet)
+    return _call(content, MarkupSheet, f"step 3 {SHEET_TITLES[kind]}")
