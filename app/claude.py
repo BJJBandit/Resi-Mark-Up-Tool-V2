@@ -58,6 +58,9 @@ SYSTEM += (
     f"{BEAM_WIDTH_FROM_MM} mm wide is made {BEAM_WIDTH_TO_MM} mm wide "
     f"(+{BEAM_WIDTH_TO_MM - BEAM_WIDTH_FROM_MM} mm). State beam widths explicitly "
     f"(e.g. '{BEAM_WIDTH_TO_MM}W x <DEPTH> DEEP EDGE BEAM')."
+    "\n- FIRM RULE: every lintel and bracing panel is within the building - on a wall of the "
+    "building's enclosed rooms. Never place one on a deck, verandah, porch, carport, pergola, "
+    "eaves or fence line (use verandah / deck beams there, not lintels)."
 )
 
 
@@ -279,6 +282,7 @@ def review_geotech(
     wind_class: str | None,
     site_class: str | None,
     refs: list[Reference] = [],
+    direction: str = "",
 ) -> GeotechReview:
     content: list[dict] = _ref_blocks(refs)
     if geotech_pdf:
@@ -291,7 +295,11 @@ def review_geotech(
                 + ("" if geotech_pdf else " (NONE PROVIDED - set report_provided=false and flag it)")
                 + ".\n"
                 f"User-provided wind classification: {wind_class or 'not provided'}.\n"
-                f"User-provided site classification override: {site_class or 'none'}.\n\n"
+                f"User-provided site classification override: {site_class or 'none'}.\n"
+                f"Engineer's direction: {direction or 'none'}\n"
+                "Follow the direction where it applies to this step (it overrides defaults but "
+                "not the FIRM RULES), but still record what the report itself says; where the "
+                "direction differs from the report, add a concern stating both.\n\n"
                 "Extract the AS 2870 site classification, ys, bearing capacity, founding "
                 "depth and material, fill, groundwater, tree / abnormal moisture issues and "
                 "the report's footing recommendations. If the user gave a wind class use it "
@@ -323,7 +331,8 @@ def assess_design(
                 "Step 2 - Review the architectural drawings above.\n\n"
                 f"Geotechnical review (step 1):\n{geotech.model_dump_json(indent=2)}\n\n"
                 f"Construction material / standard nominated by the engineer: {construction}\n"
-                f"Engineer's notes: {extra_notes or 'none'}\n\n"
+                f"Engineer's direction (follow it; it overrides defaults but not the FIRM RULES): "
+                f"{extra_notes or 'none'}\n\n"
                 "Determine:\n"
                 "1. The role of every page (plan, elevation, section, ...).\n"
                 "2. Roof type: form, rafters vs trusses, pitch, cladding mass, decks.\n"
@@ -457,6 +466,7 @@ def plan_sheet(
     geotech: GeotechReview,
     design: DesignAssessment,
     refs: list[Reference] = [],
+    direction: str = "",
 ) -> MarkupSheet:
     content = _ref_blocks(refs) + _page_blocks(pages)
     content.append(
@@ -467,6 +477,8 @@ def plan_sheet(
                 f"{SHEET_BRIEFS[kind]}\n\n{HOUSE_STYLE}\n\n"
                 f"Geotechnical review:\n{geotech.model_dump_json(indent=2)}\n\n"
                 f"Design assessment:\n{design.model_dump_json(indent=2)}\n\n"
+                f"Engineer's direction (follow it on this sheet where it applies; it overrides "
+                f"defaults but not the FIRM RULES): {direction or 'none'}\n\n"
                 "Choose ONE plan page to mark up and give plan_region tightly around the plan "
                 "drawing. Give every element's coordinates normalised to that WHOLE page image "
                 "(0,0 = top-left, 1,1 = bottom-right) and put them on the actual drawn walls / "

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
+from .footprint import Footprint
 from .elevation import cross_check, snap_joint_elevation
 from .elevation import find_openings as find_elevation_openings
 from .lintel_check import check_lintels, find_openings
@@ -767,6 +768,13 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
                             f"{', '.join(not_on_wall)}")
         if problems:
             warnings.append(f"{title}: bracing that may be over an opening, check: {'; '.join(problems)}")
+    if lintels or bracing:
+        warnings += _contain(geo, sheet, lintels, bracing, pts, put, title, src_page)
+        lintels = [i for i, e in enumerate(sheet.elements) if _is_lintel(e)]
+        spans = [i for i, e in enumerate(sheet.elements)
+                 if (e.kind in ("span", "member") and _prefix(e.tag) in SPAN_TAGS)
+                 or (e.kind == "span" and not _prefix(e.tag))]
+        points = [i for i, e in enumerate(sheet.elements) if e.kind in ("pier", "column")]
     if spans:
         # Supports: walls in the drawing plus this sheet's (already snapped) bearers,
         # beams, ledgers, lintels and footings.
@@ -799,6 +807,50 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
             if r is not None:
                 put(i, (r, r))
     return warnings
+
+
+def _contain(geo: Geometry, sheet: MarkupSheet, lintels: list[int], bracing: list[int], pts, put,
+             title: str, src_page: pymupdf.Page) -> list[str]:
+    """Firm rule: lintels and bracing are inside the building (its walls and the rooms
+    they enclose), never on a deck, verandah, carport or eaves line. One outside is
+    moved onto the nearest building wall alongside it (then re-snapped to its opening
+    / wall there); one with no building wall nearby is removed. Returns warnings."""
+    fp = Footprint(geo)
+    if not fp.ok:
+        return [f"{title}: building outline not found in the drawing - check every lintel and bracing "
+                "panel is on a building wall (not a deck, verandah, carport or eaves)"]
+    scale = None
+    moved, removed, drop = [], [], set()
+    for i in lintels + bracing:
+        e = sheet.elements[i]
+        p, q = pts(e)
+        if fp.line_inside(p, q, tol=4):
+            continue
+        name = e.tag or ("bracing" if e.kind == "bracing" else "lintel")
+        r = fp.move_inside(p, q)
+        if r is None:
+            drop.add(i)
+            removed.append(name)
+            continue
+        if e.kind == "bracing":
+            if scale is None:
+                scale, _ = drawing_scale(src_page, geo)
+            mm = bracing_length_mm(e.tag)
+            s = snap_bracing(geo, *r, mm_to_pt(mm, scale) if mm and scale else None)
+        else:
+            s = snap_span(geo, *r)
+        put(i, s[:2] if s is not None and fp.line_inside(*s[:2], tol=4) else r)
+        moved.append(name)
+    if drop:
+        sheet.elements = [e for k, e in enumerate(sheet.elements) if k not in drop]
+    out = []
+    if moved:
+        out.append(f"{title}: lintel / bracing outside the building (deck, verandah, carport or eaves) "
+                   f"moved onto the nearest building wall, check: {', '.join(moved)}")
+    if removed:
+        out.append(f"{title}: lintel / bracing outside the building with no building wall nearby removed "
+                   f"(lintels and bracing must be within the building), re-add if needed: {', '.join(removed)}")
+    return out
 
 
 def _articulation(src_page: pymupdf.Page, sheet: MarkupSheet, plan_page: pymupdf.Page | None,

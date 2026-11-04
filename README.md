@@ -20,6 +20,15 @@ checked before use. It is not for construction.
      Every step reads them and cites their clause and table numbers instead of relying
      on memory. They are uploaded once per review through the Files API and deleted
      when the review finishes.
+   - **Additional notes & direction** (optional, bottom of the form):
+     - *Direction for the review*: anything the drawings don't show, or how you want it
+       done (e.g. "use LVL for all lintels", "stiffened raft, no waffle pod"). Claude follows
+       it in the geotech review, the drawing review and on every sheet (in the geotech
+       review it still records what the report says and flags any difference); it overrides defaults but not the firm
+       rules below.
+     - *Additional notes for the drawings*: one note per line, added word for word (in
+       capitals) to the notes column of every sheet, after Claude's own notes. A note Claude
+       already wrote isn't repeated, and the firm rules never rewrite these notes.
 3. **Mark-up drawings.** Produces one PDF with:
    - one marked-up sheet each for load paths, roof (rafters only, including the deck),
      wall framing / racking / blockwork joints, footings (AS 2870) and floor framing or slab
@@ -75,6 +84,12 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 Firm rules are given to Claude **and** enforced on its output (`app/rules.py`), so they
 hold even if Claude slips:
 
+- **Lintels and bracing are within the building.** The building's outline is found from
+  its walls in the drawing (`app/footprint.py`: the connected wall network with wide door
+  openings closed; roof sheeting, eaves hatching, decking and stair treads ignored). A
+  lintel or bracing panel outside it - on a deck, verandah, carport or eaves - is moved onto
+  the nearest building wall alongside it (within about 25 pt) and re-snapped there; one with
+  no building wall nearby is removed. Both are listed in the warnings. Vector drawings only.
 - **Strip footings are at least 450 mm wide.** Any strip footing width below the minimum
   in the design assessment, schedules, callouts or notes is raised to 450 mm, and each
   change is listed as a warning on the results page. Internal beams, edge beams, piers and
