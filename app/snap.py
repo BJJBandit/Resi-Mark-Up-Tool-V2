@@ -278,3 +278,164 @@ def snap_members(geo: Geometry, members: list[tuple[str, pymupdf.Point, pymupdf.
                     (pymupdf.Point(c, r[0].y), pymupdf.Point(c, r[1].y))
         out[i] = r
     return out
+
+
+# ---------------------------------------------------------------------------
+# Bracing walls
+# ---------------------------------------------------------------------------
+
+import math  # noqa: E402
+import re  # noqa: E402
+
+STANDARD_SCALES = {20, 25, 50, 75, 100, 125, 150, 200, 250, 500}
+
+
+def drawing_scale(page: pymupdf.Page, geo: Geometry | None = None) -> tuple[int | None, str]:
+    """Plan scale: printed on the sheet ('1:100'), else elsewhere in the set, else
+    inferred from the wall thickness (most walls on a house plan are 90 mm studs).
+    Returns (scale, how) or (None, reason)."""
+    def printed(text: str) -> list[int]:
+        return [int(m) for m in re.findall(r"\b1\s*:\s*(\d{2,3})\b", text) if int(m) in STANDARD_SCALES]
+
+    found = printed(page.get_text("text"))
+    if found:
+        return max(set(found), key=found.count), "printed on the sheet"
+    found = [x for pg in page.parent for x in printed(pg.get_text("text"))]
+    if found:
+        return max(set(found), key=found.count), "printed in the drawing set"
+    if geo is not None:
+        ts = [round(w[3], 1) for w in geo.walls[0] + geo.walls[1] if 1.5 <= w[3] <= 8]
+        if ts:
+            t = max(set(ts), key=ts.count)
+            est = 90 / (t * 25.4 / 72)  # 90 mm stud wall drawn t pt thick
+            best = min((50, 100, 200), key=lambda s: abs(math.log(est / s)))
+            if abs(math.log(est / best)) < 0.25:
+                return best, "inferred from wall thickness"
+    return None, "scale not found"
+
+
+def mm_to_pt(mm: float, scale: int) -> float:
+    return mm / scale * 72 / 25.4
+
+
+def bracing_length_mm(tag: str) -> float | None:
+    """'h(b) - 900' -> 900; 'd - 2400' -> 2400."""
+    m = re.search(r"(\d{3,4})\s*$", (tag or "").strip())
+    return float(m.group(1)) if m else None
+
+
+def _find_wall(geo: Geometry, horizontal: bool, a0: float, a1: float, c0: float, across_tol: float = 8.0):
+    """(centre, thickness) of the wall running along [a0, a1] near c0, or None."""
+    along = geo.walls[0] if horizontal else geo.walls[1]
+    near = [w for w in along if abs(w[0] - c0) <= across_tol and w[2] > a0 and w[1] < a1]
+    best = None
+    for c in sorted({round(w[0] * 2) / 2 for w in near}):
+        group = [w for w in near if abs(w[0] - c) <= 1.0]
+        cover = _coverage(group, a0, a1) / max(a1 - a0, 1e-6)
+        centre = sum(w[0] for w in group) / len(group)
+        thick = sum(w[3] for w in group) / len(group)
+        score = cover - 0.02 * abs(centre - c0)
+        if best is None or score > best[0]:
+            best = (score, cover, centre, thick)
+    if best is None or best[1] < 0.5:
+        return None
+    return best[2], best[3]
+
+
+def _run(geo: Geometry, horizontal: bool, c: float, at: float) -> tuple[float, float] | None:
+    """Extent of the continuous wall (gaps <= 3 pt bridged) on centreline c through 'at'."""
+    along = geo.walls[0] if horizontal else geo.walls[1]
+    ivs = sorted((lo, hi) for wc, lo, hi, _ in along if abs(wc - c) <= 1.0)
+    merged: list[list[float]] = []
+    for lo, hi in ivs:
+        if merged and lo <= merged[-1][1] + 3:
+            merged[-1][1] = max(merged[-1][1], hi)
+        else:
+            merged.append([lo, hi])
+    if not merged:
+        return None
+    best = min(merged, key=lambda iv: 0 if iv[0] <= at <= iv[1] else min(abs(at - iv[0]), abs(at - iv[1])))
+    return best[0], best[1]
+
+
+def _solid(geo: Geometry, horizontal: bool, c: float, thick: float, lo: float, hi: float) -> list[tuple[float, float]]:
+    """Stretches of [lo, hi] that are solid wall: both faces drawn and no window
+    glazing line between them (doors show as gaps in the faces)."""
+    faces = geo.h if horizontal else geo.v
+    f1 = [s for s in faces if abs(s.c - (c - thick / 2)) <= 0.8 and s.b > lo and s.a < hi]
+    f2 = [s for s in faces if abs(s.c - (c + thick / 2)) <= 0.8 and s.b > lo and s.a < hi]
+    mid = [s for s in faces if c - thick / 2 + 0.4 < s.c < c + thick / 2 - 0.4 and s.b > lo and s.a < hi]
+    cov = lambda segs, x: any(s.a - 0.3 <= x <= s.b + 0.3 for s in segs)  # noqa: E731
+    step = 0.5
+    xs = [lo + i * step for i in range(int((hi - lo) / step) + 1)]
+    # Cavity / framing lines drawn along the whole wall are construction, not windows.
+    if mid and sum(cov(mid, x) for x in xs) > 0.7 * len(xs):
+        mid = []
+    out: list[tuple[float, float]] = []
+    start = None
+    for x in xs:
+        ok = cov(f1, x) and cov(f2, x) and not cov(mid, x)
+        if ok and start is None:
+            start = x
+        if not ok and start is not None:
+            out.append((start, x - step))
+            start = None
+    if start is not None:
+        out.append((start, xs[-1]))
+    return out
+
+
+def snap_bracing(geo: Geometry, p: pymupdf.Point, q: pymupdf.Point, length_pt: float | None):
+    """Place a bracing panel on its wall, house style: SIDE_OFFSET beside the wall
+    centreline on the side Claude drew it, at its scaled length, and slid along the
+    wall off any window or door. Returns (p, q, note) or None if no wall is found."""
+    horizontal = abs(q.x - p.x) >= abs(q.y - p.y)
+    a0, a1 = sorted((p.x, q.x) if horizontal else (p.y, q.y))
+    c0 = (p.y + q.y) / 2 if horizontal else (p.x + q.x) / 2
+    drawn = a1 - a0
+    if drawn < 3:
+        return None
+    # Look for the wall along a slightly longer stretch: panels are short.
+    pad = max(0.0, (25 - drawn) / 2)
+    # Panels are drawn ~3 pt off the centreline, so allow for that plus Claude's error.
+    wall = _find_wall(geo, horizontal, a0 - pad, a1 + pad, c0, across_tol=12.0)
+    if wall is None:
+        return None
+    c, thick = wall
+    length = length_pt if length_pt and 0.4 <= length_pt / drawn <= 2.5 else drawn
+    mid = (a0 + a1) / 2
+    note = ""
+    run = _run(geo, horizontal, c, mid)
+    if run:
+        all_solid = _solid(geo, horizontal, c, thick, *run)
+        if sum(e - s for s, e in all_solid) < 0.4 * (run[1] - run[0]):
+            # The wall's line work can't be read reliably (e.g. thick masonry with
+            # several face lines): keep the panel where Claude placed it along the wall.
+            all_solid = [(-1e9, 1e9)]
+        # A panel may fill a short wall return that is a touch shorter than it.
+        solid = [iv for iv in all_solid if iv[1] - iv[0] >= 0.9 * length - 0.5]
+        here = sum(max(0.0, min(e, mid + length / 2) - max(s, mid - length / 2)) for s, e in all_solid)
+        if here >= 0.75 * length:  # already (essentially) on solid wall: don't move it
+            solid = [(mid - length / 2, mid + length / 2)]
+        best = None
+        for s, e in solid:
+            if e - s < length:  # shorter than the panel: centre it on the stretch
+                centre = (s + e) / 2
+            else:
+                centre = min(max(mid, s + length / 2), e - length / 2)
+            if best is None or abs(centre - mid) < abs(best - mid):
+                best = centre
+        if best is None:
+            note = "no stretch of solid wall long enough here"
+        elif abs(best - mid) > max(30.0, 2.0 * length):
+            note = "nearest solid wall is too far along to move it"
+        else:
+            if abs(best - mid) > 1.0:
+                note = "moved along the wall, off an opening"
+            mid = best
+    side = SIDE_OFFSET if c0 >= c else -SIDE_OFFSET
+    cc = c + side
+    s, e = mid - length / 2, mid + length / 2
+    if horizontal:
+        return pymupdf.Point(s, cc), pymupdf.Point(e, cc), note
+    return pymupdf.Point(cc, s), pymupdf.Point(cc, e), note
