@@ -27,8 +27,8 @@ from .schemas import Element, MarkupSheet, Point
 from .snap import Geometry, _solid, mm_to_pt
 
 CODE = re.compile(r"^(SD|SL|SW|AW|A|DH|D|FD|FG|F|W|BF|GD|CS|S)(\d{2})(\d{2})$")
-# Single timber lintels on the engineers' sheets span at most ~17.5x their depth
-# (120 deep over 2100 on a lightly loaded wall); flag anything well beyond that.
+# Sanity limit on a single lintel's clear span to depth; spans beyond it are flagged
+# for a span-table check. A check threshold only - adjust per office practice.
 MAX_SPAN_DEPTH = float(os.environ.get("LINTEL_MAX_SPAN_DEPTH", "20"))
 SIZE = re.compile(r"(?:(\d)\s*/\s*)?(\d{2,3})\s*[xX×]\s*(\d{2,3})")
 

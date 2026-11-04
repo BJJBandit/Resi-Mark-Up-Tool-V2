@@ -53,7 +53,7 @@ or site confirmation goes in the concerns / engineer_checks lists.
 SYSTEM += (
     f"- FIRM RULE: every strip footing is at least {MIN_STRIP_WIDTH_MM} mm wide, even where "
     "AS 2870 or the geotechnical report would allow narrower. Always state strip footing width "
-    "explicitly (e.g. '450W x MIN 450 DEEP STRIP FOOTING')."
+    f"explicitly (e.g. '{MIN_STRIP_WIDTH_MM}W x <DEPTH> DEEP STRIP FOOTING')."
 )
 
 
@@ -342,7 +342,11 @@ def assess_design(
 # Step 3
 # ---------------------------------------------------------------------------
 
-HOUSE_STYLE = """House style for mark-ups (follow it closely - it matches the engineer's own sheets):
+HOUSE_STYLE = """House style for mark-ups. This sets the PRESENTATION only - the format, tags and
+layout of the engineer's sheets. It contains no engineering values: every size, grade, spacing,
+reinforcement, fixing and note must come from THIS job (its drawings, geotech report, wind and
+site classification, the design assessment and the standards / guides supplied). Never reuse a
+specification just because it looks typical.
 - Member layout plan only: tag every structural member and describe it in the schedule.
 - Tags: B = bearer, J = joist, LD = deck ledger, L = lintel / ledger, VB = verandah beam,
   R = rafter, RB = ridge beam, UP = underpurlin, C = column, DS = double stud,
@@ -350,21 +354,17 @@ HOUSE_STYLE = """House style for mark-ups (follow it closely - it matches the en
   CJ / AJ = control / articulation joint, LP = load path step. Number them B1, B2 ...
 - Draw each member once along its real position: 'member' from one end to the other,
   'span' double arrows across joists / rafters / trusses to show span direction,
-  'column' at each post, 'pier' at each bored pier (bearers: at max spacing along
-  the bearer and at corners), 'bracing' along each bracing panel tagged with type
-  and length, e.g. 'h(b) - 900', 'g - 600', 'd - 2400' (d = diagonal strap, dashed).
-- Callouts carry the construction notes, written like:
-  '450 DIAM BORED PIER TO ROCK AT CORNERS AND MAX 3000 CTRS UNDER STRIP FOOTING. 1/N16 CENTRAL. TYPICAL.'
-  '6 CFW 8 PLATE CLEAT TO C2. CLEAT CONNECT VB1 TO C2 WITH 3/M10 BOLTS. MIN 50 BETWEEN BOLTS AND
-  BETWEEN BOLTS AND TIMBER END. TYPICAL.' Point each callout's start at the element it describes.
-  Use 'TYPICAL.' instead of repeating a callout. Keep to about 4-12 callouts per sheet.
+  'column' at each post, 'pier' at each pier, 'bracing' along each bracing panel tagged
+  '<bracing type> - <panel length mm>' (type d, diagonal strap, is drawn dashed).
+- Callouts carry the construction notes for the element they point at, in the form
+  '<WHAT> <SIZE / SPEC> <WHERE / SPACING>. <FIXING OR CONDITION>. TYPICAL.' Point each
+  callout's start at the element it describes. Use 'TYPICAL.' instead of repeating a callout.
+  Keep to about 4-12 callouts per sheet.
 - Be economical: one element per real member (no duplicates), tag repeated items once and
   rely on 'TYPICAL.', and aim for under ~150 elements per sheet.
-- Schedule items: tag + UPPERCASE size/grade/spacing, e.g. 'B1': '2/240x45 F7 TP CONTINUOUS BEARER',
-  'J1': '140x45 F7 TP JOISTS AT 450 CTRS', 'L2': '120x35 F17/LVL LINTEL', 'C1': '89x3.5 SHS COLUMN'.
-- Notes: UPPERCASE, each starting with '-', e.g. '-THIS DRAWING IS A MEMBER LAYOUT PLAN ONLY. BUILDER TO
-  CONSULT ARCHITECTURAL DRAWINGS FOR DIMENSIONS, SECTIONS AND CONNECTION CONFIGURATION.',
-  '-ALL TIMBER FRAMING TO BE IN ACCORDANCE WITH AS 1684.2 2021 AND AS 1720.1 2010.'
+- Schedule items: tag + UPPERCASE '<NUMBER/><DEPTH>x<BREADTH> <GRADE> <MEMBER> [AT <SPACING> CTRS]'
+  for timber, '<SECTION> <MEMBER>' for steel - sized for this job.
+- Notes: UPPERCASE, each starting with '-': the general notes this sheet needs for this job.
 - All text UPPERCASE. Australian spelling and units (mm, kPa, kN)."""
 
 SHEET_BRIEFS: dict[SheetKind, str] = {
@@ -376,46 +376,43 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "each LP step (what it carries and where it goes). Classification: AS4055 wind class."
     ),
     SheetKind.ROOF: (
-        "ROOF FRAMING PLAN - rafters only (and the deck / verandah roof). Rafters R1 'span' "
+        "ROOF FRAMING PLAN - rafters only (and the deck / verandah roof). Rafters R 'span' "
         "arrows plus a 'member' on a representative rafter, ridge / hip / valley members, "
         "underpurlins, verandah beams VB, columns C, double studs DS at beam supports. "
-        "If the main roof is trusses, add a callout 'TRUSSES TO MANUFACTURER'S "
-        "SPECIFICATIONS' and a span arrow 'ASSUMED TRUSS SPAN DIRECTION' - do not detail "
-        "trusses. Schedule = 'ROOF FRAMING SCHEDULE:'. Classification: AS4055 wind class."
+        "If the main roof is trusses, note that they are by the truss manufacturer and show "
+        "the assumed truss span direction with a span arrow - do not detail trusses. "
+        "Schedule = 'ROOF FRAMING SCHEDULE:'. Classification: AS4055 wind class."
     ),
     SheetKind.WALLS: (
         "WALL FRAMING PLAN. Lintels L1, L2 ... as 'member' over each opening in a load-bearing "
         "wall, double studs DS, columns C, and every bracing panel as 'bracing' (type and length "
-        "from AS 1684.2 Table 8.18, enough to resist the racking force for the wind class). "
+        "from the bracing standard for this job's racking force and wind class). "
         "For masonry / blockwork show control and articulation joints as 'member' CJ1 / AJ1. "
         "LINTELS: every window and door in a load-bearing or external wall gets a lintel - including "
         "the entry door, sliding doors and sidelights. Architect's codes give height then width in "
-        "hundreds of mm (A1812 = 1800 high x 1200 wide, SD2121 = 2100 x 2100); use the width for the "
+        "hundreds of mm (e.g. a code 'A1812' is 1800 high x 1200 wide); use the width for the "
         "span. Size each lintel for its span and roof load width; on the same wall a wider opening "
         "never gets a smaller lintel than a narrower one. "
-        "Schedule = 'LINTEL SCHEDULE:' (plus columns). Legend = 'BRACING LEGEND:' with items "
-        "like tag 'h(b)': 'TYPE h(B) PLY BRACING TO AS 1684.2 2021'. Notes include tie-down "
-        "(e.g. '-TYPICAL TIE DOWN TO SIDES OF LINTELS 30x0.8 G.I. STRAP WITH 6/30x2.8 DIAMETER "
-        "NAILS EACH END OF STRAP AND M10 BOLTS TO FLOOR ...'). Classification: AS4055 wind class."
+        "Schedule = 'LINTEL SCHEDULE:' (plus columns). Legend = 'BRACING LEGEND:' with one item "
+        "per bracing type used: tag '<type>': '<BRACING TYPE DESCRIPTION> TO <STANDARD>'. Notes "
+        "include the tie-down this job needs. Classification: AS4055 wind class."
     ),
     SheetKind.FOOTINGS: (
         "FOOTING PLAN to AS 2870 and the geotech report. Edge beams / strip footings EB / SF "
-        "as 'member' around the perimeter, internal beams IB, slab thickenings, bored piers "
+        "as 'member' around the perimeter, internal beams IB, slab thickenings, piers "
         "'pier' (corners and max spacing), pads under point loads, step-downs. Strip footings "
-        f"are never narrower than {MIN_STRIP_WIDTH_MM} mm. Callouts give "
-        "sizes and reinforcement, e.g. '450W x MIN 450 DEEP STRIP FOOTING. 4/L11TM TOP AND "
-        "BOTTOM WITH 50 COVER.'. Schedule = 'FOOTING SCHEDULE:'. Notes include site prep / "
-        "fill to AS2870 and AS3798, step footings to AS2870 5.4.3, articulate masonry to "
-        "AS4773, drainage falls, and the CSIRO BTF 18 notice to owner. Classification: "
-        "'AS2870 2011 SITE CLASSIFICATION: <class>'."
+        f"are never narrower than {MIN_STRIP_WIDTH_MM} mm. Callouts give each footing's size and "
+        "reinforcement as determined for this job. Schedule = 'FOOTING SCHEDULE:'. Notes: the "
+        "footing, site preparation and drainage notes this site needs. Classification: "
+        "'AS2870 SITE CLASSIFICATION: <class>'."
     ),
     SheetKind.FLOOR: (
         "FLOOR FRAMING PLAN. Suspended floors: bearers B as 'member', joists J as 'span' "
         "arrows (plus a 'member' on a representative joist), deck ledgers LD, deck bearers and "
         "joists, columns C, piers under bearers. Slab on ground: slab extent as a 'cloud', "
-        "thickenings / set-downs / wet areas with callouts (e.g. '100 THICK REINFORCED CONCRETE "
-        "SLAB. SL82 TOP WITH 30 COVER. 25 MPA GRADE.'). Schedule = 'FLOOR FRAMING SCHEDULE:' "
-        "(include columns). Classification: 'AS2870 2011 SITE CLASSIFICATION: <class>'."
+        "thickenings / set-downs / wet areas with callouts giving this job's slab thickness, "
+        "reinforcement and concrete as determined. Schedule = 'FLOOR FRAMING SCHEDULE:' "
+        "(include columns). Classification: 'AS2870 SITE CLASSIFICATION: <class>'."
     ),
 }
 
