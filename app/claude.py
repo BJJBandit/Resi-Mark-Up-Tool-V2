@@ -282,6 +282,7 @@ def review_geotech(
     wind_class: str | None,
     site_class: str | None,
     refs: list[Reference] = [],
+    direction: str = "",
 ) -> GeotechReview:
     content: list[dict] = _ref_blocks(refs)
     if geotech_pdf:
@@ -294,7 +295,11 @@ def review_geotech(
                 + ("" if geotech_pdf else " (NONE PROVIDED - set report_provided=false and flag it)")
                 + ".\n"
                 f"User-provided wind classification: {wind_class or 'not provided'}.\n"
-                f"User-provided site classification override: {site_class or 'none'}.\n\n"
+                f"User-provided site classification override: {site_class or 'none'}.\n"
+                f"Engineer's direction: {direction or 'none'}\n"
+                "Follow the direction where it applies to this step (it overrides defaults but "
+                "not the FIRM RULES), but still record what the report itself says; where the "
+                "direction differs from the report, add a concern stating both.\n\n"
                 "Extract the AS 2870 site classification, ys, bearing capacity, founding "
                 "depth and material, fill, groundwater, tree / abnormal moisture issues and "
                 "the report's footing recommendations. If the user gave a wind class use it "

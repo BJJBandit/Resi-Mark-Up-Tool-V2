@@ -23,7 +23,8 @@ checked before use. It is not for construction.
    - **Additional notes & direction** (optional, bottom of the form):
      - *Direction for the review*: anything the drawings don't show, or how you want it
        done (e.g. "use LVL for all lintels", "stiffened raft, no waffle pod"). Claude follows
-       it in the drawing review and on every sheet; it overrides defaults but not the firm
+       it in the geotech review, the drawing review and on every sheet (in the geotech
+       review it still records what the report says and flags any difference); it overrides defaults but not the firm
        rules below.
      - *Additional notes for the drawings*: one note per line, added word for word (in
        capitals) to the notes column of every sheet, after Claude's own notes. A note Claude

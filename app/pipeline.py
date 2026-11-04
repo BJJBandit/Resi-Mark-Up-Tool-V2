@@ -88,7 +88,7 @@ def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobR
 
 def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResult:
     progress("Step 1: reviewing geotechnical report and wind")
-    geotech = claude.review_geotech(job.geotech_pdf, job.wind_class, job.site_class, refs)
+    geotech = claude.review_geotech(job.geotech_pdf, job.wind_class, job.site_class, refs, job.notes)
 
     progress("Step 2: reviewing architectural drawings")
     design = claude.assess_design(pages, geotech, job.construction, job.notes, refs)
