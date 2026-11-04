@@ -29,6 +29,7 @@ class JobInput:
     pages: list[int] = field(default_factory=list)  # selected drawing pages (1-based); empty = all
     rev: str = "A"
     made_by: str = ""
+    sheet_notes: list[str] = field(default_factory=list)  # engineer's notes added to every sheet as written
 
 
 @dataclass
@@ -47,6 +48,15 @@ def _joint(tag: str) -> bool:
     return re.match(r"\s*(AJ|CJ)\d*\b", tag or "", re.I) is not None
 
 
+def _norm(note: str) -> str:
+    return re.sub(r"[^A-Z0-9]+", " ", note.upper()).strip()
+
+
+def _as_note(note: str) -> str:
+    note = note.strip().upper()  # house style: notes in capitals
+    return note if note.startswith("-") else f"-{note}"
+
+
 def _masonry(design: DesignAssessment) -> bool:
     text = f"{design.external_wall_type} {design.framing_material} {design.governing_standard}"
     return re.search(r"brick|masonry|block|veneer|AS ?3700|AS ?4773", text, re.I) is not None
@@ -61,7 +71,7 @@ def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobR
     if job.references:
         context = (
             f"Construction: {job.construction}\nWind class: {job.wind_class or 'not given'}\n"
-            f"Site class: {job.site_class or 'from geotech report'}\nEngineer's notes: {job.notes or 'none'}\n"
+            f"Site class: {job.site_class or 'from geotech report'}\nEngineer's direction: {job.notes or 'none'}\n"
             "Drawing text (excerpt): " + " ".join(p.text for p in pages)[:3000]
         )
         files, ref_warnings = prepare(job.references, context, claude.select_reference_pages, MAX_REF_PAGES, progress)
@@ -98,13 +108,17 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
 
     def make(kind: SheetKind) -> None:
         try:
-            sheet = claude.plan_sheet(kind, pages, geotech, design, refs)
+            sheet = claude.plan_sheet(kind, pages, geotech, design, refs, job.notes)
             if kind != SheetKind.ARTICULATION:
                 # Articulation / control joints belong on the elevation sheet only.
                 dropped = [e for e in sheet.elements if e.kind == "member" and _joint(e.tag)]
                 if dropped:
                     sheet.elements = [e for e in sheet.elements if e not in dropped]
             sheet_warnings[kind] = apply_rules(sheet, SHEET_TITLES[kind])
+            # The engineer's own notes go on every sheet word for word (after the rules,
+            # so they are never rewritten), skipping any Claude already wrote.
+            have = {_norm(n) for n in sheet.notes}
+            sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
             result.sheets[kind] = sheet
         except Exception as e:  # keep the other sheets if one fails
             result.sheet_errors[kind] = str(e) or type(e).__name__

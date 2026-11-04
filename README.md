@@ -20,6 +20,14 @@ checked before use. It is not for construction.
      Every step reads them and cites their clause and table numbers instead of relying
      on memory. They are uploaded once per review through the Files API and deleted
      when the review finishes.
+   - **Additional notes & direction** (optional, bottom of the form):
+     - *Direction for the review*: anything the drawings don't show, or how you want it
+       done (e.g. "use LVL for all lintels", "stiffened raft, no waffle pod"). Claude follows
+       it in the drawing review and on every sheet; it overrides defaults but not the firm
+       rules below.
+     - *Additional notes for the drawings*: one note per line, added word for word (in
+       capitals) to the notes column of every sheet, after Claude's own notes. A note Claude
+       already wrote isn't repeated, and the firm rules never rewrite these notes.
 3. **Mark-up drawings.** Produces one PDF with:
    - one marked-up sheet each for load paths, roof (rafters only, including the deck),
      wall framing / racking / blockwork joints, footings (AS 2870) and floor framing or slab

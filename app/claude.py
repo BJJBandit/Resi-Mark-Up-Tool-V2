@@ -326,7 +326,8 @@ def assess_design(
                 "Step 2 - Review the architectural drawings above.\n\n"
                 f"Geotechnical review (step 1):\n{geotech.model_dump_json(indent=2)}\n\n"
                 f"Construction material / standard nominated by the engineer: {construction}\n"
-                f"Engineer's notes: {extra_notes or 'none'}\n\n"
+                f"Engineer's direction (follow it; it overrides defaults but not the FIRM RULES): "
+                f"{extra_notes or 'none'}\n\n"
                 "Determine:\n"
                 "1. The role of every page (plan, elevation, section, ...).\n"
                 "2. Roof type: form, rafters vs trusses, pitch, cladding mass, decks.\n"
@@ -460,6 +461,7 @@ def plan_sheet(
     geotech: GeotechReview,
     design: DesignAssessment,
     refs: list[Reference] = [],
+    direction: str = "",
 ) -> MarkupSheet:
     content = _ref_blocks(refs) + _page_blocks(pages)
     content.append(
@@ -470,6 +472,8 @@ def plan_sheet(
                 f"{SHEET_BRIEFS[kind]}\n\n{HOUSE_STYLE}\n\n"
                 f"Geotechnical review:\n{geotech.model_dump_json(indent=2)}\n\n"
                 f"Design assessment:\n{design.model_dump_json(indent=2)}\n\n"
+                f"Engineer's direction (follow it on this sheet where it applies; it overrides "
+                f"defaults but not the FIRM RULES): {direction or 'none'}\n\n"
                 "Choose ONE plan page to mark up and give plan_region tightly around the plan "
                 "drawing. Give every element's coordinates normalised to that WHOLE page image "
                 "(0,0 = top-left, 1,1 = bottom-right) and put them on the actual drawn walls / "
