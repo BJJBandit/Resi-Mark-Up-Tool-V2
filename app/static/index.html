@@ -37,6 +37,12 @@
   ul.files { list-style: none; padding-left: 0; }
   li.ref { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 6px; color: var(--ink); }
   li.ref label { margin: 6px 0 0; font-size: 13px; }
+  .refhead { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .drop { border: 1px dashed var(--line); border-radius: 8px; padding: 12px; }
+  .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .drop p { margin: 8px 0 0; }
+  button.secondary { margin: 0 10px 0 0; padding: 7px 12px; background: transparent; color: var(--accent); border: 1px solid var(--accent); font-weight: 600; }
+  button.link { margin: 0; padding: 0; background: none; color: var(--err); border: 0; font-weight: 600; cursor: pointer; }
   a.btn { display:inline-block; margin: 8px 12px 0 0; color: var(--accent); font-weight: 600; }
 </style>
 </head>
@@ -65,9 +71,15 @@
     <label>Geotechnical report (PDF) <small>optional</small></label>
     <input type="file" name="geotech" accept="application/pdf">
 
-    <label>Standards, guides &amp; codes (PDF) <small>optional, select several &middot; only the relevant pages are sent</small></label>
-    <input type="file" name="references" accept="application/pdf" multiple id="refs">
-    <ul id="refList" class="files"></ul>
+    <label>Standards, guides &amp; codes (PDF) <small>optional &middot; add as many as you need &middot; only the relevant pages are sent</small></label>
+    <div class="drop" id="refDrop">
+      <input type="file" accept="application/pdf" multiple id="refs" hidden>
+      <button type="button" class="secondary" id="refAdd">Add standards / guides&hellip;</button>
+      <span class="muted">or drag PDFs here &middot; add more at any time</span>
+      <p class="muted" id="refCount">No documents added.</p>
+      <ul id="refList" class="files"></ul>
+      <p class="err" id="refMsg" hidden></p>
+    </div>
 
     <div class="row">
       <div>
@@ -109,15 +121,51 @@
 const f = document.getElementById('f'), go = document.getElementById('go'), box = document.getElementById('status');
 const tb = document.getElementById('tb'), tbFields = document.getElementById('tbFields');
 tb.addEventListener('change', () => { tbFields.hidden = !tb.checked; });
+// Standards / guides: kept in a list so each "Add" appends rather than replacing.
 const refs = document.getElementById('refs'), refList = document.getElementById('refList');
-refs.addEventListener('change', () => {
-  refList.innerHTML = [...refs.files].map(f => `
+const refCount = document.getElementById('refCount'), refMsg = document.getElementById('refMsg');
+const refDrop = document.getElementById('refDrop');
+const refItems = [];  // { file, pages }
+const mb = n => (n / 1048576).toFixed(1);
+
+function addRefFiles(files) {
+  const skipped = [];
+  for (const file of files) {
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { skipped.push(`${file.name} (not a PDF)`); continue; }
+    if (refItems.some(r => r.file.name === file.name && r.file.size === file.size)) { skipped.push(`${file.name} (already added)`); continue; }
+    refItems.push({ file, pages: '' });
+  }
+  refMsg.hidden = !skipped.length;
+  refMsg.textContent = skipped.length ? 'Not added: ' + skipped.join(', ') : '';
+  renderRefs();
+}
+
+function renderRefs() {
+  const total = refItems.reduce((a, r) => a + r.file.size, 0);
+  refCount.textContent = refItems.length
+    ? `${refItems.length} document${refItems.length > 1 ? 's' : ''} added (${mb(total)} MB):`
+    : 'No documents added.';
+  refList.innerHTML = refItems.map((r, i) => `
     <li class="ref">
-      <span>${esc(f.name)} (${(f.size / 1048576).toFixed(1)} MB)</span>
+      <div class="refhead">
+        <span><b>${i + 1}.</b> ${esc(r.file.name)} <span class="muted">(${mb(r.file.size)} MB)</span></span>
+        <button type="button" class="link" data-remove="${i}" aria-label="Remove ${esc(r.file.name)}">Remove</button>
+      </div>
       <label>Pages to review <small>blank = picked from the contents &middot; or e.g. 45-60, 72 &middot; or all</small>
-        <input type="text" name="reference_pages" placeholder="auto (from contents)"></label>
+        <input type="text" data-pages="${i}" value="${esc(r.pages)}" placeholder="auto (from contents)"></label>
     </li>`).join('');
+}
+
+document.getElementById('refAdd').addEventListener('click', () => refs.click());
+refs.addEventListener('change', () => { addRefFiles([...refs.files]); refs.value = ''; });
+refList.addEventListener('input', e => { const i = e.target.dataset.pages; if (i !== undefined) refItems[i].pages = e.target.value; });
+refList.addEventListener('click', e => {
+  const i = e.target.dataset.remove;
+  if (i !== undefined) { refItems.splice(Number(i), 1); refMsg.hidden = true; renderRefs(); }
 });
+['dragenter', 'dragover'].forEach(t => refDrop.addEventListener(t, e => { e.preventDefault(); refDrop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => refDrop.addEventListener(t, e => { e.preventDefault(); refDrop.classList.remove('over'); }));
+refDrop.addEventListener('drop', e => addRefFiles([...e.dataTransfer.files]));
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 f.addEventListener('submit', async e => {
@@ -126,7 +174,9 @@ f.addEventListener('submit', async e => {
   box.style.display = 'block';
   box.innerHTML = 'Uploading…';
   try {
-    const r = await fetch('/jobs', { method: 'POST', body: new FormData(f) });
+    const fd = new FormData(f);
+    for (const r of refItems) { fd.append('references', r.file, r.file.name); fd.append('reference_pages', r.pages); }
+    const r = await fetch('/jobs', { method: 'POST', body: fd });
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.statusText);
     poll(j.id);
