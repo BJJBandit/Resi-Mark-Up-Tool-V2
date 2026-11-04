@@ -30,6 +30,7 @@
   button:disabled { opacity: .5; cursor: default; }
   .card { margin-top: 20px; display: none; }
   .err { color: var(--err); }
+  .muted { color: var(--muted); }
   ul { padding-left: 20px; }
   ul.files { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
   ul.files:empty { display: none; }
@@ -64,7 +65,7 @@
     <label>Geotechnical report (PDF) <small>optional</small></label>
     <input type="file" name="geotech" accept="application/pdf">
 
-    <label>Standards, guides &amp; codes (PDF) <small>optional, select several &middot; max 500 selected pages total</small></label>
+    <label>Standards, guides &amp; codes (PDF) <small>optional, select several &middot; only the relevant pages are sent</small></label>
     <input type="file" name="references" accept="application/pdf" multiple id="refs">
     <ul id="refList" class="files"></ul>
 
@@ -113,8 +114,8 @@ refs.addEventListener('change', () => {
   refList.innerHTML = [...refs.files].map(f => `
     <li class="ref">
       <span>${esc(f.name)} (${(f.size / 1048576).toFixed(1)} MB)</span>
-      <label>Pages to review <small>e.g. 45-60, 72 &middot; blank = all</small>
-        <input type="text" name="reference_pages" placeholder="all"></label>
+      <label>Pages to review <small>blank = picked from the contents &middot; or e.g. 45-60, 72 &middot; or all</small>
+        <input type="text" name="reference_pages" placeholder="auto (from contents)"></label>
     </li>`).join('');
 });
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -148,7 +149,9 @@ async function poll(id) {
   box.innerHTML = `
     <h3 style="margin-top:0">Review complete</h3>
     <ul>
-      <li>References used: ${j.references.length ? j.references.map(esc).join(', ') : 'none'}</li>
+      <li>Standards / guides: ${(j.reference_pages || []).length ? '' : 'none'}
+        <ul>${(j.reference_pages || []).map(r => `<li><b>${esc(r.document)}</b>: ${r.pages_sent ? `pages ${esc(r.pages)} of ${r.page_count}` : `<span class="err">not used</span>`} (${r.pages_sent} pages; ${esc(r.how)})${(r.sections || []).length ? `<ul>${r.sections.map(x => `<li>${esc(x.title)} - p ${esc(x.pages)} <span class="muted">(${esc(x.why)})</span></li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>
+      </li>
       <li>Site class: <b>${esc(s.site_class)}</b> · Wind: <b>${esc(s.wind_class || 'not provided')}</b></li>
       <li>Roof: ${esc(s.roof)}</li>
       <li>Walls: ${esc(s.walls)}</li>

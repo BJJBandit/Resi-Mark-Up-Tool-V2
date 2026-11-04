@@ -8,6 +8,7 @@ from typing import Callable
 
 from . import claude
 from .pdf import build_markup_pdf, render_pages
+from .refpages import MAX_REF_PAGES, RefDoc, prepare, report
 from .rules import apply_strip_rule, check_geotech_strip
 from .schemas import SHEET_TITLES, DesignAssessment, GeotechReview, MarkupSheet, SheetKind
 
@@ -21,7 +22,7 @@ class JobInput:
     site_class: str | None
     construction: str
     notes: str
-    references: list[tuple[str, bytes]] = field(default_factory=list)  # (filename, pdf)
+    references: list[RefDoc] = field(default_factory=list)  # pages=None -> chosen from the contents
     job_no: str = ""
     title_block: bool = False
     pages: list[int] = field(default_factory=list)  # selected drawing pages (1-based); empty = all
@@ -36,6 +37,7 @@ class JobResult:
     sheets: dict[SheetKind, MarkupSheet] = field(default_factory=dict)
     sheet_errors: dict[SheetKind, str] = field(default_factory=dict)
     references: list[str] = field(default_factory=list)
+    reference_pages: list[dict] = field(default_factory=list)  # pages of each standard / guide used
     warnings: list[str] = field(default_factory=list)
     pdf: bytes = b""
 
@@ -45,11 +47,21 @@ def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobR
     pages = render_pages(job.arch_pdf, job.pages or None)
 
     refs: list[claude.Reference] = []
+    ref_warnings: list[str] = []
     if job.references:
-        progress(f"Uploading {len(job.references)} reference document(s)")
-        refs = claude.upload_references(job.references)
+        context = (
+            f"Construction: {job.construction}\nWind class: {job.wind_class or 'not given'}\n"
+            f"Site class: {job.site_class or 'from geotech report'}\nEngineer's notes: {job.notes or 'none'}\n"
+            "Drawing text (excerpt): " + " ".join(p.text for p in pages)[:3000]
+        )
+        files, ref_warnings = prepare(job.references, context, claude.select_reference_pages, MAX_REF_PAGES, progress)
+        progress(f"Uploading {len(files)} reference document(s)")
+        refs = claude.upload_references(files)
     try:
-        return _run(job, pages, refs, progress)
+        result = _run(job, pages, refs, progress)
+        result.reference_pages = report(job.references)
+        result.warnings = ref_warnings + result.warnings
+        return result
     finally:
         claude.delete_references(refs)
 
