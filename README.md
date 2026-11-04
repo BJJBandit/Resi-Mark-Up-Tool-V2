@@ -63,6 +63,7 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `ANTHROPIC_SHEET_EFFORT` | `medium` | Reasoning depth for step 3 (placing the mark-ups on each sheet) |
 | `ANTHROPIC_TIMEOUT_S` | `1800` | Max seconds a Claude stream may sit silent before it is retried once |
 | `ANTHROPIC_MAX_TOKENS` | `64000` | Output cap per Claude call (thinking counts toward it); a cut-off call retries once at 128000 |
+| `LINTEL_MAX_SPAN_DEPTH` | `20` | Lintel check: flag a lintel whose clear span exceeds this many times its depth |
 | `MIN_STRIP_FOOTING_WIDTH_MM` | `450` | Firm minimum strip footing width (see Design rules) |
 | `TITLE_BLOCK_COMPANY` | `ARETE` | Company name in the title block |
 | `TITLE_BLOCK_COMPANY_SUB` | `ENGINEERING` | Second line under the company name |
@@ -100,6 +101,14 @@ hold even if Claude slips:
   runs along at least half its length, so bearers spanning mid-room and deck beams stay
   as placed. Ends snap to the crossing walls, so footing corners close. Footing lines
   that are not on any wall are named in the warnings.
+- **Lintel check on the wall framing sheet** (`app/lintel_check.py`), after snapping. The
+  architect's window / door codes (height then width: A1812 = 1800 high x 1200 wide)
+  locate every opening. A red cloud and a warning are added for (1) an opening with no
+  lintel on a wall that has other lintels (so it is load-bearing and in scope - existing
+  walls on alteration jobs are not flagged unless the tool lintelled that wall), (2) a
+  lintel smaller than one over a narrower opening on the same wall, (3) a lintel spanning
+  more than `LINTEL_MAX_SPAN_DEPTH` (20) times its depth. Continuous lintels are skipped.
+  This is a consistency check - it does not size lintels to AS 1684.2.
 - **Piers and columns are snapped to what they support**: onto the end of a member or
   the crossing of two lines (member / wall) if one is within 5 pt, otherwise straight onto
   the nearest member (bearer, beam, edge beam, verandah beam ...) or wall line within 6 pt,

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
+from .lintel_check import check_lintels
 from .snap import (
     BEAM_TAGS,
     FOOTING_TAGS,
@@ -737,6 +738,13 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         warnings += _snap_to_drawing(src[idx], sheet, SHEET_TITLES[kind])
     except Exception as e:
         warnings.append(f"{dwg_no}: snapping to the drawing skipped ({e})")
+    if kind == SheetKind.WALLS:
+        try:
+            geo = Geometry(src[idx])
+            scale, _ = drawing_scale(src[idx], geo)
+            warnings += check_lintels(src[idx], geo, scale, sheet, SHEET_TITLES[kind])
+        except Exception as e:
+            warnings.append(f"{dwg_no}: lintel check skipped ({e})")
     try:
         m.draw_background(page, src)
     except Exception as e:
