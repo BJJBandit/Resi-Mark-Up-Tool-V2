@@ -13,7 +13,7 @@ import httpx2
 from pydantic import BaseModel, ValidationError
 
 from .pdf import PageImage
-from .rules import MIN_STRIP_WIDTH_MM
+from .rules import BEAM_WIDTH_FROM_MM, BEAM_WIDTH_TO_MM, MIN_STRIP_WIDTH_MM
 from .schemas import (
     SHEET_TITLES,
     DesignAssessment,
@@ -54,6 +54,10 @@ SYSTEM += (
     f"- FIRM RULE: every strip footing is at least {MIN_STRIP_WIDTH_MM} mm wide, even where "
     "AS 2870 or the geotechnical report would allow narrower. Always state strip footing width "
     f"explicitly (e.g. '{MIN_STRIP_WIDTH_MM}W x <DEPTH> DEEP STRIP FOOTING')."
+    f"\n- FIRM RULE: any edge, internal or stiffening beam that AS 2870 gives as "
+    f"{BEAM_WIDTH_FROM_MM} mm wide is made {BEAM_WIDTH_TO_MM} mm wide "
+    f"(+{BEAM_WIDTH_TO_MM - BEAM_WIDTH_FROM_MM} mm). State beam widths explicitly "
+    f"(e.g. '{BEAM_WIDTH_TO_MM}W x <DEPTH> DEEP EDGE BEAM')."
 )
 
 
@@ -331,7 +335,11 @@ def assess_design(
                 "6. Wall design including bracing to the nominated material standard: "
                 "racking forces for the wind class, bracing wall locations/types, tie-down, "
                 "lintels, and masonry articulation / control joints.\n"
-                "7. Floor framing or slab."
+                "7. Floor framing or slab.\n"
+                "8. Cross-reference the plan views with the elevation views for every window / door: "
+                "match each elevation to its wall, and check each opening's code, size and position "
+                "(order along the wall, distance from corners) agree. List every discrepancy in "
+                "opening_crosscheck; leave it empty only if they all agree."
             ),
         }
     )
@@ -387,7 +395,8 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "WALL FRAMING PLAN. Lintels L1, L2 ... as 'member' over each opening in a load-bearing "
         "wall, double studs DS, columns C, and every bracing panel as 'bracing' (type and length "
         "from the bracing standard for this job's racking force and wind class). "
-        "For masonry / blockwork show control and articulation joints as 'member' CJ1 / AJ1. "
+        "Do NOT show articulation or control joints here - they go on the separate articulation "
+        "joint sheet drawn on the elevations. "
         "LINTELS: every window and door in a load-bearing or external wall gets a lintel - including "
         "the entry door, sliding doors and sidelights. Architect's codes give height then width in "
         "hundreds of mm (e.g. a code 'A1812' is 1800 high x 1200 wide); use the width for the "
@@ -401,10 +410,23 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "FOOTING PLAN to AS 2870 and the geotech report. Edge beams / strip footings EB / SF "
         "as 'member' around the perimeter, internal beams IB, slab thickenings, piers "
         "'pier' (corners and max spacing), pads under point loads, step-downs. Strip footings "
-        f"are never narrower than {MIN_STRIP_WIDTH_MM} mm. Callouts give each footing's size and "
+        f"are never narrower than {MIN_STRIP_WIDTH_MM} mm, and edge / internal beams that AS 2870 "
+        f"gives as {BEAM_WIDTH_FROM_MM} wide are {BEAM_WIDTH_TO_MM} wide. Callouts give each footing's size and "
         "reinforcement as determined for this job. Schedule = 'FOOTING SCHEDULE:'. Notes: the "
         "footing, site preparation and drainage notes this site needs. Classification: "
         "'AS2870 SITE CLASSIFICATION: <class>'."
+    ),
+    SheetKind.ARTICULATION: (
+        "ARTICULATION JOINT ELEVATIONS - masonry only. Use the ELEVATION page (not a plan): choose "
+        "the page with the elevations and set plan_region around all of them (exclude the title "
+        "block). Draw each vertical articulation joint (AJ) - or control joint (CJ) for blockwork - "
+        "as a 'member' VERTICAL line on the elevation, from the top of the masonry down to the "
+        "footing / ground line, at the positions the masonry standard and this site class require "
+        "(maximum spacings, near corners and changes of height, beside openings). A joint NEVER "
+        "passes through a window or door: put it at the jamb (side) of the opening. Cross-reference "
+        "the plan for wall lengths, corners and openings so each joint is at the right place on its "
+        "wall. Callouts give the joint width / sealant / ties for this job. Schedule = "
+        "'ARTICULATION JOINT SCHEDULE:'. Classification: 'AS2870 SITE CLASSIFICATION: <class>'."
     ),
     SheetKind.FLOOR: (
         "FLOOR FRAMING PLAN. Suspended floors: bearers B as 'member', joists J as 'span' "

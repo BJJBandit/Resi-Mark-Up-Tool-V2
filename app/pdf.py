@@ -9,7 +9,9 @@ from dataclasses import dataclass
 
 import pymupdf
 
-from .lintel_check import check_lintels
+from .elevation import cross_check, snap_joint_elevation
+from .elevation import find_openings as find_elevation_openings
+from .lintel_check import check_lintels, find_openings
 from .snap import (
     BEAM_TAGS,
     FOOTING_TAGS,
@@ -614,6 +616,32 @@ def _is_lintel(e: Element) -> bool:
     return e.kind == "member" and _prefix(e.tag) == "L"
 
 
+def _lintel_from_codes(p: pymupdf.Point, q: pymupdf.Point, coded) -> tuple[pymupdf.Point, pymupdf.Point] | None:
+    """Fallback lintel snap: onto the architect's coded opening (A1812 ...) it sits
+    over - same wall direction, within reach across, overlapping it. Bearing ~10%
+    of the span (max 3 pt) each side."""
+    horiz = abs(q.x - p.x) >= abs(q.y - p.y)
+    lo, hi = sorted((p.x, q.x) if horiz else (p.y, q.y))
+    c0 = (p.y + q.y) / 2 if horiz else (p.x + q.x) / 2
+    best = None
+    for o in coded:
+        if o.horizontal != horiz or abs(o.c - c0) > 12:
+            continue
+        width = o.a1 - o.a0
+        overlap = min(hi, o.a1) - max(lo, o.a0)
+        if overlap < 0.3 * width:
+            continue
+        score = abs((lo + hi) / 2 - (o.a0 + o.a1) / 2) + abs(o.c - c0)
+        if best is None or score < best[0]:
+            best = (score, o)
+    if best is None:
+        return None
+    o = best[1]
+    bear = min(3.0, 0.1 * (o.a1 - o.a0))
+    s, e = o.a0 - bear, o.a1 + bear
+    return (pymupdf.Point(s, o.c), pymupdf.Point(e, o.c)) if horiz else (pymupdf.Point(o.c, s), pymupdf.Point(o.c, e))
+
+
 def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> list[str]:
     """Move members onto the real geometry of a vector drawing (see snap.py):
     lintels onto their openings; footings, bearers and beams onto the walls they run
@@ -651,8 +679,22 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
 
     warnings: list[str] = []
     missed: list[str] = []
+    # The architect's coded openings (A1812 = 1800 high x 1200 wide ...) on this page.
+    coded = []
+    if lintels:
+        scale, _ = drawing_scale(src_page, geo)
+        if scale:
+            try:
+                coded = find_openings(src_page, geo, scale)
+            except Exception:
+                coded = []
     for i in lintels:
-        r = snap_span(geo, *pts(sheet.elements[i]))
+        # The architect's code picks WHICH opening; its jamb lines then give the exact edges.
+        rc = _lintel_from_codes(*pts(sheet.elements[i]), coded)
+        if rc is not None:
+            r = snap_span(geo, *rc) or rc
+        else:
+            r = snap_span(geo, *pts(sheet.elements[i]))
         if r is None:
             missed.append(sheet.elements[i].tag)
         else:
@@ -730,16 +772,64 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
     return warnings
 
 
-def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet, dwg_no: str) -> tuple[list[str], list[str]]:
+def _articulation(src_page: pymupdf.Page, sheet: MarkupSheet, plan_page: pymupdf.Page | None,
+                  region: pymupdf.Rect, title: str) -> list[str]:
+    """Articulation sheet (on the elevation page): joints vertical and out of every
+    window / door seen in the elevations; cross-check the elevation openings with the
+    plan's coded openings."""
+    geo = Geometry(src_page)
+    if not geo.usable:
+        return [f"{title}: elevation has no vector line work (scanned?) - check no joint passes through "
+                "a window or door"]
+    scale, _ = drawing_scale(src_page, geo)
+    openings = [r for r in find_elevation_openings(geo, scale) if region.contains(r)]
+    w, h = src_page.rect.width, src_page.rect.height
+    moved = []
+    for i, e in enumerate(sheet.elements):
+        if e.kind != "member" or _prefix(e.tag) not in ("AJ", "CJ"):
+            continue
+        p = pymupdf.Point(e.start.x * w, e.start.y * h)
+        q = pymupdf.Point(e.end.x * w, e.end.y * h)
+        a, b, note = snap_joint_elevation(p, q, openings)
+        sheet.elements[i] = e.model_copy(update={"start": Point(x=a.x / w, y=a.y / h), "end": Point(x=b.x / w, y=b.y / h)})
+        if note:
+            moved.append(e.tag)
+    warnings = []
+    if moved:
+        warnings.append(f"{title}: joint(s) ran through a window / door on the elevation and were moved to its "
+                        f"jamb, check: {', '.join(moved)}")
+    if plan_page is not None and scale:
+        try:
+            pgeo = Geometry(plan_page)
+            pscale, _ = drawing_scale(plan_page, pgeo)
+            coded = find_openings(plan_page, pgeo, pscale) if pscale else []
+            if coded and openings:
+                for msg in cross_check([o.width_mm for o in coded], openings, scale):
+                    warnings.append(f"{title}: plan vs elevation line work - {msg} (check; doors without "
+                                    "codes, balustrades and openings the drawing reader missed also show here)")
+        except Exception:
+            pass
+    return warnings
+
+
+def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet, dwg_no: str,
+                  plan_idx: int | None = None) -> tuple[list[str], list[str]]:
     """Draw one sheet. Returns (notes that did not fit, warnings)."""
     warnings: list[str] = []
     page = _new_sheet(out, meta, SHEET_TITLES[kind], dwg_no)
     idx = min(max(sheet.source_page_number, 1), src.page_count) - 1
     m = PlanMap(src[idx], sheet.plan_region)
-    try:
-        warnings += _snap_to_drawing(src[idx], sheet, SHEET_TITLES[kind])
-    except Exception as e:
-        warnings.append(f"{dwg_no}: snapping to the drawing skipped ({e})")
+    if kind == SheetKind.ARTICULATION:
+        try:
+            plan_page = src[plan_idx] if plan_idx is not None and 0 <= plan_idx < src.page_count else None
+            warnings += _articulation(src[idx], sheet, plan_page, m.clip, SHEET_TITLES[kind])
+        except Exception as e:
+            warnings.append(f"{dwg_no}: articulation joint check skipped ({e})")
+    else:
+        try:
+            warnings += _snap_to_drawing(src[idx], sheet, SHEET_TITLES[kind])
+        except Exception as e:
+            warnings.append(f"{dwg_no}: snapping to the drawing skipped ({e})")
     if kind == SheetKind.WALLS:
         try:
             geo = Geometry(src[idx])
@@ -834,7 +924,9 @@ def build_markup_pdf(
         dwg_no = f"SSK-{n}"
         before = out.page_count
         try:
-            o, w = _markup_sheet(out, src, meta, kind, sheets[kind], dwg_no)
+            plan_sheet = sheets.get(SheetKind.WALLS) or sheets.get(SheetKind.FLOOR)
+            plan_idx = (plan_sheet.source_page_number - 1) if plan_sheet else None
+            o, w = _markup_sheet(out, src, meta, kind, sheets[kind], dwg_no, plan_idx)
             overflow += o
             warnings += w
         except Exception as e:  # keep the rest of the set

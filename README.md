@@ -64,6 +64,7 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `ANTHROPIC_TIMEOUT_S` | `1800` | Max seconds a Claude stream may sit silent before it is retried once |
 | `ANTHROPIC_MAX_TOKENS` | `64000` | Output cap per Claude call (thinking counts toward it); a cut-off call retries once at 128000 |
 | `LINTEL_MAX_SPAN_DEPTH` | `20` | Lintel check: flag a lintel whose clear span exceeds this many times its depth |
+| `BEAM_WIDTH_FROM_MM` / `BEAM_WIDTH_TO_MM` | `300` / `450` | Edge / internal beam width rule |
 | `MIN_STRIP_FOOTING_WIDTH_MM` | `450` | Firm minimum strip footing width (see Design rules) |
 | `TITLE_BLOCK_COMPANY` | `ARETE` | Company name in the title block |
 | `TITLE_BLOCK_COMPANY_SUB` | `ENGINEERING` | Second line under the company name |
@@ -79,6 +80,10 @@ hold even if Claude slips:
   change is listed as a warning on the results page. Internal beams, edge beams, piers and
   depths are not touched. Narrower strip footings recommended in the geotech report are
   flagged, not rewritten, because the report is quoted as written.
+- **Edge / internal / stiffening beams that AS 2870 gives as 300 mm wide are made 450 mm
+  wide** (300 + 150). Applied to the design assessment, schedules (EB / IB tags),
+  callouts and notes, with a warning per change; other widths, depths, bar spacings,
+  pads and piers are not touched; a 300 wide beam in the geotech report is flagged.
 
 ## Limits
 
@@ -106,6 +111,20 @@ hold even if Claude slips:
   that footing on the side Claude placed it; a mid-room bearer over a row of piers /
   columns (2 or more within 6 pt) goes onto the line through them (averaged with its own
   position), and the piers are then snapped back onto it.
+- **Articulation joints are on their own sheet, drawn on the elevations**
+  ("ARTICULATION JOINT ELEVATIONS", masonry / brick veneer / blockwork jobs only). Claude
+  draws each AJ / CJ as a vertical line on the elevation page; window / door openings are
+  found in the elevation line work (`app/elevation.py`) and any joint that runs through
+  one is moved to its jamb and made vertical, with a warning. Joints are removed from the
+  plan sheets.
+- **Plans and elevations are cross-referenced for openings**: Claude matches each
+  elevation to its wall and checks every opening's code, size and position, listing any
+  discrepancy as a warning; a secondary line-work comparison of opening widths (plan codes
+  vs elevation frames) is also reported for checking.
+- **Lintels use the architect's opening codes**: the code picks which opening a lintel
+  belongs to, then the opening's jamb lines give its exact edges (codes alone if the jambs
+  can't be read). Brick veneer walls (several face lines) are recognised as walls; only
+  decking / stair treads (7+ identical parallels) are excluded.
 - **Lintel check on the wall framing sheet** (`app/lintel_check.py`), after snapping. The
   architect's window / door codes (height then width: A1812 = 1800 high x 1200 wide)
   locate every opening. A red cloud and a warning are added for (1) an opening with no

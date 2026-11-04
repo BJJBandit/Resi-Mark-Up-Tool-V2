@@ -475,6 +475,12 @@ def snap_bracing(geo: Geometry, p: pymupdf.Point, q: pymupdf.Point, length_pt: f
 # ---------------------------------------------------------------------------
 
 
+def is_decking(geo: Geometry, horizontal: bool, c: float, lo: float, hi: float) -> bool:
+    segs = geo.h if horizontal else geo.v
+    same = [g for g in segs if abs(g.c - c) <= 20 and abs(g.a - lo) <= 6 and abs(g.b - hi) <= 6]
+    return len({round(g.c, 1) for g in same}) >= 7
+
+
 def _wall_runs(geo: Geometry, horizontal: bool, min_len: float = 20.0) -> list[tuple[float, float, float, float]]:
     """Continuous walls (c, lo, hi, thickness): wall pieces on the same centreline
     joined across gaps <= 3 pt (jambs, junctions), keeping those >= min_len long."""
@@ -498,10 +504,10 @@ def _wall_runs(geo: Geometry, horizontal: bool, min_len: float = 20.0) -> list[t
     def overlap(a, b) -> float:
         return max(0.0, min(a[2], b[2]) - max(a[1], b[1])) / max(1e-6, min(a[2] - a[1], b[2] - b[1]))
 
-    # Decking, stair treads and hatching are many evenly spaced parallel lines whose
-    # pairs look like walls; a real wall has at most a couple of neighbours that close.
-    out = [w for w in long
-           if sum(1 for v in long if v is not w and abs(v[0] - w[0]) <= 8 and overlap(v, w) > 0.5) < 3]
+    # Decking and stair treads are many identical parallel lines whose pairs look like
+    # walls. A masonry / veneer wall has at most ~5 face lines, so count the actual
+    # lines of the same extent in a 40 pt band: 7 or more is decking, not a wall.
+    out = [w for w in long if not is_decking(geo, horizontal, w[0], w[1], w[2])]
     cache[key] = out
     return out
 

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 import pymupdf
 
 from .schemas import Element, MarkupSheet, Point
-from .snap import Geometry, _solid, mm_to_pt
+from .snap import Geometry, _solid, is_decking, mm_to_pt
 
 CODE = re.compile(r"^(SD|SL|SW|AW|A|DH|D|FD|FG|F|W|BF|GD|CS|S)(\d{2})(\d{2})$")
 # Sanity limit on a single lintel's clear span to depth; spans beyond it are flagged
@@ -57,12 +57,9 @@ def _runs(geo: Geometry, horizontal: bool) -> list[tuple[float, float, float, fl
         else:
             runs.append([c, lo, hi, t])
     runs = [r for r in runs if r[2] - r[1] >= 15]
-    # Decking / stair treads: many parallels a few pt apart that start and end
-    # together. (Perimeter walls and the eaves lines beside them don't line up.)
-    def boards(r: list[float]) -> int:
-        return sum(1 for v in runs if v is not r and abs(v[0] - r[0]) <= 8
-                   and abs(v[1] - r[1]) <= 5 and abs(v[2] - r[2]) <= 5)
-    return [tuple(r) for r in runs if boards(r) < 3]
+    # Decking / stair treads (many identical parallels) are not walls; masonry and
+    # veneer walls (a few face lines) are kept.
+    return [tuple(r) for r in runs if not is_decking(geo, horizontal, r[0], r[1], r[2])]
 
 
 def _code_labels(page: pymupdf.Page) -> list[tuple[str, float, float, bool]]:

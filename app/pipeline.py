@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
@@ -9,7 +10,7 @@ from typing import Callable
 from . import claude
 from .pdf import build_markup_pdf, render_pages
 from .refpages import MAX_REF_PAGES, RefDoc, prepare, report
-from .rules import apply_strip_rule, check_geotech_strip
+from .rules import apply_rules, check_geotech
 from .schemas import SHEET_TITLES, DesignAssessment, GeotechReview, MarkupSheet, SheetKind
 
 
@@ -40,6 +41,15 @@ class JobResult:
     reference_pages: list[dict] = field(default_factory=list)  # pages of each standard / guide used
     warnings: list[str] = field(default_factory=list)
     pdf: bytes = b""
+
+
+def _joint(tag: str) -> bool:
+    return re.match(r"\s*(AJ|CJ)\d*\b", tag or "", re.I) is not None
+
+
+def _masonry(design: DesignAssessment) -> bool:
+    text = f"{design.external_wall_type} {design.framing_material} {design.governing_standard}"
+    return re.search(r"brick|masonry|block|veneer|AS ?3700|AS ?4773", text, re.I) is not None
 
 
 def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobResult:
@@ -73,22 +83,29 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
     progress("Step 2: reviewing architectural drawings")
     design = claude.assess_design(pages, geotech, job.construction, job.notes, refs)
     result = JobResult(geotech=geotech, design=design, references=[r.title for r in refs])
-    # Firm rules are enforced on the output, not just requested in the prompt.
-    result.warnings += check_geotech_strip([*geotech.recommendations, geotech.founding])
-    result.warnings += apply_strip_rule(design, "Design assessment")
+    # Claude's cross-reference of the plan and elevation views.
+    result.warnings += [f"Plan vs elevations: {x}" for x in design.opening_crosscheck]
+    # Firm (office) rules are enforced on the output, not just requested in the prompt.
+    result.warnings += check_geotech([*geotech.recommendations, geotech.founding])
+    result.warnings += apply_rules(design, "Design assessment")
 
     sheet_warnings: dict[SheetKind, list[str]] = {}
 
     def make(kind: SheetKind) -> None:
         try:
             sheet = claude.plan_sheet(kind, pages, geotech, design, refs)
-            sheet_warnings[kind] = apply_strip_rule(sheet, SHEET_TITLES[kind])
+            if kind != SheetKind.ARTICULATION:
+                # Articulation / control joints belong on the elevation sheet only.
+                dropped = [e for e in sheet.elements if e.kind == "member" and _joint(e.tag)]
+                if dropped:
+                    sheet.elements = [e for e in sheet.elements if e not in dropped]
+            sheet_warnings[kind] = apply_rules(sheet, SHEET_TITLES[kind])
             result.sheets[kind] = sheet
         except Exception as e:  # keep the other sheets if one fails
             result.sheet_errors[kind] = str(e) or type(e).__name__
 
-    kinds = list(SheetKind)
-    progress("Step 3: marking up sheets (1 of 5)")
+    kinds = [k for k in SheetKind if k != SheetKind.ARTICULATION or _masonry(design)]
+    progress(f"Step 3: marking up sheets (1 of {len(kinds)})")
     make(kinds[0])  # first call warms the prompt cache for the rest
     progress("Step 3: marking up remaining sheets")
     with ThreadPoolExecutor(max_workers=4) as pool:
