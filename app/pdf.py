@@ -9,8 +9,10 @@ from dataclasses import dataclass
 
 import pymupdf
 
+from .snap import Geometry, snap_span
 from .schemas import (
     SHEET_TITLES,
+    Point,
     DesignAssessment,
     Element,
     GeotechReview,
@@ -592,12 +594,53 @@ def _new_sheet(out: pymupdf.Document, meta: SheetMeta, title: str, dwg_no: str) 
     return page
 
 
+def _is_lintel(e: Element) -> bool:
+    return e.kind == "member" and _prefix(e.tag) == "L"
+
+
+def _snap_lintels(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> list[str]:
+    """Move lintels onto the real openings in a vector drawing (see snap.py).
+    Returns warnings naming any lintel left where Claude placed it."""
+    lintels = [i for i, e in enumerate(sheet.elements) if _is_lintel(e)]
+    if not lintels:
+        return []
+    try:
+        geo = Geometry(src_page)
+    except Exception:
+        geo = None
+    if geo is None or not geo.usable:
+        return [f"{title}: drawing has no vector line work (scanned?) - lintels are placed from "
+                "Claude's reading of the image; check they line up with the openings"]
+    w, h = src_page.rect.width, src_page.rect.height
+    missed: list[str] = []
+    for i in lintels:
+        e = sheet.elements[i]
+        p = pymupdf.Point(e.start.x * w, e.start.y * h)
+        q = pymupdf.Point(e.end.x * w, e.end.y * h)
+        r = snap_span(geo, p, q)
+        if r is None:
+            missed.append(e.tag)
+            continue
+        sheet.elements[i] = e.model_copy(update={
+            "start": Point(x=r[0].x / w, y=r[0].y / h),
+            "end": Point(x=r[1].x / w, y=r[1].y / h),
+        })
+    if missed:
+        return [f"{title}: {len(lintels) - len(missed)} of {len(lintels)} lintels snapped to openings in the "
+                f"drawing; left as placed by Claude, check: {', '.join(missed)}"]
+    return []
+
+
 def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet, dwg_no: str) -> tuple[list[str], list[str]]:
     """Draw one sheet. Returns (notes that did not fit, warnings)."""
     warnings: list[str] = []
     page = _new_sheet(out, meta, SHEET_TITLES[kind], dwg_no)
     idx = min(max(sheet.source_page_number, 1), src.page_count) - 1
     m = PlanMap(src[idx], sheet.plan_region)
+    try:
+        warnings += _snap_lintels(src[idx], sheet, SHEET_TITLES[kind])
+    except Exception as e:
+        warnings.append(f"{dwg_no}: lintel snapping skipped ({e})")
     try:
         m.draw_background(page, src)
     except Exception as e:
