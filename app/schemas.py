@@ -180,3 +180,18 @@ class MarkupSheet(Strict):
     legend: list[ScheduleItem]
     elements: list[Element]
     notes: list[str] = Field(description="Sheet notes in UPPERCASE, each starting with '-'.")
+
+
+# ---------------------------------------------------------------------------
+# Reference documents - which pages of a standard / guide the review needs
+# ---------------------------------------------------------------------------
+
+
+class RefSection(Strict):
+    title: str = Field(description="Section / clause / table title, e.g. 'Section 8 Racking and shear force'.")
+    pdf_pages: str = Field(description="PDF page numbers (the 'p' numbers in the page map), e.g. '45-60, 72'.")
+    why: str = Field(description="One line: which part of this review needs it.")
+
+
+class RefSelection(Strict):
+    sections: list[RefSection]

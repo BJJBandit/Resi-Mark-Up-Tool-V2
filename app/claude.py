@@ -440,3 +440,44 @@ def plan_sheet(
         }
     )
     return _call(content, MarkupSheet, f"Step 3 ({SHEET_TITLES[kind]})", effort=SHEET_EFFORT)
+
+
+# ---------------------------------------------------------------------------
+# Reference documents: choose the pages the review needs from the contents
+# ---------------------------------------------------------------------------
+
+REVIEW_TOPICS = """This review needs, for a residential (Class 1/10) building:
+- site classification and footing / slab design (AS 2870: classification, deemed-to-satisfy
+  footing and slab details, edge and internal beams, strip footings, piers, articulation)
+- wind classification and its use (AS 4055) where the document covers it
+- wall framing: racking forces, bracing types and capacities, bracing layout, nominal bracing
+- tie-down / fixings and connections for the wind class
+- span tables for lintels, beams, bearers, joists, rafters, ridge / hip / valley members,
+  underpurlins, verandah beams and posts (and the matching supplements / span tables)
+- masonry: articulation and control joints, lintels, veneer ties (AS 4773 / AS 3700)
+- floor framing / slab details relevant to the drawings"""
+
+
+def select_reference_pages(doc, bookmarks: str, contents: str, pmap: str, context: str, budget: int) -> list[dict]:
+    """Ask Claude which PDF pages of a standard / guide this job needs."""
+    from .refpages import parse_selection
+    from .schemas import RefSelection
+
+    text = (
+        f"Document: {doc.stem} ({doc.page_count} pages)\n\n"
+        f"Job context:\n{context}\n\n{REVIEW_TOPICS}\n\n"
+        + (f"Bookmarks (title -> PDF page):\n{bookmarks}\n\n" if bookmarks else "")
+        + (f"Contents pages (printed page numbers):\n{contents}\n\n" if contents else "")
+        + "Page map - first lines of every PDF page (pNN = PDF page number; printed page numbers "
+        "and section headings appear in the text, so use this to convert contents entries to PDF pages):\n"
+        f"{pmap}\n\n"
+        "Choose ONLY the sections, clauses and tables of this document that this job's review needs. "
+        "Return PDF page numbers (the pNN numbers), not printed page numbers. Include a table's "
+        "continuation pages and any notes pages it depends on. Skip front matter, commentary, "
+        f"appendices and topics this job does not need. Use at most {budget} pages in total - "
+        "usually far fewer."
+    )
+    result = _call([{"type": "text", "text": text}], RefSelection,
+                   f"Selecting pages from {doc.stem}", max_tokens=16000, effort="low")
+    return [{"title": s.title, "why": s.why, "pages": parse_selection(s.pdf_pages, doc.page_count)}
+            for s in result.sections]

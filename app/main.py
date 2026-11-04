@@ -14,7 +14,8 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from . import pipeline
-from .pdf import check_pages, extract_pages, format_ranges, parse_page_range
+from .pdf import check_pages, parse_page_range
+from .refpages import MAX_REF_PAGES, RefDoc
 from .schemas import SHEET_TITLES
 
 app = FastAPI(title="Resi Mark-Up Tool")
@@ -22,7 +23,6 @@ app = FastAPI(title="Resi Mark-Up Tool")
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text()
 MAX_UPLOAD = 30 * 1024 * 1024  # Claude request limit is 32 MB
 MAX_REF_UPLOAD = 100 * 1024 * 1024  # references go via the Files API, not inline
-MAX_REF_PAGES = 500  # Claude reads at most 600 PDF pages per request
 
 
 @dataclass
@@ -101,35 +101,35 @@ async def create_job(
     except ValueError as e:
         raise HTTPException(400, str(e))
 
-    refs: list[tuple[str, bytes]] = []
-    ref_pages = 0
+    refs: list[RefDoc] = []
+    manual_pages = 0
     for i, f in enumerate(references):
         data = await _read(f, f"Reference '{f.filename}'", MAX_REF_UPLOAD)
         if data is None:
             continue
         name = f.filename or "reference.pdf"
-        spec = reference_pages[i] if i < len(reference_pages) else ""
+        spec = (reference_pages[i] if i < len(reference_pages) else "").strip()
         try:
             with pymupdf.open(stream=data, filetype="pdf") as doc:
                 count = doc.page_count
         except Exception:
             raise HTTPException(400, f"Reference '{name}' could not be opened as a PDF.")
+        if not spec:  # blank: pages chosen automatically from the contents during the review
+            refs.append(RefDoc(name, data, count))
+            continue
         try:
-            ref_sel = parse_page_range(spec, count, "document")
+            sel = parse_page_range(spec, count, "document")
         except ValueError as e:
             raise HTTPException(400, f"Reference '{name}': {e}")
-        ref_pages += len(ref_sel)
-        if len(ref_sel) < count:
-            stem = name.rsplit(".", 1)[0]
-            name = f"{stem} (pages {format_ranges(ref_sel)} of {count}).pdf"
-            data = extract_pages(data, ref_sel)
-        refs.append((name, data))
-    if ref_pages > MAX_REF_PAGES:
+        manual_pages += len(sel)
+        how = "whole document (all)" if len(sel) == count else "chosen on the form"
+        refs.append(RefDoc(name, data, count, sel, how))
+    if manual_pages > MAX_REF_PAGES:
         raise HTTPException(
             413,
-            f"Reference documents total {ref_pages} selected pages; the limit is {MAX_REF_PAGES}. "
-            "Use each document's 'Pages to review' box to pick the relevant sections "
-            "(e.g. the AS 1684 bracing and tie-down chapters).",
+            f"Reference documents total {manual_pages} selected pages; the limit is {MAX_REF_PAGES}. "
+            "Leave a document's 'Pages to review' blank to pick the relevant sections from its contents, "
+            "or enter a smaller range.",
         )
     inp = pipeline.JobInput(
         project=project.strip(),
@@ -165,6 +165,7 @@ def job_status(job_id: str) -> dict:
     body: dict = {"status": job.status, "step": job.step, "error": job.error}
     if job.result:
         body["references"] = job.result.references
+        body["reference_pages"] = job.result.reference_pages
         body["warnings"] = job.result.warnings
         body["sheet_errors"] = {SHEET_TITLES[k]: v for k, v in job.result.sheet_errors.items()}
         body["summary"] = {
@@ -207,6 +208,7 @@ def job_json(job_id: str) -> JSONResponse:
                     "sheets": {k.value: v.model_dump() for k, v in r.sheets.items()},
                     "sheet_errors": {k.value: v for k, v in r.sheet_errors.items()},
                     "warnings": r.warnings,
+                    "reference_pages": r.reference_pages,
                 }
             )
         )

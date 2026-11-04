@@ -82,11 +82,15 @@ hold even if Claude slips:
 ## Limits
 
 - Architectural sets can have up to 60 pages (`MAX_DRAWING_PAGES`), and each upload must be under 30 MB. Use **Drawing pages to review** (e.g. `3-12, 15`) to skip covers, 3D renders and BASIX pages: fewer pages is faster and cheaper. Large sets are sent at a lower image resolution so they fit in one request.
-- Reference documents can be up to 100 MB each. Give each one a **Pages to review**
-  range (e.g. `45-60, 72`) so only those pages are sent; the selected pages across all
-  documents can total up to 500. Every selected page is read on every step, so pick only
-  the relevant sections (for example AS 1684.2 bracing and tie-down, and the AS 2870
-  footing tables). That keeps the review faster and cheaper.
+- Reference documents (standards, guides, codes) can be up to 100 MB each. Leave a
+  document's **Pages to review** blank and the app reads its bookmarks, contents pages and
+  the first lines of every page, asks Claude which sections this job needs (footings,
+  bracing, tie-down, span tables ...), and sends only those pages (`app/refpages.py`).
+  The results page lists, for every document, the pages used, the sections they cover and
+  why. Type a range (e.g. `45-60, 72`) to choose yourself, or `all` for the whole document.
+  Documents of 25 pages or less are sent whole. If a long document's contents can't be
+  read (a scan) or no relevant section is found, it is not sent and a warning asks for its
+  pages. The pages sent across all documents total at most 500.
 - Mark-up positions come from Claude reading the page image, so they are approximate;
   check them and drag them into place in your PDF editor.
 - **Footings, bearers and beams are snapped to the walls** in a CAD-exported drawing:
