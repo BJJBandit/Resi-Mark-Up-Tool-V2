@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
-from .snap import Geometry, snap_span
+from .snap import BEAM_TAGS, FOOTING_TAGS, Geometry, snap_members, snap_span
 from .schemas import (
     SHEET_TITLES,
     Point,
@@ -598,37 +598,58 @@ def _is_lintel(e: Element) -> bool:
     return e.kind == "member" and _prefix(e.tag) == "L"
 
 
-def _snap_lintels(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> list[str]:
-    """Move lintels onto the real openings in a vector drawing (see snap.py).
-    Returns warnings naming any lintel left where Claude placed it."""
+def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> list[str]:
+    """Move members onto the real geometry of a vector drawing (see snap.py):
+    lintels onto their openings; footings, bearers and beams onto the walls they run
+    along. Returns warnings naming anything that should have snapped but didn't."""
     lintels = [i for i, e in enumerate(sheet.elements) if _is_lintel(e)]
-    if not lintels:
+    walled = [i for i, e in enumerate(sheet.elements)
+              if e.kind == "member" and _prefix(e.tag) in FOOTING_TAGS | BEAM_TAGS]
+    if not lintels and not walled:
         return []
     try:
         geo = Geometry(src_page)
     except Exception:
         geo = None
     if geo is None or not geo.usable:
-        return [f"{title}: drawing has no vector line work (scanned?) - lintels are placed from "
-                "Claude's reading of the image; check they line up with the openings"]
+        return [f"{title}: drawing has no vector line work (scanned?) - members are placed from "
+                "Claude's reading of the image; check lintels, bearers and beams line up"]
     w, h = src_page.rect.width, src_page.rect.height
-    missed: list[str] = []
-    for i in lintels:
-        e = sheet.elements[i]
-        p = pymupdf.Point(e.start.x * w, e.start.y * h)
-        q = pymupdf.Point(e.end.x * w, e.end.y * h)
-        r = snap_span(geo, p, q)
-        if r is None:
-            missed.append(e.tag)
-            continue
-        sheet.elements[i] = e.model_copy(update={
+
+    def pts(e: Element) -> tuple[pymupdf.Point, pymupdf.Point]:
+        return pymupdf.Point(e.start.x * w, e.start.y * h), pymupdf.Point(e.end.x * w, e.end.y * h)
+
+    def put(i: int, r) -> None:
+        sheet.elements[i] = sheet.elements[i].model_copy(update={
             "start": Point(x=r[0].x / w, y=r[0].y / h),
             "end": Point(x=r[1].x / w, y=r[1].y / h),
         })
+
+    warnings: list[str] = []
+    missed: list[str] = []
+    for i in lintels:
+        r = snap_span(geo, *pts(sheet.elements[i]))
+        if r is None:
+            missed.append(sheet.elements[i].tag)
+        else:
+            put(i, r)
     if missed:
-        return [f"{title}: {len(lintels) - len(missed)} of {len(lintels)} lintels snapped to openings in the "
-                f"drawing; left as placed by Claude, check: {', '.join(missed)}"]
-    return []
+        warnings.append(f"{title}: {len(lintels) - len(missed)} of {len(lintels)} lintels snapped to openings in the "
+                        f"drawing; left as placed by Claude, check: {', '.join(missed)}")
+
+    if walled:
+        results = snap_members(geo, [(_prefix(sheet.elements[i].tag), *pts(sheet.elements[i])) for i in walled])
+        off_wall_footings = []
+        for i, r in zip(walled, results):
+            if r is not None:
+                put(i, r)
+            elif _prefix(sheet.elements[i].tag) in FOOTING_TAGS:
+                off_wall_footings.append(sheet.elements[i].tag)
+        if off_wall_footings:
+            # Bearers / beams can legitimately span mid-room; footings normally sit under walls.
+            warnings.append(f"{title}: footing line(s) not on a wall in the drawing, left as placed by Claude, "
+                            f"check: {', '.join(off_wall_footings)}")
+    return warnings
 
 
 def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet, dwg_no: str) -> tuple[list[str], list[str]]:
@@ -638,9 +659,9 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     idx = min(max(sheet.source_page_number, 1), src.page_count) - 1
     m = PlanMap(src[idx], sheet.plan_region)
     try:
-        warnings += _snap_lintels(src[idx], sheet, SHEET_TITLES[kind])
+        warnings += _snap_to_drawing(src[idx], sheet, SHEET_TITLES[kind])
     except Exception as e:
-        warnings.append(f"{dwg_no}: lintel snapping skipped ({e})")
+        warnings.append(f"{dwg_no}: snapping to the drawing skipped ({e})")
     try:
         m.draw_background(page, src)
     except Exception as e:

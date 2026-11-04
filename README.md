@@ -89,6 +89,13 @@ hold even if Claude slips:
   footing tables). That keeps the review faster and cheaper.
 - Mark-up positions come from Claude reading the page image, so they are approximate;
   check them and drag them into place in your PDF editor.
+- **Footings, bearers and beams are snapped to the walls** in a CAD-exported drawing:
+  edge beams / strip footings / internal beams (EB, SF, IB) go on the wall centreline, and
+  bearers / beams / ledgers (B, VB, RB, LD) too, or about 3 pt beside a footing line
+  already on that wall (house style, so both lines show). A member only snaps when a wall
+  runs along at least half its length, so bearers spanning mid-room and deck beams stay
+  as placed. Ends snap to the crossing walls, so footing corners close. Footing lines
+  that are not on any wall are named in the warnings.
 - **Lintels are snapped to the openings** when the architectural PDF is a CAD export
   (vector line work): each lintel is moved onto the wall centreline, from jamb to jamb
   plus about one wall thickness of bearing each side (`app/snap.py`). Where no clear
