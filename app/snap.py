@@ -439,3 +439,77 @@ def snap_bracing(geo: Geometry, p: pymupdf.Point, q: pymupdf.Point, length_pt: f
     if horizontal:
         return pymupdf.Point(s, cc), pymupdf.Point(e, cc), note
     return pymupdf.Point(cc, s), pymupdf.Point(cc, e), note
+
+
+# ---------------------------------------------------------------------------
+# Joists and rafters: ends onto their supports
+# ---------------------------------------------------------------------------
+
+
+def _wall_runs(geo: Geometry, horizontal: bool, min_len: float = 20.0) -> list[tuple[float, float, float, float]]:
+    """Continuous walls (c, lo, hi, thickness): wall pieces on the same centreline
+    joined across gaps <= 3 pt (jambs, junctions), keeping those >= min_len long."""
+    key = ("runs", horizontal, min_len)
+    cache = geo.__dict__.setdefault("_cache", {})
+    if key in cache:
+        return cache[key]
+    pieces = sorted(geo.walls[0] if horizontal else geo.walls[1], key=lambda w: (round(w[0]), w[1]))
+    runs: list[list[float]] = []  # c, lo, hi, t, n
+    for c, lo, hi, t in pieces:
+        for r in runs:
+            if abs(r[0] - c) <= 1.0 and lo <= r[2] + 3 and hi >= r[1] - 3:
+                r[1], r[2] = min(r[1], lo), max(r[2], hi)
+                r[3] = (r[3] * r[4] + t) / (r[4] + 1)
+                r[4] += 1
+                break
+        else:
+            runs.append([c, lo, hi, t, 1])
+    long = [(r[0], r[1], r[2], r[3]) for r in runs if r[2] - r[1] >= min_len]
+
+    def overlap(a, b) -> float:
+        return max(0.0, min(a[2], b[2]) - max(a[1], b[1])) / max(1e-6, min(a[2] - a[1], b[2] - b[1]))
+
+    # Decking, stair treads and hatching are many evenly spaced parallel lines whose
+    # pairs look like walls; a real wall has at most a couple of neighbours that close.
+    out = [w for w in long
+           if sum(1 for v in long if v is not w and abs(v[0] - w[0]) <= 8 and overlap(v, w) > 0.5) < 3]
+    cache[key] = out
+    return out
+
+SPAN_TAGS = {"J", "R", "T"}  # joists, rafters, trusses (span arrows and representative members)
+
+Support = tuple[bool, float, float, float]  # horizontal?, centre c, lo, hi along the support
+
+
+def snap_span_ends(
+    geo: Geometry, p: pymupdf.Point, q: pymupdf.Point, supports: list[Support] = []
+) -> tuple[pymupdf.Point, pymupdf.Point, int] | None:
+    """Move each end of a joist / rafter line onto the support it bears on: the
+    nearest wall centreline, or bearer / beam / ledger on this sheet, that crosses
+    the line within reach of that end. The line keeps its position across the
+    room (a representative joist can sit anywhere along its supports). An end with
+    no support nearby stays put. Returns (p, q, ends moved) or None."""
+    horizontal = abs(q.x - p.x) >= abs(q.y - p.y)
+    a0, a1 = (p.x, q.x) if horizontal else (p.y, q.y)
+    pos = (p.y + q.y) / 2 if horizontal else (p.x + q.x) / 2
+    span = abs(a1 - a0)
+    if span < 8:
+        return None
+    end_tol = min(12.0, max(6.0, 0.15 * span))
+    # Supports cross the line: real walls (continuous runs >= 20 pt, so joinery,
+    # shelving and benchtops don't count) and members on this sheet, perpendicular to it.
+    cands = [(c, lo - t - 1, hi + t + 1) for c, lo, hi, t in _wall_runs(geo, not horizontal)]
+    cands += [(c, lo - 1, hi + 1) for h, c, lo, hi in supports if h != horizontal]
+    cands = [(c, lo, hi) for c, lo, hi in cands if lo <= pos <= hi]
+
+    def snap(v: float, other: float) -> float:
+        near = [c for c, _, _ in cands if abs(c - v) <= end_tol and abs(c - other) > 0.5 * span]
+        return min(near, key=lambda c: abs(c - v)) if near else v
+
+    b0, b1 = snap(a0, a1), snap(a1, a0)
+    moved = (abs(b0 - a0) > 0.05) + (abs(b1 - a1) > 0.05)
+    if abs(b1 - b0) < 0.5 * span:  # collapsed: keep Claude's
+        return None
+    if horizontal:
+        return pymupdf.Point(b0, p.y), pymupdf.Point(b1, q.y), moved
+    return pymupdf.Point(p.x, b0), pymupdf.Point(q.x, b1), moved

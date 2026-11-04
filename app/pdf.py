@@ -12,6 +12,7 @@ import pymupdf
 from .snap import (
     BEAM_TAGS,
     FOOTING_TAGS,
+    SPAN_TAGS,
     Geometry,
     bracing_length_mm,
     drawing_scale,
@@ -19,6 +20,7 @@ from .snap import (
     snap_bracing,
     snap_members,
     snap_span,
+    snap_span_ends,
 )
 from .schemas import (
     SHEET_TITLES,
@@ -611,13 +613,17 @@ def _is_lintel(e: Element) -> bool:
 def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> list[str]:
     """Move members onto the real geometry of a vector drawing (see snap.py):
     lintels onto their openings; footings, bearers and beams onto the walls they run
-    along; bracing panels onto their walls at their scaled length, off openings.
+    along; bracing panels onto their walls at their scaled length, off openings;
+    joist / rafter ends onto the walls, bearers and beams they bear on.
     Returns warnings naming anything that should have snapped but didn't."""
     lintels = [i for i, e in enumerate(sheet.elements) if _is_lintel(e)]
     walled = [i for i, e in enumerate(sheet.elements)
               if e.kind == "member" and _prefix(e.tag) in FOOTING_TAGS | BEAM_TAGS]
     bracing = [i for i, e in enumerate(sheet.elements) if e.kind == "bracing"]
-    if not lintels and not walled and not bracing:
+    spans = [i for i, e in enumerate(sheet.elements)
+             if (e.kind in ("span", "member") and _prefix(e.tag) in SPAN_TAGS)
+             or (e.kind == "span" and not _prefix(e.tag))]
+    if not lintels and not walled and not bracing and not spans:
         return []
     try:
         geo = Geometry(src_page)
@@ -682,6 +688,20 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
                             f"{', '.join(not_on_wall)}")
         if problems:
             warnings.append(f"{title}: bracing that may be over an opening, check: {'; '.join(problems)}")
+    if spans:
+        # Supports: walls in the drawing plus this sheet's (already snapped) bearers,
+        # beams, ledgers, lintels and footings.
+        supports = []
+        for e in sheet.elements:
+            if e.kind == "member" and (_prefix(e.tag) in BEAM_TAGS | FOOTING_TAGS or _prefix(e.tag) == "L"):
+                a, b = pts(e)
+                horiz = abs(b.x - a.x) >= abs(b.y - a.y)
+                lo, hi = sorted((a.x, b.x) if horiz else (a.y, b.y))
+                supports.append((horiz, (a.y + b.y) / 2 if horiz else (a.x + b.x) / 2, lo, hi))
+        for i in spans:
+            r = snap_span_ends(geo, *pts(sheet.elements[i]), supports)
+            if r is not None and r[2]:
+                put(i, r[:2])
     return warnings
 
 
