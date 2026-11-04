@@ -87,8 +87,14 @@ hold even if Claude slips:
   documents can total up to 500. Every selected page is read on every step, so pick only
   the relevant sections (for example AS 1684.2 bracing and tie-down, and the AS 2870
   footing tables). That keeps the review faster and cheaper.
-- Mark-up positions come from Claude reading the page image. They are approximate,
-  so check them and drag them into place in your PDF editor.
+- Mark-up positions come from Claude reading the page image, so they are approximate;
+  check them and drag them into place in your PDF editor.
+- **Lintels are snapped to the openings** when the architectural PDF is a CAD export
+  (vector line work): each lintel is moved onto the wall centreline, from jamb to jamb
+  plus about one wall thickness of bearing each side (`app/snap.py`). Where no clear
+  opening is found, or two openings fit equally well, the lintel is left as Claude
+  placed it and named in the warnings. Scanned drawings have no vectors, so nothing is
+  snapped and a warning says so.
 - Jobs are kept in memory only, so download the results before the service restarts
   or redeploys.
 
