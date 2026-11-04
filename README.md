@@ -100,6 +100,12 @@ hold even if Claude slips:
   runs along at least half its length, so bearers spanning mid-room and deck beams stay
   as placed. Ends snap to the crossing walls, so footing corners close. Footing lines
   that are not on any wall are named in the warnings.
+- **Bracing panels are snapped to their walls**: drawn about 3 pt beside the wall
+  centreline (house style, on the side Claude placed them), at the exact scaled length from
+  the tag (`h(b) - 900` -> 900 mm) using the plan scale printed in the drawing set or, if
+  none is printed, inferred from the 90 mm stud walls; and slid along the wall off any
+  window (glazing line) or door (gap in the wall faces). Panels not on a wall, or with no
+  solid wall long enough nearby, are left as placed and named in the warnings.
 - **Lintels are snapped to the openings** when the architectural PDF is a CAD export
   (vector line work): each lintel is moved onto the wall centreline, from jamb to jamb
   plus about one wall thickness of bearing each side (`app/snap.py`). Where no clear

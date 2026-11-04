@@ -9,7 +9,17 @@ from dataclasses import dataclass
 
 import pymupdf
 
-from .snap import BEAM_TAGS, FOOTING_TAGS, Geometry, snap_members, snap_span
+from .snap import (
+    BEAM_TAGS,
+    FOOTING_TAGS,
+    Geometry,
+    bracing_length_mm,
+    drawing_scale,
+    mm_to_pt,
+    snap_bracing,
+    snap_members,
+    snap_span,
+)
 from .schemas import (
     SHEET_TITLES,
     Point,
@@ -601,11 +611,13 @@ def _is_lintel(e: Element) -> bool:
 def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> list[str]:
     """Move members onto the real geometry of a vector drawing (see snap.py):
     lintels onto their openings; footings, bearers and beams onto the walls they run
-    along. Returns warnings naming anything that should have snapped but didn't."""
+    along; bracing panels onto their walls at their scaled length, off openings.
+    Returns warnings naming anything that should have snapped but didn't."""
     lintels = [i for i, e in enumerate(sheet.elements) if _is_lintel(e)]
     walled = [i for i, e in enumerate(sheet.elements)
               if e.kind == "member" and _prefix(e.tag) in FOOTING_TAGS | BEAM_TAGS]
-    if not lintels and not walled:
+    bracing = [i for i, e in enumerate(sheet.elements) if e.kind == "bracing"]
+    if not lintels and not walled and not bracing:
         return []
     try:
         geo = Geometry(src_page)
@@ -613,7 +625,7 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
         geo = None
     if geo is None or not geo.usable:
         return [f"{title}: drawing has no vector line work (scanned?) - members are placed from "
-                "Claude's reading of the image; check lintels, bearers and beams line up"]
+                "Claude's reading of the image; check lintels, bearers, beams and bracing line up"]
     w, h = src_page.rect.width, src_page.rect.height
 
     def pts(e: Element) -> tuple[pymupdf.Point, pymupdf.Point]:
@@ -649,6 +661,27 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
             # Bearers / beams can legitimately span mid-room; footings normally sit under walls.
             warnings.append(f"{title}: footing line(s) not on a wall in the drawing, left as placed by Claude, "
                             f"check: {', '.join(off_wall_footings)}")
+    if bracing:
+        scale, how = drawing_scale(src_page, geo)
+        if scale is None:
+            warnings.append(f"{title}: drawing scale not found, so bracing panels keep the lengths Claude "
+                            "drew; check them against their tags")
+        not_on_wall, problems = [], []
+        for i in bracing:
+            e = sheet.elements[i]
+            mm = bracing_length_mm(e.tag)
+            r = snap_bracing(geo, *pts(e), mm_to_pt(mm, scale) if mm and scale else None)
+            if r is None:
+                not_on_wall.append(e.tag or "bracing")
+                continue
+            put(i, r[:2])
+            if r[2] and not r[2].startswith("moved"):
+                problems.append(f"{e.tag} ({r[2]})")
+        if not_on_wall:
+            warnings.append(f"{title}: bracing not on a wall in the drawing, left as placed by Claude, check: "
+                            f"{', '.join(not_on_wall)}")
+        if problems:
+            warnings.append(f"{title}: bracing that may be over an opening, check: {'; '.join(problems)}")
     return warnings
 
 
