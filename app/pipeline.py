@@ -85,6 +85,11 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
     result = JobResult(geotech=geotech, design=design, references=[r.title for r in refs])
     # Claude's cross-reference of the plan and elevation views.
     result.warnings += [f"Plan vs elevations: {x}" for x in design.opening_crosscheck]
+    result.warnings += [
+        f"Plan vs elevation dimensions - {d.item}: plan {d.plan}, elevation {d.elevation}"
+        + (f" ({d.note})" if d.note else "")
+        for d in design.dimension_crosscheck if d.status.strip().lower().startswith("mismatch")
+    ]
     # Firm (office) rules are enforced on the output, not just requested in the prompt.
     result.warnings += check_geotech([*geotech.recommendations, geotech.founding])
     result.warnings += apply_rules(design, "Design assessment")

@@ -248,7 +248,9 @@ def _page_blocks(pages: list[PageImage]) -> list[dict]:
             {
                 "type": "text",
                 "text": f"--- Architectural page {p.number} "
-                f"(image {p.width}x{p.height}px) ---\nExtracted text:\n{p.text[:4000] or '(none)'}",
+                f"(image {p.width}x{p.height}px) ---\nExtracted text:\n{p.text[:4000] or '(none)'}"
+                + (f"\nWritten dimensions / levels with position on this image (x,y 0-1; 'v' = written "
+                   f"vertically):\n{p.dims}" if p.dims else ""),
             }
         )
         blocks.append(
@@ -339,7 +341,17 @@ def assess_design(
                 "8. Cross-reference the plan views with the elevation views for every window / door: "
                 "match each elevation to its wall, and check each opening's code, size and position "
                 "(order along the wall, distance from corners) agree. List every discrepancy in "
-                "opening_crosscheck; leave it empty only if they all agree."
+                "opening_crosscheck; leave it empty only if they all agree.\n"
+                "9. Check that the PROPOSED plan view dimensions match the PROPOSED elevation "
+                "dimensions (ignore existing / demolished work on alteration jobs). Match each elevation "
+                "to its wall, then compare: overall building lengths and depths, wall lengths and steps "
+                "in the walls, wall / ceiling heights and floor levels, eaves overhangs, and the extent of "
+                "every closed / covered roof area (alfresco, porch, verandah, carport, deck roof) - its "
+                "length and width on the plan (or roof plan) against its extent on the elevations, and "
+                "whether it is shown as roofed in both. Read the written dimensions; where a dimension "
+                "is not written, scale it from the drawing (the plan's scale) and say so in the note. "
+                "Record each comparison in dimension_crosscheck with status match / mismatch / not "
+                "shown; include every mismatch."
             ),
         }
     )

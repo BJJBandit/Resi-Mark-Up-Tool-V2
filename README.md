@@ -117,6 +117,14 @@ hold even if Claude slips:
   found in the elevation line work (`app/elevation.py`) and any joint that runs through
   one is moved to its jamb and made vertical, with a warning. Joints are removed from the
   plan sheets.
+- **Plan view dimensions are checked against the elevations**: Claude matches each
+  elevation to its wall and compares the PROPOSED plan dimensions with the PROPOSED
+  elevations - overall lengths and depths, wall lengths and steps, wall / ceiling heights
+  and floor levels, eaves overhangs, and the extent of every closed / covered roof area
+  (alfresco, porch, verandah, carport, deck roof). Each comparison (plan value, elevation
+  value, match / mismatch / not shown) is shown in a table on the results page and in
+  review.json; every mismatch is also a warning. To help, each page sent to Claude lists
+  its written dimensions and levels with their positions.
 - **Plans and elevations are cross-referenced for openings**: Claude matches each
   elevation to its wall and checks every opening's code, size and position, listing any
   discrepancy as a warning; a secondary line-work comparison of opening widths (plan codes
