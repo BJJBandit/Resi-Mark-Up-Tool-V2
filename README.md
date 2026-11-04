@@ -100,6 +100,12 @@ hold even if Claude slips:
   runs along at least half its length, so bearers spanning mid-room and deck beams stay
   as placed. Ends snap to the crossing walls, so footing corners close. Footing lines
   that are not on any wall are named in the warnings.
+- **Joists and rafters are snapped to their supports**: each end of a joist / rafter
+  (J, R, T tags - span arrows and representative members) moves onto the wall, bearer,
+  beam, ledger, lintel or footing it bears on (walls from the drawing, the rest from the
+  same sheet after they have snapped). The line keeps its position across the room;
+  an end with no support nearby stays put. Decking, stair treads and joinery are not
+  mistaken for walls.
 - **Bracing panels are snapped to their walls**: drawn about 3 pt beside the wall
   centreline (house style, on the side Claude placed them), at the exact scaled length from
   the tag (`h(b) - 900` -> 900 mm) using the plan scale printed in the drawing set or, if
