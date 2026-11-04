@@ -245,38 +245,67 @@ BEAM_TAGS = {"B", "VB", "RB", "LD"}  # bearers / beams / ledgers
 SIDE_OFFSET = 3.0  # pt: a bearer beside a footing line is drawn this far off it
 
 
-def snap_members(geo: Geometry, members: list[tuple[str, pymupdf.Point, pymupdf.Point]]):
-    """Snap a sheet's footings, bearers and beams onto walls together.
+def snap_members(
+    geo: Geometry,
+    members: list[tuple[str, pymupdf.Point, pymupdf.Point]],
+    supports: list[pymupdf.Point] = [],
+):
+    """Snap a sheet's footings, bearers and beams together.
 
-    members: (tag prefix, p, q). Returns a list of (p, q) or None per member.
-    Footings go on the wall centreline. A bearer / beam also goes on the centreline,
-    unless a footing on this sheet already occupies it, in which case it is drawn
-    SIDE_OFFSET beside it on the side Claude placed it (the engineer's house style,
-    so both lines stay visible)."""
+    members: (tag prefix, p, q); supports: the sheet's pier / column points as Claude
+    placed them. Returns a list of (p, q) or None per member.
+    - Footings go on the wall centreline (if on a wall).
+    - A bearer / beam on a wall goes on its centreline, or SIDE_OFFSET beside a footing
+      line already there (the engineer's house style, so both lines show).
+    - A bearer / beam not on a wall but running along a footing line goes SIDE_OFFSET
+      beside that footing, on the side Claude placed it.
+    - Otherwise, a bearer running over a row of piers / columns (2+ within reach) goes
+      onto the line through them (averaged with the bearer's own position, since all are
+      estimates of the same line); the piers are then snapped back onto the bearer."""
     out: list = [None] * len(members)
-    taken: list[tuple[bool, float, float, float]] = []  # horizontal?, c, lo, hi of footing lines
+    footings: list[tuple[bool, float, float, float]] = []  # horizontal?, c, lo, hi
     order = sorted(range(len(members)), key=lambda i: members[i][0] not in FOOTING_TAGS)
+
+    def line(p: pymupdf.Point, q: pymupdf.Point) -> tuple[bool, float, float, float]:
+        h = abs(q.x - p.x) >= abs(q.y - p.y)
+        lo, hi = sorted((p.x, q.x) if h else (p.y, q.y))
+        return h, ((p.y + q.y) / 2 if h else (p.x + q.x) / 2), lo, hi
+
+    def at(h: bool, c: float, lo: float, hi: float) -> tuple[pymupdf.Point, pymupdf.Point]:
+        return (pymupdf.Point(lo, c), pymupdf.Point(hi, c)) if h else (pymupdf.Point(c, lo), pymupdf.Point(c, hi))
+
     for i in order:
         tag, p, q = members[i]
         r = snap_to_wall(geo, p, q)
-        if r is None:
-            continue
-        horizontal = abs(r[1].x - r[0].x) >= abs(r[1].y - r[0].y)
-        c = r[0].y if horizontal else r[0].x
-        lo, hi = sorted((r[0].x, r[1].x) if horizontal else (r[0].y, r[1].y))
+        h0, c0, lo0, hi0 = line(p, q)
         if tag in FOOTING_TAGS:
-            taken.append((horizontal, c, lo, hi))
-        else:
-            clash = any(
-                h == horizontal and abs(tc - c) < 1.0 and min(thi, hi) - max(tlo, lo) > 0.3 * (hi - lo)
-                for h, tc, tlo, thi in taken
-            )
-            if clash:
-                c0 = (p.y + q.y) / 2 if horizontal else (p.x + q.x) / 2
-                c = c + (SIDE_OFFSET if c0 >= c else -SIDE_OFFSET)
-                r = (pymupdf.Point(r[0].x, c), pymupdf.Point(r[1].x, c)) if horizontal else \
-                    (pymupdf.Point(c, r[0].y), pymupdf.Point(c, r[1].y))
-        out[i] = r
+            out[i] = r
+            footings.append(line(*r) if r else (h0, c0, lo0, hi0))
+            continue
+
+        def footing_near(c: float, lo: float, hi: float, tol: float):
+            near = [(abs(fc - c), fc) for fh, fc, flo, fhi in footings
+                    if fh == h0 and abs(fc - c) <= tol and min(fhi, hi) - max(flo, lo) > 0.5 * (hi - lo)]
+            return min(near)[1] if near else None
+
+        if r is not None:
+            h, c, lo, hi = line(*r)
+            fc = footing_near(c, lo, hi, 3.0)
+            if fc is not None:  # a footing already on this wall: draw the bearer beside it
+                c = fc + (SIDE_OFFSET if c0 >= fc else -SIDE_OFFSET)
+            out[i] = at(h, c, lo, hi)
+            continue
+        # Not on a wall: beside a footing line it runs along ...
+        fc = footing_near(c0, lo0, hi0, 8.0)
+        if fc is not None:
+            out[i] = at(h0, fc + (SIDE_OFFSET if c0 >= fc else -SIDE_OFFSET), lo0, hi0)
+            continue
+        # ... or onto the row of piers / columns it sits on.
+        row = sorted((s.y if h0 else s.x) for s in supports
+                     if lo0 - 3 <= (s.x if h0 else s.y) <= hi0 + 3 and abs((s.y if h0 else s.x) - c0) <= 6)
+        if len(row) >= 2:
+            # Piers and bearer are all Claude's estimates of the same line: average them.
+            out[i] = at(h0, (sum(row) + c0) / (len(row) + 1), lo0, hi0)
     return out
 
 

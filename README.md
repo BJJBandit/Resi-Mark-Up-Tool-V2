@@ -101,6 +101,11 @@ hold even if Claude slips:
   runs along at least half its length, so bearers spanning mid-room and deck beams stay
   as placed. Ends snap to the crossing walls, so footing corners close. Footing lines
   that are not on any wall are named in the warnings.
+- **Bearers are snapped to their footings and piers** on the floor sheet too: a bearer
+  that is not on a wall but runs along a footing line (EB / SF / IB) is drawn 3 pt beside
+  that footing on the side Claude placed it; a mid-room bearer over a row of piers /
+  columns (2 or more within 6 pt) goes onto the line through them (averaged with its own
+  position), and the piers are then snapped back onto it.
 - **Lintel check on the wall framing sheet** (`app/lintel_check.py`), after snapping. The
   architect's window / door codes (height then width: A1812 = 1800 high x 1200 wide)
   locate every opening. A red cloud and a warning are added for (1) an opening with no

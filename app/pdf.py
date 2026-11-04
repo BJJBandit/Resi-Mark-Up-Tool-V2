@@ -662,7 +662,9 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
                         f"drawing; left as placed by Claude, check: {', '.join(missed)}")
 
     if walled:
-        results = snap_members(geo, [(_prefix(sheet.elements[i].tag), *pts(sheet.elements[i])) for i in walled])
+        piers_cols = [pts(e)[0] for e in sheet.elements if e.kind in ("pier", "column")]
+        results = snap_members(geo, [(_prefix(sheet.elements[i].tag), *pts(sheet.elements[i])) for i in walled],
+                               piers_cols)
         off_wall_footings = []
         for i, r in zip(walled, results):
             if r is not None:
