@@ -513,3 +513,48 @@ def snap_span_ends(
     if horizontal:
         return pymupdf.Point(b0, p.y), pymupdf.Point(b1, q.y), moved
     return pymupdf.Point(p.x, b0), pymupdf.Point(q.x, b1), moved
+
+
+# ---------------------------------------------------------------------------
+# Piers and columns: onto the member / wall they support
+# ---------------------------------------------------------------------------
+
+Line = tuple[bool, float, float, float]  # horizontal?, c, lo, hi
+
+
+def point_targets(lines: list[Line], member_lines: list[Line]) -> list[pymupdf.Point]:
+    """Places a pier / column naturally sits: ends of members, and crossings of
+    two perpendicular lines (member / wall)."""
+    pts = []
+    for h, c, lo, hi in member_lines:
+        pts += [pymupdf.Point(lo, c), pymupdf.Point(hi, c)] if h else [pymupdf.Point(c, lo), pymupdf.Point(c, hi)]
+    hs = [ln for ln in lines if ln[0]]
+    vs = [ln for ln in lines if not ln[0]]
+    for _, y, x0, x1 in hs:
+        for _, x, y0, y1 in vs:
+            if x0 - 1 <= x <= x1 + 1 and y0 - 1 <= y <= y1 + 1:
+                pts.append(pymupdf.Point(x, y))
+    return pts
+
+
+def snap_point(pt: pymupdf.Point, lines: list[Line], targets: list[pymupdf.Point],
+               point_tol: float = 5.0, line_tol: float = 6.0) -> pymupdf.Point | None:
+    """A pier / column: to a member end or line crossing within point_tol, else
+    straight onto the nearest member / wall line within line_tol (keeping its place
+    along it), else None (left as placed)."""
+    if targets:
+        t = min(targets, key=lambda t: abs(t - pt))
+        if abs(t - pt) <= point_tol:
+            return pymupdf.Point(t)
+    best = None
+    for h, c, lo, hi in lines:
+        a, b = (pt.x, pt.y) if h else (pt.y, pt.x)
+        if not (lo - 2 <= a <= hi + 2):
+            continue
+        d = abs(b - c)
+        if d <= line_tol and (best is None or d < best[0]):
+            best = (d, h, c, min(max(a, lo), hi))
+    if best is None:
+        return None
+    _, h, c, a = best
+    return pymupdf.Point(a, c) if h else pymupdf.Point(c, a)

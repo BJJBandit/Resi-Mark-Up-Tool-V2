@@ -15,10 +15,13 @@ from .snap import (
     SPAN_TAGS,
     Geometry,
     bracing_length_mm,
+    _wall_runs,
     drawing_scale,
     mm_to_pt,
+    point_targets,
     snap_bracing,
     snap_members,
+    snap_point,
     snap_span,
     snap_span_ends,
 )
@@ -614,7 +617,8 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
     """Move members onto the real geometry of a vector drawing (see snap.py):
     lintels onto their openings; footings, bearers and beams onto the walls they run
     along; bracing panels onto their walls at their scaled length, off openings;
-    joist / rafter ends onto the walls, bearers and beams they bear on.
+    joist / rafter ends onto the walls, bearers and beams they bear on; piers and
+    columns onto the member or wall they support (a member end / crossing if close).
     Returns warnings naming anything that should have snapped but didn't."""
     lintels = [i for i, e in enumerate(sheet.elements) if _is_lintel(e)]
     walled = [i for i, e in enumerate(sheet.elements)
@@ -623,7 +627,8 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
     spans = [i for i, e in enumerate(sheet.elements)
              if (e.kind in ("span", "member") and _prefix(e.tag) in SPAN_TAGS)
              or (e.kind == "span" and not _prefix(e.tag))]
-    if not lintels and not walled and not bracing and not spans:
+    points = [i for i, e in enumerate(sheet.elements) if e.kind in ("pier", "column")]
+    if not lintels and not walled and not bracing and not spans and not points:
         return []
     try:
         geo = Geometry(src_page)
@@ -702,6 +707,23 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
             r = snap_span_ends(geo, *pts(sheet.elements[i]), supports)
             if r is not None and r[2]:
                 put(i, r[:2])
+    if points:
+        # Lines a pier / column can sit on: this sheet's (snapped) members and the walls.
+        members = []
+        for e in sheet.elements:
+            if e.kind == "member" and _prefix(e.tag) not in SPAN_TAGS:
+                a, b = pts(e)
+                horiz = abs(b.x - a.x) >= abs(b.y - a.y)
+                lo, hi = sorted((a.x, b.x) if horiz else (a.y, b.y))
+                members.append((horiz, (a.y + b.y) / 2 if horiz else (a.x + b.x) / 2, lo, hi))
+        lines = members + [(True, c, lo, hi) for c, lo, hi, _ in _wall_runs(geo, True)] \
+            + [(False, c, lo, hi) for c, lo, hi, _ in _wall_runs(geo, False)]
+        targets = point_targets(lines, members)
+        for i in points:
+            e = sheet.elements[i]
+            r = snap_point(pts(e)[0], lines, targets)
+            if r is not None:
+                put(i, (r, r))
     return warnings
 
 

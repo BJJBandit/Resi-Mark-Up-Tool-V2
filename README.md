@@ -100,6 +100,11 @@ hold even if Claude slips:
   runs along at least half its length, so bearers spanning mid-room and deck beams stay
   as placed. Ends snap to the crossing walls, so footing corners close. Footing lines
   that are not on any wall are named in the warnings.
+- **Piers and columns are snapped to what they support**: onto the end of a member or
+  the crossing of two lines (member / wall) if one is within 5 pt, otherwise straight onto
+  the nearest member (bearer, beam, edge beam, verandah beam ...) or wall line within 6 pt,
+  keeping their spacing along it. Points with nothing nearby stay put. Runs last, after
+  the members have snapped.
 - **Joists and rafters are snapped to their supports**: each end of a joist / rafter
   (J, R, T tags - span arrows and representative members) moves onto the wall, bearer,
   beam, ledger, lintel or footing it bears on (walls from the drawing, the rest from the
