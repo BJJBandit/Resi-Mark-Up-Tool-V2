@@ -12,7 +12,6 @@ import anthropic
 import httpx2
 from pydantic import BaseModel, ValidationError
 
-from .models import Ledger
 from .pdf import PageImage
 from .rules import MIN_STRIP_WIDTH_MM
 from .schemas import (
@@ -80,23 +79,13 @@ def _schema(model: type[BaseModel]) -> dict:
     return model.model_json_schema()
 
 
-@dataclass
-class Opts:
-    """Per-call settings threaded through the request helpers."""
-
-    step: str
-    model: str = MODEL
-    effort: str = EFFORT
-    ledger: Ledger | None = None
-
-
-def _request(messages: list[dict], max_tokens: int, schema: dict | None, o: Opts) -> str:
+def _request(messages: list[dict], max_tokens: int, schema: dict | None, effort: str = EFFORT) -> str:
     """One streamed request (avoids HTTP timeouts); returns the text output."""
-    output_config: dict = {"effort": o.effort}
+    output_config: dict = {"effort": effort}
     if schema is not None:
         output_config["format"] = {"type": "json_schema", "schema": schema}
     with client.beta.messages.stream(
-        model=o.model,
+        model=MODEL,
         max_tokens=max_tokens,
         system=SYSTEM,
         betas=["server-side-fallback-2026-07-01"],
@@ -108,8 +97,6 @@ def _request(messages: list[dict], max_tokens: int, schema: dict | None, o: Opts
         messages=messages,
     ) as stream:
         message = stream.get_final_message()
-    if o.ledger is not None:  # every attempt is billed, so record it
-        o.ledger.record(o.step, getattr(message, "model", o.model) or o.model, message.usage)
 
     if message.stop_reason == "refusal":
         detail = getattr(message, "stop_details", None)
@@ -129,35 +116,35 @@ def _extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
-def _request_retrying(messages: list[dict], max_tokens: int, schema: dict | None, o: Opts) -> str:
+def _request_retrying(messages: list[dict], max_tokens: int, schema: dict | None, effort: str) -> str:
     """Retry once on a cut-off (at the model maximum) or a dropped / timed-out stream."""
     try:
-        return _request(messages, max_tokens, schema, o)
+        return _request(messages, max_tokens, schema, effort)
     except CutOff:
         if max_tokens >= MAX_TOKENS_RETRY:
             raise
-        return _request(messages, MAX_TOKENS_RETRY, schema, o)
+        return _request(messages, MAX_TOKENS_RETRY, schema, effort)
     except _TRANSIENT:
         try:
-            return _request(messages, max_tokens, schema, o)
+            return _request(messages, max_tokens, schema, effort)
         except _TRANSIENT as e:
             raise ClaudeError(f"the connection to Claude timed out or dropped twice ({type(e).__name__}).") from e
 
 
-def _call(content: list[dict], out: type[T], o: Opts, max_tokens: int = MAX_TOKENS) -> T:
+def _call(content: list[dict], out: type[T], step: str, max_tokens: int = MAX_TOKENS, effort: str = EFFORT) -> T:
     """Structured-output request. If the API rejects the schema (e.g. compiled
     grammar too large), fall back to plain JSON validated locally. Errors name the step."""
     try:
-        return _call_inner(content, out, max_tokens, o)
+        return _call_inner(content, out, max_tokens, effort)
     except ClaudeError as e:
-        raise ClaudeError(f"{o.step}: {e}") from e
+        raise ClaudeError(f"{step}: {e}") from e
 
 
-def _call_inner(content: list[dict], out: type[T], max_tokens: int, o: Opts) -> T:
+def _call_inner(content: list[dict], out: type[T], max_tokens: int, effort: str) -> T:
     schema = _schema(out)
     messages = [{"role": "user", "content": content}]
     try:
-        return out.model_validate_json(_request_retrying(messages, max_tokens, schema, o))
+        return out.model_validate_json(_request_retrying(messages, max_tokens, schema, effort))
     except anthropic.BadRequestError as e:
         if "grammar" not in str(e).lower() and "schema" not in str(e).lower():
             raise
@@ -170,7 +157,7 @@ def _call_inner(content: list[dict], out: type[T], max_tokens: int, o: Opts) -> 
     messages = [{"role": "user", "content": [*content, {"type": "text", "text": instruction}]}]
     last_error: Exception | None = None
     for _ in range(2):
-        text = _request_retrying(messages, max_tokens, None, o)
+        text = _request_retrying(messages, max_tokens, None, effort)
         try:
             return out.model_validate_json(_extract_json(text))
         except (ValueError, ValidationError) as err:
@@ -286,7 +273,6 @@ def review_geotech(
     wind_class: str | None,
     site_class: str | None,
     refs: list[Reference] = [],
-    ledger: Ledger | None = None,
 ) -> GeotechReview:
     content: list[dict] = _ref_blocks(refs)
     if geotech_pdf:
@@ -308,7 +294,7 @@ def review_geotech(
             ),
         }
     )
-    return _call(content, GeotechReview, Opts("Step 1 (geotech review)", ledger=ledger))
+    return _call(content, GeotechReview, "Step 1 (geotech review)")
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +308,6 @@ def assess_design(
     construction: str,
     extra_notes: str,
     refs: list[Reference] = [],
-    ledger: Ledger | None = None,
 ) -> DesignAssessment:
     content = _ref_blocks(refs) + _page_blocks(pages)
     content.append(
@@ -346,14 +331,11 @@ def assess_design(
                 "6. Wall design including bracing to the nominated material standard: "
                 "racking forces for the wind class, bracing wall locations/types, tie-down, "
                 "lintels, and masonry articulation / control joints.\n"
-                "7. Floor framing or slab.\n"
-                "8. Rate the job's complexity (simple / standard / complex) for the mark-ups, "
-                "with a one-line reason. This decides which model draws each sheet, so be honest: "
-                "only 'complex' gets the most capable model."
+                "7. Floor framing or slab."
             ),
         }
     )
-    return _call(content, DesignAssessment, Opts("Step 2 (architectural review)", ledger=ledger))
+    return _call(content, DesignAssessment, "Step 2 (architectural review)")
 
 
 # ---------------------------------------------------------------------------
@@ -439,8 +421,6 @@ def plan_sheet(
     geotech: GeotechReview,
     design: DesignAssessment,
     refs: list[Reference] = [],
-    model: str = MODEL,
-    ledger: Ledger | None = None,
 ) -> MarkupSheet:
     content = _ref_blocks(refs) + _page_blocks(pages)
     content.append(
@@ -459,4 +439,4 @@ def plan_sheet(
             ),
         }
     )
-    return _call(content, MarkupSheet, Opts(f"Step 3 ({SHEET_TITLES[kind]})", model, SHEET_EFFORT, ledger))
+    return _call(content, MarkupSheet, f"Step 3 ({SHEET_TITLES[kind]})", effort=SHEET_EFFORT)

@@ -30,7 +30,6 @@
   button:disabled { opacity: .5; cursor: default; }
   .card { margin-top: 20px; display: none; }
   .err { color: var(--err); }
-  .muted { color: var(--muted); }
   ul { padding-left: 20px; }
   ul.files { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
   ul.files:empty { display: none; }
@@ -97,13 +96,6 @@
       <option>Reinforced concrete blockwork to AS 3700 / AS 4773</option>
     </select>
 
-    <label>Model for the mark-up sheets</label>
-    <select name="sheet_model">
-      <option value="auto">Auto - cheapest model that suits each sheet (recommended)</option>
-      <option value="claude-opus-5-5">Claude Opus 5.5 for all sheets (most capable, ~2x cost)</option>
-      <option value="claude-sonnet-5-5">Claude Sonnet 5.5 for all sheets (lowest cost)</option>
-    </select>
-
     <label>Notes for the review <small>optional</small></label>
     <textarea name="notes" placeholder="Anything the drawings don't show, e.g. 'trusses by supplier', 'sloping site, cut 1.2 m'"></textarea>
 
@@ -147,8 +139,7 @@ async function poll(id) {
   const r = await fetch(`/jobs/${id}`);
   const j = await r.json();
   if (!r.ok) { box.innerHTML = `<p class="err">${esc(j.detail)}</p>`; go.disabled = false; return; }
-  const cost = c => c && c.calls.length ? `<p class="muted">Claude API cost: <b>US$${c.total_usd.toFixed(2)}</b> (${Object.entries(c.by_model_usd).map(([m, v]) => `${esc(m)} $${v.toFixed(2)}`).join(' &middot; ')}; ${c.calls.length} calls)</p>` : '';
-  if (j.status === 'error') { box.innerHTML = `<p class="err">Review failed: ${esc(j.error)}</p>${cost(j.cost)}`; go.disabled = false; return; }
+  if (j.status === 'error') { box.innerHTML = `<p class="err">Review failed: ${esc(j.error)}</p>`; go.disabled = false; return; }
   if (j.status !== 'done') {
     box.innerHTML = `<p>${esc(j.step || 'Queued')}… <small>(a full review takes several minutes)</small></p>`;
     return setTimeout(() => poll(id), 4000);
@@ -166,9 +157,6 @@ async function poll(id) {
     </ul>
     ${(j.warnings || []).length ? `<p class="err">Warnings : ${j.warnings.map(esc).join('; ')}</p>` : ''}
     ${errs.length ? `<p class="err">Sheets not produced: ${errs.map(([k,v]) => esc(k) + ' (' + esc(v) + ')').join('; ')}</p>` : ''}
-    ${cost(j.cost)}
-    <b>Model used per sheet</b>
-    <ul>${Object.entries(j.sheet_models || {}).map(([k, v]) => `<li>${esc(k)}: ${esc(v)}</li>`).join('')}</ul>
     <b>Engineer to check</b>
     <ul>${s.engineer_checks.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
     <a class="btn" href="/jobs/${id}/markup.pdf">Download mark-up PDF</a>

@@ -104,13 +104,6 @@ class DesignAssessment(Strict):
     assumptions: list[str]
     engineer_checks: list[str] = Field(description="Items needing confirmation by the design engineer.")
 
-    complexity: str = Field(
-        description="simple, standard or complex - how much structural judgement the mark-ups need "
-        "(e.g. complex: reactive / problem site, 2+ storeys, steel or masonry, transfer beams, "
-        "large openings, unusual load paths)."
-    )
-    complexity_reason: str = Field(description="One line explaining the complexity rating.")
-
 
 # ---------------------------------------------------------------------------
 # Step 3 - mark-up sheets

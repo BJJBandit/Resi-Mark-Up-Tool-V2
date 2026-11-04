@@ -58,10 +58,8 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | Env var | Default | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | (none, secret) | Claude API key |
-| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model for steps 1-2, and for sheets that need judgement |
+| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model used for every step |
 | `ANTHROPIC_EFFORT` | `high` | Reasoning depth for steps 1-2 (geotech + architectural review): `low` / `medium` / `high` / `xhigh` / `max` |
-| `SHEET_MODEL_ROUTING` | `auto` | `auto`, or a model id to use for every mark-up sheet |
-| `ANTHROPIC_SHEET_MODEL_SIMPLE` | `claude-sonnet-5-5` | Model for straightforward sheets when routing is `auto` |
 | `ANTHROPIC_SHEET_EFFORT` | `medium` | Reasoning depth for step 3 (placing the mark-ups on each sheet) |
 | `ANTHROPIC_TIMEOUT_S` | `1800` | Max seconds a Claude stream may sit silent before it is retried once |
 | `ANTHROPIC_MAX_TOKENS` | `64000` | Output cap per Claude call (thinking counts toward it); a cut-off call retries once at 128000 |
@@ -69,29 +67,6 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `TITLE_BLOCK_COMPANY` | `ARETE` | Company name in the title block |
 | `TITLE_BLOCK_COMPANY_SUB` | `ENGINEERING` | Second line under the company name |
 | `MARKUP_AUTHOR` | `Resi Mark-Up Tool` | Author shown on every annotation in Bluebeam's markup list |
-
-## Model choice and cost
-
-| Step | Model | Why |
-|---|---|---|
-| 1. Geotech review, 2. Architectural review | Claude Opus 5.5 (high effort) | These make the engineering calls, and decide the routing below |
-| 3. Mark-up sheets | **Auto**: Claude Sonnet 5.5 (half the price) for straightforward sheets, Claude Opus 5.5 where the sheet needs judgement | Most of the calls are here |
-
-Once steps 1-2 have reviewed the documents, each sheet is routed to Opus when any of
-these apply, otherwise to Sonnet:
-
-- the review rates the job **complex** (Claude gives a one-line reason) - every sheet
-- **Footing / floor**: reactive or problem site (H1, H2, E, P and -D classes), fill on site, suspended slab
-- **Wall framing**: two or more storeys, framing other than timber, high wind (N4-N6, C1-C4)
-- **Roof**: high wind; **load paths**: two or more storeys
-
-The form's **Model for the mark-up sheets** can force Opus or Sonnet for every sheet.
-Claude Haiku 5.5 is not used: it is built for simple high-volume tasks rather than
-reading structural drawings, and has no server-side fallback when it declines a request.
-
-Every review shows its **Claude API cost** (from the token usage the API reports, at list
-prices in `app/models.py`) and the model used for each sheet; the full per-call breakdown
-is in `review.json`.
 
 ## Design rules
 
