@@ -111,6 +111,20 @@ hold even if Claude slips:
   that footing on the side Claude placed it; a mid-room bearer over a row of piers /
   columns (2 or more within 6 pt) goes onto the line through them (averaged with its own
   position), and the piers are then snapped back onto it.
+- **Articulation joints are on their own sheet, drawn on the elevations**
+  ("ARTICULATION JOINT ELEVATIONS", masonry / brick veneer / blockwork jobs only). Claude
+  draws each AJ / CJ as a vertical line on the elevation page; window / door openings are
+  found in the elevation line work (`app/elevation.py`) and any joint that runs through
+  one is moved to its jamb and made vertical, with a warning. Joints are removed from the
+  plan sheets.
+- **Plans and elevations are cross-referenced for openings**: Claude matches each
+  elevation to its wall and checks every opening's code, size and position, listing any
+  discrepancy as a warning; a secondary line-work comparison of opening widths (plan codes
+  vs elevation frames) is also reported for checking.
+- **Lintels use the architect's opening codes**: the code picks which opening a lintel
+  belongs to, then the opening's jamb lines give its exact edges (codes alone if the jambs
+  can't be read). Brick veneer walls (several face lines) are recognised as walls; only
+  decking / stair treads (7+ identical parallels) are excluded.
 - **Lintel check on the wall framing sheet** (`app/lintel_check.py`), after snapping. The
   architect's window / door codes (height then width: A1812 = 1800 high x 1200 wide)
   locate every opening. A red cloud and a warning are added for (1) an opening with no

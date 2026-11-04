@@ -103,6 +103,10 @@ class DesignAssessment(Strict):
 
     assumptions: list[str]
     engineer_checks: list[str] = Field(description="Items needing confirmation by the design engineer.")
+    opening_crosscheck: list[str] = Field(
+        description="Each discrepancy found when cross-referencing the plan and elevation views for "
+        "openings (code, size, position, which elevation / wall), one per line. Empty if they agree."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +120,7 @@ class SheetKind(str, Enum):
     WALLS = "walls"
     FOOTINGS = "footings"
     FLOOR = "floor"
+    ARTICULATION = "articulation"  # masonry jobs only; drawn on the elevations
 
 
 SHEET_TITLES: dict[SheetKind, str] = {
@@ -124,6 +129,7 @@ SHEET_TITLES: dict[SheetKind, str] = {
     SheetKind.WALLS: "WALL FRAMING PLAN",
     SheetKind.FOOTINGS: "FOOTING PLAN",
     SheetKind.FLOOR: "FLOOR FRAMING PLAN",
+    SheetKind.ARTICULATION: "ARTICULATION JOINT ELEVATIONS",
 }
 
 
