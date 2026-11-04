@@ -64,6 +64,7 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `ANTHROPIC_TIMEOUT_S` | `1800` | Max seconds a Claude stream may sit silent before it is retried once |
 | `ANTHROPIC_MAX_TOKENS` | `64000` | Output cap per Claude call (thinking counts toward it); a cut-off call retries once at 128000 |
 | `LINTEL_MAX_SPAN_DEPTH` | `20` | Lintel check: flag a lintel whose clear span exceeds this many times its depth |
+| `BEAM_WIDTH_FROM_MM` / `BEAM_WIDTH_TO_MM` | `300` / `450` | Edge / internal beam width rule |
 | `MIN_STRIP_FOOTING_WIDTH_MM` | `450` | Firm minimum strip footing width (see Design rules) |
 | `TITLE_BLOCK_COMPANY` | `ARETE` | Company name in the title block |
 | `TITLE_BLOCK_COMPANY_SUB` | `ENGINEERING` | Second line under the company name |
@@ -79,6 +80,10 @@ hold even if Claude slips:
   change is listed as a warning on the results page. Internal beams, edge beams, piers and
   depths are not touched. Narrower strip footings recommended in the geotech report are
   flagged, not rewritten, because the report is quoted as written.
+- **Edge / internal / stiffening beams that AS 2870 gives as 300 mm wide are made 450 mm
+  wide** (300 + 150). Applied to the design assessment, schedules (EB / IB tags),
+  callouts and notes, with a warning per change; other widths, depths, bar spacings,
+  pads and piers are not touched; a 300 wide beam in the geotech report is flagged.
 
 ## Limits
 

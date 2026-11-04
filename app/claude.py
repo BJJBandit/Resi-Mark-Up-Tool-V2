@@ -13,7 +13,7 @@ import httpx2
 from pydantic import BaseModel, ValidationError
 
 from .pdf import PageImage
-from .rules import MIN_STRIP_WIDTH_MM
+from .rules import BEAM_WIDTH_FROM_MM, BEAM_WIDTH_TO_MM, MIN_STRIP_WIDTH_MM
 from .schemas import (
     SHEET_TITLES,
     DesignAssessment,
@@ -54,6 +54,10 @@ SYSTEM += (
     f"- FIRM RULE: every strip footing is at least {MIN_STRIP_WIDTH_MM} mm wide, even where "
     "AS 2870 or the geotechnical report would allow narrower. Always state strip footing width "
     f"explicitly (e.g. '{MIN_STRIP_WIDTH_MM}W x <DEPTH> DEEP STRIP FOOTING')."
+    f"\n- FIRM RULE: any edge, internal or stiffening beam that AS 2870 gives as "
+    f"{BEAM_WIDTH_FROM_MM} mm wide is made {BEAM_WIDTH_TO_MM} mm wide "
+    f"(+{BEAM_WIDTH_TO_MM - BEAM_WIDTH_FROM_MM} mm). State beam widths explicitly "
+    f"(e.g. '{BEAM_WIDTH_TO_MM}W x <DEPTH> DEEP EDGE BEAM')."
 )
 
 
@@ -401,7 +405,8 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "FOOTING PLAN to AS 2870 and the geotech report. Edge beams / strip footings EB / SF "
         "as 'member' around the perimeter, internal beams IB, slab thickenings, piers "
         "'pier' (corners and max spacing), pads under point loads, step-downs. Strip footings "
-        f"are never narrower than {MIN_STRIP_WIDTH_MM} mm. Callouts give each footing's size and "
+        f"are never narrower than {MIN_STRIP_WIDTH_MM} mm, and edge / internal beams that AS 2870 "
+        f"gives as {BEAM_WIDTH_FROM_MM} wide are {BEAM_WIDTH_TO_MM} wide. Callouts give each footing's size and "
         "reinforcement as determined for this job. Schedule = 'FOOTING SCHEDULE:'. Notes: the "
         "footing, site preparation and drainage notes this site needs. Classification: "
         "'AS2870 SITE CLASSIFICATION: <class>'."

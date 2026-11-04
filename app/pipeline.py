@@ -9,7 +9,7 @@ from typing import Callable
 from . import claude
 from .pdf import build_markup_pdf, render_pages
 from .refpages import MAX_REF_PAGES, RefDoc, prepare, report
-from .rules import apply_strip_rule, check_geotech_strip
+from .rules import apply_rules, check_geotech
 from .schemas import SHEET_TITLES, DesignAssessment, GeotechReview, MarkupSheet, SheetKind
 
 
@@ -73,16 +73,16 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
     progress("Step 2: reviewing architectural drawings")
     design = claude.assess_design(pages, geotech, job.construction, job.notes, refs)
     result = JobResult(geotech=geotech, design=design, references=[r.title for r in refs])
-    # Firm rules are enforced on the output, not just requested in the prompt.
-    result.warnings += check_geotech_strip([*geotech.recommendations, geotech.founding])
-    result.warnings += apply_strip_rule(design, "Design assessment")
+    # Firm (office) rules are enforced on the output, not just requested in the prompt.
+    result.warnings += check_geotech([*geotech.recommendations, geotech.founding])
+    result.warnings += apply_rules(design, "Design assessment")
 
     sheet_warnings: dict[SheetKind, list[str]] = {}
 
     def make(kind: SheetKind) -> None:
         try:
             sheet = claude.plan_sheet(kind, pages, geotech, design, refs)
-            sheet_warnings[kind] = apply_strip_rule(sheet, SHEET_TITLES[kind])
+            sheet_warnings[kind] = apply_rules(sheet, SHEET_TITLES[kind])
             result.sheets[kind] = sheet
         except Exception as e:  # keep the other sheets if one fails
             result.sheet_errors[kind] = str(e) or type(e).__name__
