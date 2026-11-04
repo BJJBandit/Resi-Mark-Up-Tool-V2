@@ -75,6 +75,12 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 Firm rules are given to Claude **and** enforced on its output (`app/rules.py`), so they
 hold even if Claude slips:
 
+- **Lintels and bracing are within the building.** The building's outline is found from
+  its walls in the drawing (`app/footprint.py`: the connected wall network with wide door
+  openings closed; roof sheeting, eaves hatching, decking and stair treads ignored). A
+  lintel or bracing panel outside it - on a deck, verandah, carport or eaves - is moved onto
+  the nearest building wall alongside it (within about 25 pt) and re-snapped there; one with
+  no building wall nearby is removed. Both are listed in the warnings. Vector drawings only.
 - **Strip footings are at least 450 mm wide.** Any strip footing width below the minimum
   in the design assessment, schedules, callouts or notes is raised to 450 mm, and each
   change is listed as a warning on the results page. Internal beams, edge beams, piers and

@@ -58,6 +58,9 @@ SYSTEM += (
     f"{BEAM_WIDTH_FROM_MM} mm wide is made {BEAM_WIDTH_TO_MM} mm wide "
     f"(+{BEAM_WIDTH_TO_MM - BEAM_WIDTH_FROM_MM} mm). State beam widths explicitly "
     f"(e.g. '{BEAM_WIDTH_TO_MM}W x <DEPTH> DEEP EDGE BEAM')."
+    "\n- FIRM RULE: every lintel and bracing panel is within the building - on a wall of the "
+    "building's enclosed rooms. Never place one on a deck, verandah, porch, carport, pergola, "
+    "eaves or fence line (use verandah / deck beams there, not lintels)."
 )
 
 
