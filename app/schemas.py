@@ -67,6 +67,15 @@ class BracingWall(Strict):
     capacity: str = Field(description="e.g. '6.4 kN'.")
 
 
+class DimCheck(Strict):
+    item: str = Field(description="What was compared, e.g. 'OVERALL LENGTH - NORTH ELEVATION vs PLAN', "
+                      "'ALFRESCO ROOF EXTENT - EAST ELEVATION vs PLAN', 'WALL HEIGHT (FFL TO CEILING)'.")
+    plan: str = Field(description="Value on the proposed plan view(s) (or roof plan), with units, or 'not shown'.")
+    elevation: str = Field(description="Value on the proposed elevation, with units, or 'not shown'.")
+    status: str = Field(description="match, mismatch, or not shown.")
+    note: str = Field(description="Short explanation; for a mismatch say which drawing is likely wrong if clear.")
+
+
 class DesignAssessment(Strict):
     project_summary: str
     pages: list[PageRole]
@@ -103,6 +112,10 @@ class DesignAssessment(Strict):
 
     assumptions: list[str]
     engineer_checks: list[str] = Field(description="Items needing confirmation by the design engineer.")
+    dimension_crosscheck: list[DimCheck] = Field(
+        description="Proposed plan view dimensions compared with the proposed elevations, including "
+        "the extent of closed / covered roof areas."
+    )
     opening_crosscheck: list[str] = Field(
         description="Each discrepancy found when cross-referencing the plan and elevation views for "
         "openings (code, size, position, which elevation / wall), one per line. Empty if they agree."

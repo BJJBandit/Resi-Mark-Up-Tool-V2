@@ -52,6 +52,34 @@ class PageImage:
     height: int
     jpeg: bytes
     text: str
+    dims: str = ""  # written dimensions with their positions, e.g. "4030@(0.21,0.12)"
+
+
+DIM_WORD = re.compile(r"^\d{3,5}$|^\d{1,2}\.\d{2,3}$")  # 4030, 11.25 (levels)
+
+
+def _dimension_text(page: pymupdf.Page, limit: int = 400) -> str:
+    """Written dimensions / levels on the page with their position (normalised to the
+    page image, 0-1), so each number can be tied to the wall or roof edge it labels.
+    'v' marks text written vertically (a dimension along a vertical line)."""
+    r = page.rect
+    m = page.rotation_matrix
+    out = []
+    for block in page.get_text("dict")["blocks"]:
+        for line in block.get("lines", []):
+            dx, dy = line["dir"]
+            vertical = abs(dy) > abs(dx)
+            if page.rotation in (90, 270):
+                vertical = not vertical
+            for span in line["spans"]:
+                for word in span["text"].split():
+                    if DIM_WORD.match(word):
+                        b = span["bbox"]
+                        c = pymupdf.Point((b[0] + b[2]) / 2, (b[1] + b[3]) / 2) * m
+                        out.append(f"{word}@({c.x / r.width:.2f},{c.y / r.height:.2f}){'v' if vertical else ''}")
+                        if len(out) >= limit:
+                            return " ".join(out)
+    return " ".join(out)
 
 
 def parse_page_range(spec: str, page_count: int, what: str = "drawing set") -> list[int]:
@@ -135,6 +163,7 @@ def render_pages(pdf_bytes: bytes, page_numbers: list[int] | None = None) -> lis
                     height=pix.height,
                     jpeg=pix.tobytes("jpeg", jpg_quality=quality),
                     text=page.get_text("text").strip(),
+                    dims=_dimension_text(page),
                 )
             )
         if sum(len(p.jpeg) for p in out) <= IMAGE_BUDGET_BYTES:

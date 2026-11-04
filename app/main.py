@@ -167,6 +167,7 @@ def job_status(job_id: str) -> dict:
         body["references"] = job.result.references
         body["reference_pages"] = job.result.reference_pages
         body["warnings"] = job.result.warnings
+        body["dimension_crosscheck"] = [d.model_dump() for d in job.result.design.dimension_crosscheck]
         body["sheet_errors"] = {SHEET_TITLES[k]: v for k, v in job.result.sheet_errors.items()}
         body["summary"] = {
             "site_class": job.result.geotech.site_classification,

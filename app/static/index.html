@@ -31,6 +31,9 @@
   .card { margin-top: 20px; display: none; }
   .err { color: var(--err); }
   .muted { color: var(--muted); }
+  table.dims { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0 14px; }
+  table.dims th, table.dims td { text-align: left; border-bottom: 1px solid var(--line); padding: 4px 6px; vertical-align: top; }
+  table.dims tr.bad td { color: var(--err); font-weight: 600; }
   ul { padding-left: 20px; }
   ul.files { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
   ul.files:empty { display: none; }
@@ -210,6 +213,14 @@ async function poll(id) {
     </ul>
     ${(j.warnings || []).length ? `<p class="err">Warnings : ${j.warnings.map(esc).join('; ')}</p>` : ''}
     ${errs.length ? `<p class="err">Sheets not produced: ${errs.map(([k,v]) => esc(k) + ' (' + esc(v) + ')').join('; ')}</p>` : ''}
+    ${(j.dimension_crosscheck || []).length ? `
+    <b>Plan vs elevation dimensions</b>
+    <table class="dims">
+      <tr><th>Item</th><th>Plan</th><th>Elevation</th><th>Status</th></tr>
+      ${j.dimension_crosscheck.map(d => `<tr class="${/mismatch/i.test(d.status) ? 'bad' : ''}">
+        <td>${esc(d.item)}${d.note ? `<br><span class="muted">${esc(d.note)}</span>` : ''}</td>
+        <td>${esc(d.plan)}</td><td>${esc(d.elevation)}</td><td>${esc(d.status)}</td></tr>`).join('')}
+    </table>` : ''}
     <b>Engineer to check</b>
     <ul>${s.engineer_checks.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
     <a class="btn" href="/jobs/${id}/markup.pdf">Download mark-up PDF</a>
