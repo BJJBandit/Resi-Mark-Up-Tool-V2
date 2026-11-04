@@ -14,6 +14,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from . import pipeline
+from .models import OPUS, SONNET, Ledger, describe
 from .pdf import check_pages, extract_pages, format_ranges, parse_page_range
 from .schemas import SHEET_TITLES
 
@@ -32,6 +33,7 @@ class Job:
     error: str | None = None
     project: str = ""
     result: pipeline.JobResult | None = None
+    ledger: Ledger = field(default_factory=Ledger)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -57,7 +59,7 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
         job.step = msg
 
     try:
-        job.result = pipeline.run(inp, progress)
+        job.result = pipeline.run(inp, progress, job.ledger)
         job.status = "done"
         job.step = "Complete"
     except Exception as e:
@@ -89,6 +91,7 @@ async def create_job(
     reference_pages: list[str] = Form([]),
     title_block: bool = Form(False),
     drawing_pages: str = Form(""),
+    sheet_model: str = Form("auto"),
     job_no: str = Form(""),
     rev: str = Form("A"),
     made_by: str = Form(""),
@@ -142,6 +145,7 @@ async def create_job(
         references=refs,
         title_block=title_block,
         pages=selected,
+        sheet_model=sheet_model if sheet_model in ("auto", OPUS, SONNET) else "auto",
         job_no=job_no.strip(),
         rev=rev.strip() or "A",
         made_by=made_by.strip().upper(),
@@ -162,10 +166,11 @@ def _job(job_id: str) -> Job:
 @app.get("/jobs/{job_id}")
 def job_status(job_id: str) -> dict:
     job = _job(job_id)
-    body: dict = {"status": job.status, "step": job.step, "error": job.error}
+    body: dict = {"status": job.status, "step": job.step, "error": job.error, "cost": job.ledger.summary()}
     if job.result:
         body["references"] = job.result.references
         body["warnings"] = job.result.warnings
+        body["sheet_models"] = describe(job.result.sheet_models)
         body["sheet_errors"] = {SHEET_TITLES[k]: v for k, v in job.result.sheet_errors.items()}
         body["summary"] = {
             "site_class": job.result.geotech.site_classification,
@@ -207,6 +212,8 @@ def job_json(job_id: str) -> JSONResponse:
                     "sheets": {k.value: v.model_dump() for k, v in r.sheets.items()},
                     "sheet_errors": {k.value: v for k, v in r.sheet_errors.items()},
                     "warnings": r.warnings,
+                    "sheet_models": describe(r.sheet_models),
+                    "cost": job.ledger.summary(),
                 }
             )
         )
