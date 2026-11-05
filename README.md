@@ -139,17 +139,21 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 always win. Members are still sized for their span and load - the file sets the form and
 material, not a size to copy. Edit the file (one rule per bullet) to change them:
 
-- **Lintels:** single F17 / LVL members to the AS 1684.2 span tables (not doubled MGP);
-  continuous lintel / ledger where one runs over several openings or carries a carport.
+- **Lintels:** single F17 / LVL members (office range L1 90x35, L2 120x35, L3 140x45, L4
+  190x45) to the AS 1684.2 span tables, not doubled MGP; continuous lintel / ledger where one
+  runs over several openings or carries a carport. Claude first works out which walls carry
+  roof load from the truss / rafter direction - lintels in gable-end and non-loadbearing
+  walls are sized without roof load (usually L1 / L2).
 - **Studs / tie-down:** F17 jamb studs > 1500 openings, 2/90x35 F17 DS > 2000; tie-down
   type (a) to lintels, type (b) double strap + M12 for lintels spanning 1800+.
 - **Bracing:** a mix of h(b) ply, d strap (internal walls) and g panels, distributed through
   the building in both directions.
 - **Footings:** strips 450 x min 450 with 4/L11 TM top and bottom; internal beams with
-  3/L11 TM; 450 bored piers at corners and max 3000 centres, 1/N16; 230x230 brick piers
+  3/L11 TM; 450 bored piers at corners, steps and joints and 3000 centres (closer only if needed, with the reason), 1/N16; 230x230 brick piers
   (350x350 over 1500 high); carport slabs 100 thick SL82 with edge / internal beams.
 - **Floor and decks:** F7 TP bearers and joists; **decks timber, including ledgers, unless
-  the drawings or the engineer's direction specify otherwise**; 89x3.5 / 89x5 SHS columns on
+  the engineer's direction says otherwise** - a steel system named on the architectural
+  drawings is listed as an engineer check, not used; 89x3.5 / 89x5 SHS columns on
   plates and bored piers.
 - **Site class:** the class the geotechnical report gives - a low-bearing band is handled by
   founding below it, not by re-classifying as P unless the report says P.
