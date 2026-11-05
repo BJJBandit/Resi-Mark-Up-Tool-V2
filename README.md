@@ -6,7 +6,7 @@ checked before use. It is not for construction.
 
 ## What it does
 
-1. **Geotechnical review and wind.** Reads the geotech report (PDF) and records the
+1. **Geotechnical review and wind.** Reads the geotechnical documents (report, addenda, logs - PDF) and records the
    AS 2870 site class, ys, bearing capacity, founding depth, fill, groundwater and the
    report's recommendations. Uses the AS 4055 wind class you enter, or the one in the report.
 2. **Architectural review.** Reads every drawing page as an image plus its extracted text, then works out:
@@ -140,7 +140,18 @@ hold even if Claude slips:
 
 ## Limits
 
-- Architectural sets can have up to 60 pages (`MAX_DRAWING_PAGES`), and each upload must be under 30 MB. Use **Drawing pages to review** (e.g. `3-12, 15`) to skip covers, 3D renders and BASIX pages: fewer pages is faster and cheaper. Large sets are sent at a lower image resolution so they fit in one request.
+- **Several drawing sets and geotechnical documents.** Architectural drawings and
+  geotechnical documents are added the same way as standards: **Add** appends (or drag PDFs
+  in), each file has **Remove** and its own **Pages to review** (blank = all).
+  - Drawing sets (e.g. plans, elevations, revised sheets) are combined in upload order into
+    one set for the review and the mark-up; Claude is told which file and page each drawing
+    page came from. Up to 60 pages in total (`MAX_DRAWING_PAGES`), each file under 30 MB.
+    Use the pages box (e.g. `3-12, 15`) to skip covers, 3D renders and BASIX pages: fewer
+    pages is faster and cheaper. Large sets are sent at a lower image resolution so they
+    fit in one request.
+  - Geotechnical documents (report, addenda, borehole logs) are all reviewed together in
+    step 1; up to 22 MB in total (they are sent inline in one request), so use the pages box
+    to skip long appendices.
 - **Standards are read once, then reused** (`app/refstore.py`). The first time a page of a
   standard / guide is needed, Claude transcribes it to text (clauses word for word, tables
   row by row, notes, what each figure shows) and the text is stored, keyed by the PDF's

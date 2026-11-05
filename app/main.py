@@ -14,7 +14,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from . import pipeline, refstore
-from .pdf import check_pages, parse_page_range
+from .pdf import MAX_PAGES, check_pages, combine_pdfs, extract_pages, parse_page_range
 from .refpages import MAX_REF_PAGES, RefDoc
 from .schemas import SHEET_TITLES, SheetKind
 
@@ -22,6 +22,7 @@ app = FastAPI(title="Resi Mark-Up Tool")
 
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text().replace("{{REF_PAGE_CAP}}", str(MAX_REF_PAGES))
 MAX_UPLOAD = 30 * 1024 * 1024  # Claude request limit is 32 MB
+MAX_GEOTECH = 22 * 1024 * 1024  # sent inline (base64, +33%) in one request: stay under 32 MB
 MAX_REF_UPLOAD = 100 * 1024 * 1024  # references go via the Files API, not inline
 
 
@@ -143,8 +144,10 @@ def delete_stored_reference(key: str) -> dict:
 
 @app.post("/jobs")
 async def create_job(
-    architectural: UploadFile = File(...),
-    geotech: UploadFile | None = File(None),
+    architectural: list[UploadFile] = File([]),
+    architectural_pages: list[str] = Form([]),
+    geotech: list[UploadFile] = File([]),
+    geotech_pages: list[str] = Form([]),
     project: str = Form(""),
     wind_class: str = Form(""),
     site_class: str = Form(""),
@@ -164,13 +167,52 @@ async def create_job(
         chosen = [SheetKind(s) for s in sheets]
     except ValueError:
         raise HTTPException(400, "Unknown sheet selected.")
-    arch = await _read(architectural, "Architectural drawings")
-    if arch is None:
+    # Architectural drawings: one or more sets, each with its own pages to review,
+    # combined into one set (in upload order) for the review and the mark-up.
+    parts: list[tuple[str, bytes, list[int]]] = []
+    for i, f in enumerate(architectural):
+        name = f.filename or f"drawings {i + 1}.pdf"
+        data = await _read(f, f"Architectural drawings '{name}'")
+        if data is None:
+            continue
+        spec = architectural_pages[i] if i < len(architectural_pages) else ""
+        if not spec.strip() and len(architectural) == 1:
+            spec = drawing_pages  # older single-set form field
+        try:
+            parts.append((name, data, check_pages(data, spec, f"'{name}'")))
+        except ValueError as e:
+            raise HTTPException(400, f"Architectural drawings '{name}': {e}")
+        except Exception:
+            raise HTTPException(400, f"Architectural drawings '{name}' could not be opened as a PDF.")
+    if not parts:
         raise HTTPException(400, "Architectural drawings are required.")
-    try:
-        selected = check_pages(arch, drawing_pages)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    total = sum(len(p[2]) for p in parts)
+    if total > MAX_PAGES:
+        raise HTTPException(400, f"{total} drawing pages selected across the drawing sets; the limit is {MAX_PAGES}. "
+                                 "Use each set's 'Pages to review' to pick the plans, elevations and sections.")
+    arch, labels = combine_pdfs(parts)
+    if len(arch) > MAX_UPLOAD * 3:
+        raise HTTPException(413, "The selected drawing pages are too large together; select fewer pages.")
+
+    # Geotechnical documents (report, addenda, borehole logs ...), each with optional pages.
+    geo_docs: list[tuple[str, bytes]] = []
+    for i, f in enumerate(geotech):
+        name = f.filename or f"geotech {i + 1}.pdf"
+        data = await _read(f, f"Geotechnical document '{name}'")
+        if data is None:
+            continue
+        spec = (geotech_pages[i] if i < len(geotech_pages) else "").strip()
+        if spec:
+            try:
+                with pymupdf.open(stream=data, filetype="pdf") as doc:
+                    sel = parse_page_range(spec, doc.page_count, "document")
+            except ValueError as e:
+                raise HTTPException(400, f"Geotechnical document '{name}': {e}")
+            data = extract_pages(data, sel)
+        geo_docs.append((name.rsplit(".", 1)[0], data))
+    if sum(len(d) for _, d in geo_docs) > MAX_GEOTECH:
+        raise HTTPException(413, f"Geotechnical documents total more than {MAX_GEOTECH // (1024 * 1024)} MB; "
+                                 "enter 'Pages to review' to send only the pages needed.")
 
     refs: list[RefDoc] = []
     manual_pages = 0
@@ -205,7 +247,7 @@ async def create_job(
     inp = pipeline.JobInput(
         project=project.strip(),
         arch_pdf=arch,
-        geotech_pdf=await _read(geotech, "Geotechnical report"),
+        geotech_pdf=geo_docs or None,
         wind_class=wind_class.strip() or None,
         site_class=site_class.strip() or None,
         construction=construction.strip(),
@@ -213,7 +255,8 @@ async def create_job(
         sheet_notes=[n.strip() for n in sheet_notes.splitlines() if n.strip()],
         references=refs,
         title_block=title_block,
-        pages=selected,
+        pages=[],  # arch holds only the selected pages
+        page_labels=labels,
         job_no=job_no.strip(),
         rev=rev.strip() or "A",
         made_by=made_by.strip().upper(),

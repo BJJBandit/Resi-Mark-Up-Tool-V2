@@ -18,7 +18,7 @@ from .schemas import SHEET_TITLES, DesignAssessment, GeotechReview, MarkupSheet,
 class JobInput:
     project: str
     arch_pdf: bytes
-    geotech_pdf: bytes | None
+    geotech_pdf: bytes | None | list[tuple[str, bytes]]  # one report, or [(name, pdf)] for several
     wind_class: str | None
     site_class: str | None
     construction: str
@@ -30,7 +30,8 @@ class JobInput:
     rev: str = "A"
     made_by: str = ""
     sheet_notes: list[str] = field(default_factory=list)
-    sheets: list[SheetKind] = field(default_factory=list)  # sheets to produce; empty = all  # engineer's notes added to every sheet as written
+    sheets: list[SheetKind] = field(default_factory=list)  # sheets to produce; empty = all
+    page_labels: list[str] = field(default_factory=list)  # source file + page of each page of arch_pdf  # engineer's notes added to every sheet as written
 
 
 @dataclass
@@ -142,6 +143,10 @@ def _report_usage(log: usage.UsageLog, what: str) -> dict:
 def _run_all(job: JobInput, progress: Callable[[str], None], log: usage.UsageLog) -> JobResult:
     progress("Rendering architectural drawings")
     pages = render_pages(job.arch_pdf, job.pages or None)
+    if job.page_labels and len({lb.rsplit(" page ", 1)[0] for lb in job.page_labels}) > 1:
+        for p in pages:  # several drawing sets: say which file each page came from
+            if 0 < p.number <= len(job.page_labels):
+                p.label = job.page_labels[p.number - 1]
 
     refs: list[claude.Reference] = []
     ref_warnings: list[str] = []
