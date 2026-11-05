@@ -25,7 +25,8 @@ from .schemas import (
 )
 
 MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5-5")
-EFFORT = os.environ.get("ANTHROPIC_EFFORT", "high")  # steps 1-2: engineering judgement
+EFFORT = os.environ.get("ANTHROPIC_EFFORT", "high")  # step 1 (geotech): engineering judgement
+DESIGN_EFFORT = os.environ.get("ANTHROPIC_DESIGN_EFFORT", "medium")  # step 2 (architectural review)
 SHEET_EFFORT = os.environ.get("ANTHROPIC_SHEET_EFFORT", "medium")  # step 3: placing mark-ups
 
 # Long thinking can leave a stream quiet for a while; allow 30 min between bytes
@@ -409,7 +410,7 @@ def assess_design(
             ),
         }
     )
-    return _call(content, DesignAssessment, "Step 2 (architectural review)")
+    return _call(content, DesignAssessment, "Step 2 (architectural review)", effort=DESIGN_EFFORT)
 
 
 # ---------------------------------------------------------------------------
