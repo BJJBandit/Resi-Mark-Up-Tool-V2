@@ -20,7 +20,7 @@ from .schemas import SHEET_TITLES, SheetKind
 
 app = FastAPI(title="Resi Mark-Up Tool")
 
-INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text()
+INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text().replace("{{REF_PAGE_CAP}}", str(MAX_REF_PAGES))
 MAX_UPLOAD = 30 * 1024 * 1024  # Claude request limit is 32 MB
 MAX_REF_UPLOAD = 100 * 1024 * 1024  # references go via the Files API, not inline
 

@@ -34,6 +34,9 @@ services:
         value: high
       # Stored text extracts of standards / guides (app/refstore.py) live on the
       # persistent disk below, so each page is read from the PDF only once ever.
+      # Most pages of standards / guides sent per review (all documents together).
+      - key: REF_PAGE_CAP
+        value: "150"
       - key: REF_STORE_DIR
         value: /var/data/references
     disk:

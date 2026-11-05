@@ -10,6 +10,7 @@ whole document. Every document's pages are reported back to the engineer.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Callable
@@ -18,7 +19,10 @@ import pymupdf
 
 from .pdf import extract_pages, format_ranges
 
-MAX_REF_PAGES = 500  # Claude reads at most 600 PDF pages per request; leave room
+# Pages of standards / guides sent per review, across all documents. Kept low for beta
+# to control cost (REF_PAGE_CAP); never above 500 - Claude reads at most 600 PDF pages
+# per request and the drawings need room too.
+MAX_REF_PAGES = max(10, min(500, int(os.environ.get("REF_PAGE_CAP", "150"))))
 SMALL_DOC_PAGES = 25  # short documents are sent whole; no need to index them
 CONTENTS_SCAN_PAGES = 40  # look for contents pages in the front of the document
 MAX_CONTENTS_PAGES = 12
@@ -84,38 +88,78 @@ def prepare(
     manual = sum(len(d.pages) for d in docs if d.pages is not None)
     auto = [d for d in docs if d.pages is None]
     remaining = max(0, budget_total - manual)
-    per_doc = max(10, remaining // max(1, len(auto))) if auto else 0
 
+    # 1. Short documents go whole (they are cheap and need no index).
     for d in auto:
-        if d.page_count <= min(SMALL_DOC_PAGES, per_doc):
+        if d.page_count <= SMALL_DOC_PAGES and d.page_count <= remaining:
             d.pages, d.how = list(range(1, d.page_count + 1)), "whole document (short)"
+            remaining -= d.page_count
+
+    # 2. Claude picks the sections each long document needs (told the whole budget left).
+    picks: dict[int, list[dict]] = {}
+    fallback: list[tuple[RefDoc, str]] = []
+    for d in auto:
+        if d.pages is not None:
             continue
         progress(f"Reading the contents of {d.stem}")
         bookmarks, contents, pmap, has_text = page_map(d.data)
         if not has_text and not bookmarks:
-            _whole_or_skip(d, per_doc, warnings, "has no text layer (scanned?), so its contents could not be read")
+            fallback.append((d, "has no text layer (scanned?), so its contents could not be read"))
             continue
         try:
-            chosen = select(d, bookmarks, contents, pmap, context, per_doc)
+            chosen = select(d, bookmarks, contents, pmap, context, max(10, remaining))
         except Exception as e:
-            _whole_or_skip(d, per_doc, warnings, f"page selection failed ({e})")
+            fallback.append((d, f"page selection failed ({e})"))
             continue
-        pages: list[int] = []
-        sections = []
-        for s in chosen:
-            new = [p for p in s["pages"] if 1 <= p <= d.page_count and p not in pages]
-            if len(pages) + len(new) > per_doc:
-                new = new[: max(0, per_doc - len(pages))]
-                if not new:
-                    warnings.append(f"{d.stem}: page budget reached; '{s['title']}' was not sent.")
-                    continue
-            pages += new
-            sections.append({"title": s["title"], "pages": format_ranges(sorted(new)), "why": s["why"]})
-        if not pages:
-            _whole_or_skip(d, per_doc, warnings, "no sections relevant to this job were found in its contents")
+        secs = []
+        seen: set[int] = set()
+        for sec in chosen:
+            new = [p for p in sec["pages"] if 1 <= p <= d.page_count and p not in seen]
+            seen.update(new)
+            if new:
+                secs.append({**sec, "pages": new})
+        if secs:
+            picks[id(d)] = secs
+        else:
+            fallback.append((d, "no sections relevant to this job were found in its contents"))
+
+    # 3. Fit the sections into the budget, one section per document in turn (each
+    #    document's sections in Claude's order of need), so unused budget isn't wasted
+    #    and no single document crowds out the others.
+    queues = {k: list(v) for k, v in picks.items()}
+    taken: dict[int, list[dict]] = {k: [] for k in picks}
+    while any(queues.values()):
+        for k in list(queues):
+            if not queues[k]:
+                continue
+            sec = queues[k].pop(0)
+            if len(sec["pages"]) <= remaining:
+                taken[k].append(sec)
+                remaining -= len(sec["pages"])
+            else:
+                doc = next(d for d in auto if id(d) == k)
+                warnings.append(f"{doc.stem}: page limit ({budget_total} per review) reached; "
+                                f"'{sec['title']}' was not sent.")
+    for d in auto:
+        if id(d) not in picks:
+            continue
+        secs = taken[id(d)]
+        if not secs:
+            d.pages, d.how = [], "not sent (page limit reached)"
             continue
         d.how = "chosen automatically from the contents"
-        d.pages, d.sections = sorted(pages), sections
+        d.pages = sorted(p for sec in secs for p in sec["pages"])
+        d.sections = [{"title": sec["title"], "pages": format_ranges(sorted(sec["pages"])), "why": sec["why"]}
+                      for sec in secs]
+
+    # 4. Documents whose pages couldn't be chosen: whole if they fit what's left.
+    for d, reason in fallback:
+        _whole_or_skip(d, remaining, warnings, reason)
+        remaining -= len(d.pages or [])
+    for d in auto:  # short documents that didn't fit
+        if d.pages is None:
+            d.pages, d.how = [], "not sent (page limit reached)"
+            warnings.append(f"{d.stem}: page limit ({budget_total} per review) reached, so it was not sent.")
 
     out = []
     for d in docs:
@@ -130,10 +174,10 @@ def prepare(
     return out, warnings
 
 
-def _whole_or_skip(d: RefDoc, per_doc: int, warnings: list[str], reason: str) -> None:
+def _whole_or_skip(d: RefDoc, budget: int, warnings: list[str], reason: str) -> None:
     """When the pages can't be chosen: send a document that fits the budget whole,
     otherwise don't send it (its first pages are front matter, not worth the cost)."""
-    if d.page_count <= per_doc:
+    if d.page_count <= budget:
         d.pages, d.how = list(range(1, d.page_count + 1)), f"whole document ({reason})"
         warnings.append(f"{d.stem}: {reason}; the whole document ({d.page_count} pages) was sent.")
     else:
