@@ -176,6 +176,11 @@ hold even if Claude slips:
   standards box lists what's stored, lets you view the text (check a span table before
   relying on it) and **Forget** a document so it is read from the PDF again. A page that
   can't be transcribed is sent as a PDF page and retried next time.
+  **Upload a standard once.** Every standard you upload is kept (its PDF as well as the
+  text) and listed under **Stored standards** on the form; tick one, with its own
+  "Pages to review", to use it in a review without uploading it again. Standards stored
+  before this feature show without a tick box until they are uploaded once more.
+  **Forget** deletes the PDF and its text.
   The store is on the Render persistent disk (`REF_STORE_DIR`, 1 GB in `render.yaml`);
   `REF_MODE=pdf` turns it off. `REF_EXTRACT_EFFORT` (default `low`) sets the transcription
   reasoning depth.

@@ -156,6 +156,8 @@ async def create_job(
     sheet_notes: str = Form(""),
     references: list[UploadFile] = File([]),
     reference_pages: list[str] = Form([]),
+    stored_refs: list[str] = Form([]),  # keys of standards kept from earlier reviews
+    stored_ref_pages: list[str] = Form([]),
     title_block: bool = Form(False),
     drawing_pages: str = Form(""),
     job_no: str = Form(""),
@@ -217,17 +219,34 @@ async def create_job(
 
     refs: list[RefDoc] = []
     manual_pages = 0
+    # Standards: uploaded now, or ticked from the ones stored by earlier reviews.
+    sources: list[tuple[str, bytes, str]] = []  # name, pdf, pages spec
     for i, f in enumerate(references):
         data = await _read(f, f"Reference '{f.filename}'", MAX_REF_UPLOAD)
-        if data is None:
+        if data is not None:
+            sources.append((f.filename or "reference.pdf", data, reference_pages[i] if i < len(reference_pages) else ""))
+    for i, key in enumerate(stored_refs):
+        got = refstore.load_pdf(key)
+        if got is None:
+            raise HTTPException(400, "A stored standard you ticked is no longer stored - upload it again.")
+        sources.append((got[0], got[1], stored_ref_pages[i] if i < len(stored_ref_pages) else ""))
+    seen: set[str] = set()
+    for name, data, spec in sources:
+        key = refstore.doc_key(data)
+        if key in seen:  # the same standard uploaded and ticked: use it once
             continue
-        name = f.filename or "reference.pdf"
-        spec = (reference_pages[i] if i < len(reference_pages) else "").strip()
+        seen.add(key)
+        spec = spec.strip()
         try:
             with pymupdf.open(stream=data, filetype="pdf") as doc:
                 count = doc.page_count
         except Exception:
             raise HTTPException(400, f"Reference '{name}' could not be opened as a PDF.")
+        if refstore.enabled():
+            try:  # keep it, so later reviews can tick it instead of uploading it again
+                refstore.save_pdf(key, name, data, count)
+            except OSError as e:
+                print(f"[refstore] could not store {name}: {e}", flush=True)
         if not spec:  # blank: pages chosen automatically from the contents during the review
             refs.append(RefDoc(name, data, count))
             continue

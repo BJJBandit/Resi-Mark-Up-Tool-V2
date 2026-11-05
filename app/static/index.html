@@ -45,8 +45,10 @@
   .drop { border: 1px dashed var(--line); border-radius: 8px; padding: 12px; }
   .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .drop p { margin: 8px 0 0; }
-  details#stored { margin-top: 8px; font-size: 14px; }
-  details#stored summary { cursor: pointer; }
+  .stored { margin: 4px 0 8px; font-size: 14px; }
+  .stored ul.files { color: var(--ink); }
+  .stored label.usestd { margin: 0; font-weight: 400; align-items: baseline; }
+  .stored label.stdpages { margin: 6px 0 0; font-size: 13px; }
   details.usage { margin: 6px 0 14px; }
   .sheetpick { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
   .sheetpick label.check { margin-top: 6px; font-weight: 400; }
@@ -84,10 +86,11 @@
     <div class="drop" id="geoDrop"></div>
 
     <label>Standards, guides &amp; codes (PDF) <small>optional &middot; add as many as you need &middot; only the relevant pages are sent (up to {{REF_PAGE_CAP}} per review)</small></label>
-    <div class="drop" id="refDrop"></div>
-    <details id="stored"><summary class="muted">Stored extracts <small>(pages already read once are reused, not read again)</small></summary>
+    <div class="stored" id="stored">
+      <b>Stored standards</b> <small class="muted">kept from earlier reviews - tick to use without uploading; pages already read are reused, not read again</small>
       <ul id="storedList" class="files"></ul>
-    </details>
+    </div>
+    <div class="drop" id="refDrop"></div>
 
     <div class="row">
       <div>
@@ -142,25 +145,32 @@
 </main>
 <script>
 const f = document.getElementById('f'), go = document.getElementById('go'), box = document.getElementById('status');
-// Stored text extracts of standards (app/refstore.py): list, view, forget.
+// Standards stored by earlier reviews (app/refstore.py): tick to use, view the text, forget.
 const storedList = document.getElementById('storedList');
 async function loadStored() {
   try {
     const docs = await (await fetch('/references')).json();
-    storedList.innerHTML = docs.length ? docs.map(d => `<li class="ref"><div class="refhead"><span><b>${esc(d.names.join(' / '))}</b>
-      <span class="muted">${d.pages_stored} of ${d.page_count} pages stored</span></span>
+    storedList.innerHTML = docs.length ? docs.map(d => `<li class="ref"><div class="refhead">
+      <label class="check usestd">${d.has_pdf ? `<input type="checkbox" data-use="${d.key}">` : ''}
+        <span><b>${esc(d.names.join(' / '))}</b> <span class="muted">${d.page_count} pages &middot; ${d.pages_stored} read and stored${d.has_pdf ? '' : ' &middot; upload it once more to keep the PDF so it can be ticked'}</span></span></label>
       <span><a href="/references/${d.key}.txt" target="_blank">View</a> &middot;
-      <button type="button" class="link" data-key="${d.key}">Forget</button></span></div></li>`).join('')
-      : '<li>None yet - the first review that uses a standard stores the pages it reads.</li>';
-  } catch (e) { storedList.innerHTML = '<li>Could not load the stored extracts.</li>'; }
+      <button type="button" class="link" data-key="${d.key}">Forget</button></span></div>
+      <label class="stdpages" data-for="${d.key}" hidden>Pages to review <small>blank = picked from the contents &middot; or e.g. 45-60, 72 &middot; or all</small>
+        <input type="text" data-stdpages="${d.key}" placeholder="auto (from contents)"></label></li>`).join('')
+      : '<li class="muted">None yet - standards you upload are kept here for later reviews.</li>';
+  } catch (e) { storedList.innerHTML = '<li>Could not load the stored standards.</li>'; }
 }
+storedList.addEventListener('change', e => {
+  const k = e.target.dataset && e.target.dataset.use;
+  if (k) storedList.querySelector(`[data-for="${k}"]`).hidden = !e.target.checked;
+});
 storedList.addEventListener('click', async e => {
   const k = e.target.dataset && e.target.dataset.key;
-  if (!k || !confirm('Forget this document\'s stored extracts? Its pages will be read from the PDF again next time.')) return;
+  if (!k || !confirm('Forget this standard? Its PDF and stored text are deleted; upload it again to use it.')) return;
   await fetch('/references/' + k, { method: 'DELETE' });
   loadStored();
 });
-document.getElementById('stored').addEventListener('toggle', e => { if (e.target.open) loadStored(); });
+window.addEventListener('DOMContentLoaded', loadStored);
 const tb = document.getElementById('tb'), tbFields = document.getElementById('tbFields');
 tb.addEventListener('change', () => { tbFields.hidden = !tb.checked; });
 // Document lists (drawings, geotech, standards): each "Add" appends rather than
@@ -278,6 +288,10 @@ f.addEventListener('submit', async e => {
     for (const r of archList.items) { fd.append('architectural', r.file, r.file.name); fd.append('architectural_pages', r.pages); }
     for (const r of geoList.items) { fd.append('geotech', r.file, r.file.name); fd.append('geotech_pages', r.pages); }
     for (const r of refList.items) { fd.append('references', r.file, r.file.name); fd.append('reference_pages', r.pages); }
+    for (const c of storedList.querySelectorAll('input[data-use]:checked')) {
+      fd.append('stored_refs', c.dataset.use);
+      fd.append('stored_ref_pages', storedList.querySelector(`[data-stdpages="${c.dataset.use}"]`).value);
+    }
     const r = await fetch('/jobs', { method: 'POST', body: fd });
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.statusText);

@@ -118,6 +118,34 @@ def as_text(name: str, texts: dict[int, str]) -> str:
     return "\n\n".join(f"===== {name} - PDF page {p} =====\n{texts[p]}" for p in sorted(texts))
 
 
+def save_pdf(key: str, name: str, data: bytes, page_count: int) -> None:
+    """Keep the document itself, so later reviews can use it without uploading it again."""
+    _save_meta(key, name, page_count)
+    f = _dir(key) / "source.pdf"
+    if not f.exists():
+        _write_bytes(f, data)
+
+
+def load_pdf(key: str) -> tuple[str, bytes, int] | None:
+    """(name, pdf, page count) of a stored document, or None if its PDF isn't stored."""
+    try:
+        d = _dir(key)
+    except ValueError:
+        return None
+    f, meta_f = d / "source.pdf", d / "meta.json"
+    if not f.exists() or not meta_f.exists():
+        return None
+    meta = json.loads(meta_f.read_text())
+    return (meta.get("names") or ["reference.pdf"])[0], f.read_bytes(), int(meta.get("page_count") or 0)
+
+
+def _write_bytes(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + f".{threading.get_ident()}.tmp")
+    tmp.write_bytes(data)
+    tmp.replace(path)
+
+
 def list_documents() -> list[dict]:
     out = []
     if not STORE_DIR.exists():
@@ -128,8 +156,10 @@ def list_documents() -> list[dict]:
             continue
         meta = json.loads(meta_f.read_text())
         pages = sorted(int(f.stem[1:]) for f in d.glob("p*.md"))
+        pdf = d / "source.pdf"
         out.append({"key": d.name, "names": meta.get("names", []), "page_count": meta.get("page_count"),
-                    "pages_stored": len(pages), "pages": pages})
+                    "pages_stored": len(pages), "pages": pages, "has_pdf": pdf.exists(),
+                    "mb": round(pdf.stat().st_size / 1048576, 1) if pdf.exists() else 0})
     return out
 
 
