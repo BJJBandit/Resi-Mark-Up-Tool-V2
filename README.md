@@ -226,6 +226,12 @@ hold even if Claude slips:
   set low for beta to control cost; up to 500). When several documents are picked
   automatically the cap is shared between them, and a typed range that goes over it is
   refused with a message.
+- **Mark-ups are drawn roughly to scale.** Using the plan scale (printed, or inferred from
+  the 90 mm stud walls), piers are drawn at their diameter from the schedule (450 dia by
+  default), brick / block piers as a square of their size inside the bored pier, and columns
+  at their section size (e.g. 89 SHS) - kept just large enough to see. Bracing panels are
+  drawn at their tagged length and lintels / beams / footings / joists are snapped to the
+  real walls, openings and supports (see below). Member line weights stay in house style.
 - **Mark-ups are never silently left off a sheet.** If Claude puts members outside the plan
   area it chose for the sheet, the plan area is enlarged to show them (with a warning to
   check they are on the right drawing); anything still outside, or a sheet that came back

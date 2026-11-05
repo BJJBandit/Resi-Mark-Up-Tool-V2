@@ -509,6 +509,11 @@ class PlanMap:
             PLAN.x0 + (PLAN.width + w) / 2, PLAN.y0 + (PLAN.height + h) / 2,
         )
         self.src_page = src_page
+        self.mm_pt: float | None = None  # sheet points per real mm (set when the plan scale is known)
+        self.specs: dict[str, str] = {}  # schedule text by tag
+
+    def spec(self, tag: str) -> str:
+        return self.specs.get((tag or "").strip().upper(), "")
 
     def __call__(self, pt) -> pymupdf.Point:
         px = min(max(pt.x, 0), 1) * self.src_w
@@ -543,6 +548,28 @@ def _offset_label_point(a: pymupdf.Point, b: pymupdf.Point, dist: float = 4) -> 
     return pymupdf.Point(mid.x - 8, mid.y - dist) if horizontal else pymupdf.Point(mid.x + dist, mid.y + 6)
 
 
+# Real sizes of piers / columns, read from the schedule or the element's own text, so the
+# symbols are drawn roughly to scale on the plan (e.g. a 450 dia pier at 1:100).
+_DIA = re.compile(r"(\d{3,4})\s*(?:MM\s*)?(?:DIA\b|DIAM|Ø)", re.I)
+_SQUARE = re.compile(r"(\d{2,3})\s*[xX×]\s*(\d{2,3})(?=\s*(?:[xX×]\s*[\d.]+\s*)?(?:SHS|RHS|CHS|POST|BRICK|MASONRY|BLOCK|COLUMN|PIER|F\d|TP|HW|MGP|LVL|GALV))", re.I)
+_SHS = re.compile(r"(\d{2,3})\s*[xX×]\s*\d{1,2}(?:\.\d)?\s*(?:SHS|CHS|RHS)", re.I)
+PIER_DEFAULT_MM = 450.0
+
+
+def _sizes(text: str) -> tuple[float | None, float | None]:
+    """(bored pier diameter mm, square / post side mm) found in a schedule or note."""
+    d = _DIA.search(text or "")
+    sq = _SQUARE.search(text or "")
+    shs = _SHS.search(text or "")  # '89x3.5 SHS': size x wall thickness
+    side = float(max(sq.group(1), sq.group(2), key=int)) if sq else (float(shs.group(1)) if shs else None)
+    return (float(d.group(1)) if d else None), side
+
+
+def _scaled(m: PlanMap, mm: float, fallback: float, lo: float, hi: float) -> float:
+    """mm on site -> points on the sheet at the plan's scale, kept legible (lo..hi)."""
+    return fallback if not m.mm_pt else min(hi, max(lo, mm * m.mm_pt))
+
+
 def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
     a, b = m(e.start), m(e.end)
     colour = tag_colour(e.tag, e.kind)
@@ -562,18 +589,24 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
         if e.tag:
             _label(page, _offset_label_point(a, b, 3), e.tag, 7, TEAL, "Bracing Tag")
     elif e.kind == "pier":
-        r = 6.0
+        dia, side = _sizes(f"{e.text} {m.spec(e.tag)}")
+        r = _scaled(m, (dia or PIER_DEFAULT_MM) / 2, 6.0, 2.5, 16.0)
         _circle = page.add_circle_annot(pymupdf.Rect(a.x - r, a.y - r, a.x + r, a.y + r))
         _circle.set_border(width=1, dashes=[2, 2])
         _circle.set_colors(stroke=RED)
         _info(_circle, "Pier", content)
         _circle.update()
+        if side and m.mm_pt:  # brick / block pier on the bored pier, drawn to its size
+            h = _scaled(m, side / 2, 2.0, 1.2, 12.0)
+            _rect(page, pymupdf.Rect(a.x - h, a.y - h, a.x + h, a.y + h), RED, 0.75, "Pier")
         if e.tag:
             _label(page, pymupdf.Point(a.x + r + 1, a.y - r + 2), e.tag, 9, RED, "Pier Tag")
     elif e.kind == "column":
-        _rect(page, pymupdf.Rect(a.x - 2.5, a.y - 2.5, a.x + 2.5, a.y + 2.5), colour, 0.5, "Column", fill=colour)
+        _, side = _sizes(f"{e.text} {m.spec(e.tag)}")
+        h = _scaled(m, (side or 90.0) / 2, 2.5, 1.5, 8.0)
+        _rect(page, pymupdf.Rect(a.x - h, a.y - h, a.x + h, a.y + h), colour, 0.5, "Column", fill=colour)
         if e.tag:
-            _label(page, pymupdf.Point(a.x + 4, a.y - 3), e.tag, 11, colour, "Column Tag")
+            _label(page, pymupdf.Point(a.x + h + 1.5, a.y - 3), e.tag, 11, colour, "Column Tag")
     elif e.kind == "cloud":
         r = pymupdf.Rect(a, b).normalize()
         if r.width < 8 or r.height < 8:
@@ -944,6 +977,13 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         warnings.append(f"{dwg_no}: {grown} mark-up(s) were placed outside the plan area Claude chose, so the "
                         "plan area was enlarged to show them - check they are on the right drawing")
     m = PlanMap(src[idx], sheet.plan_region)
+    try:  # draw piers / columns roughly to scale
+        scale, _ = drawing_scale(src[idx], Geometry(src[idx]))
+        if scale:
+            m.mm_pt = mm_to_pt(1, scale) * m.scale
+    except Exception:
+        pass
+    m.specs = {s.tag.strip().upper(): s.text for s in sheet.schedule}
     if kind == SheetKind.ARTICULATION:
         try:
             plan_page = src[plan_idx] if plan_idx is not None and 0 <= plan_idx < src.page_count else None
