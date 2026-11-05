@@ -53,6 +53,7 @@
   .sheetpick { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
   .sheetpick label.check { margin-top: 6px; font-weight: 400; }
   @media (max-width: 560px) { .sheetpick { grid-template-columns: 1fr; } }
+  p.sheethelp { margin: 4px 0 0; font-size: 13px; }
   .rerun { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0 14px; }
   .rerunrow { display: flex; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
   .rerunrow select { flex: 1; min-width: 200px; }
@@ -116,11 +117,12 @@
       <label class="check"><input type="checkbox" name="sheets" value="load_paths" checked> Load paths</label>
       <label class="check"><input type="checkbox" name="sheets" value="roof" checked> Roof framing</label>
       <label class="check"><input type="checkbox" name="sheets" value="walls" checked> Wall framing / bracing</label>
-      <label class="check"><input type="checkbox" name="sheets" value="footings" checked> Footings</label>
-      <label class="check"><input type="checkbox" name="sheets" value="floor" checked> Floor framing / slab</label>
       <label class="check"><input type="checkbox" name="sheets" value="articulation" checked> Articulation joints <small>(masonry only)</small></label>
+      <label class="check"><input type="checkbox" name="sheets" value="foundation" checked> Footings &amp; floor framing / slab <small>(one sheet)</small></label>
+      <label class="check"><input type="checkbox" name="sheets" value="footings"> Footings <small>(own sheet)</small></label>
+      <label class="check"><input type="checkbox" name="sheets" value="floor"> Floor framing / slab <small>(own sheet)</small></label>
     </div>
-    <label class="check"><input type="checkbox" id="combineFoundation" checked> Footings and floor framing / slab on one sheet <small>(FOOTING &amp; FLOOR PLAN - one sheet call fewer; untick for separate sheets on busy suspended-floor jobs)</small></label>
+    <p class="muted sheethelp">Footings and floor go on one FOOTING &amp; FLOOR PLAN, or tick them as separate sheets (clearer on busy suspended-floor jobs, one more sheet call) - not both.</p>
     <p class="err" id="sheetMsg" hidden>Tick at least one sheet.</p>
 
     <label>Construction material / standard</label>
@@ -171,6 +173,13 @@ storedList.addEventListener('click', async e => {
   loadStored();
 });
 window.addEventListener('DOMContentLoaded', loadStored);
+// Footings & floor: one combined sheet OR separate footing / floor sheets, never both.
+document.querySelector('.sheetpick').addEventListener('change', e => {
+  const v = e.target.value, box = v2 => document.querySelector(`.sheetpick input[value=${v2}]`);
+  if (!e.target.checked) return;
+  if (v === 'foundation') { box('footings').checked = false; box('floor').checked = false; }
+  if (v === 'footings' || v === 'floor') box('foundation').checked = false;
+});
 const tb = document.getElementById('tb'), tbFields = document.getElementById('tbFields');
 tb.addEventListener('change', () => { tbFields.hidden = !tb.checked; });
 // Document lists (drawings, geotech, standards): each "Add" appends rather than
@@ -284,7 +293,7 @@ f.addEventListener('submit', async e => {
   box.innerHTML = 'Uploading…';
   try {
     const fd = new FormData(f);
-    fd.set('combine_foundation', document.getElementById('combineFoundation').checked ? 'true' : 'false');
+    fd.set('combine_foundation', 'false');  // the tick boxes say exactly which sheets to make
     for (const r of archList.items) { fd.append('architectural', r.file, r.file.name); fd.append('architectural_pages', r.pages); }
     for (const r of geoList.items) { fd.append('geotech', r.file, r.file.name); fd.append('geotech_pages', r.pages); }
     for (const r of refList.items) { fd.append('references', r.file, r.file.name); fd.append('reference_pages', r.pages); }
