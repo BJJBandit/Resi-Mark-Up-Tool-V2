@@ -191,6 +191,11 @@ hold even if Claude slips:
   set low for beta to control cost; up to 500). When several documents are picked
   automatically the cap is shared between them, and a typed range that goes over it is
   refused with a message.
+- **Mark-ups are never silently left off a sheet.** If Claude puts members outside the plan
+  area it chose for the sheet, the plan area is enlarged to show them (with a warning to
+  check they are on the right drawing); anything still outside, or a sheet that came back
+  with no members at all, is named in the warnings. A sheet whose Claude call fails is
+  retried once before it is reported as not produced.
 - Mark-up positions come from Claude reading the page image, so they are approximate;
   check them and drag them into place in your PDF editor.
 - **Footings, bearers and beams are snapped to the walls** in a CAD-exported drawing:

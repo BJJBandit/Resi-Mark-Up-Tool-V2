@@ -471,6 +471,25 @@ def _schedule(page, title: str, items: list[ScheduleItem], legend_title: str, le
 # ---------------------------------------------------------------------------
 
 
+def _fit_region(sheet: MarkupSheet, margin: float = 0.02) -> int:
+    """Enlarge sheet.plan_region to take in mark-ups Claude placed outside it (otherwise
+    they would be silently left off the sheet). Returns how many were outside."""
+    r = sheet.plan_region
+    x1, x2 = sorted((r.x1, r.x2))
+    y1, y2 = sorted((r.y1, r.y2))
+    if x2 - x1 < 0.1 or y2 - y1 < 0.1:
+        return 0  # PlanMap uses the whole page anyway
+    pts = [p for e in sheet.elements for p in ((e.start, e.end) if e.kind != "callout" else (e.start,))]
+    out = [p for p in pts if not (x1 - margin <= p.x <= x2 + margin and y1 - margin <= p.y <= y2 + margin)]
+    if not out:
+        return 0
+    xs, ys = [p.x for p in pts] + [x1, x2], [p.y for p in pts] + [y1, y2]
+    sheet.plan_region = r.model_copy(update={
+        "x1": max(0.0, min(xs) - margin), "y1": max(0.0, min(ys) - margin),
+        "x2": min(1.0, max(xs) + margin), "y2": min(1.0, max(ys) + margin)})
+    return len({id(e) for e in sheet.elements for p in (e.start, e.end) if any(p is q for q in out)})
+
+
 class PlanMap:
     """Maps normalised source-image coordinates onto the sheet."""
 
@@ -920,6 +939,10 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     warnings: list[str] = []
     page = _new_sheet(out, meta, SHEET_TITLES[kind], dwg_no)
     idx = min(max(sheet.source_page_number, 1), src.page_count) - 1
+    grown = _fit_region(sheet)
+    if grown:
+        warnings.append(f"{dwg_no}: {grown} mark-up(s) were placed outside the plan area Claude chose, so the "
+                        "plan area was enlarged to show them - check they are on the right drawing")
     m = PlanMap(src[idx], sheet.plan_region)
     if kind == SheetKind.ARTICULATION:
         try:
@@ -960,6 +983,11 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
                 skipped += 1
     if skipped:
         warnings.append(f"{dwg_no}: {skipped} plan element(s) could not be drawn")
+    dropped = sum(1 for e in sheet.elements if e.kind != "callout" and not (m.inside(e.start) and m.inside(e.end)))
+    if dropped:
+        warnings.append(f"{dwg_no}: {dropped} mark-up(s) fell outside the plan and were not drawn")
+    if not any(e.kind != "callout" for e in sheet.elements):
+        warnings.append(f"{dwg_no}: Claude returned no members / piers / bracing for this sheet - re-run it")
     try:
         unplaced = _draw_callouts(page, callouts, m, BAND_BOTTOM if meta.title_block else BAND_BOTTOM_NO_TB)
     except Exception as e:
