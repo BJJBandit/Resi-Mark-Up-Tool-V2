@@ -31,8 +31,10 @@ checked before use. It is not for construction.
        already wrote isn't repeated, and the firm rules never rewrite these notes.
 3. **Mark-up drawings.** Produces one PDF with:
    - one marked-up sheet each for load paths, roof (rafters only, including the deck),
-     wall framing / racking / blockwork joints, and footings (AS 2870) with the floor framing
-     or slab on one sheet ("FOOTING & FLOOR PLAN")
+     wall framing / racking / blockwork joints, footings (AS 2870) and floor framing or slab.
+     Footings and floor go on one sheet ("FOOTING & FLOOR PLAN") unless you untick
+     **Footings and floor framing / slab on one sheet** - then they are separate FOOTING PLAN
+     and FLOOR FRAMING PLAN sheets (clearer on busy suspended-floor jobs, one more sheet call)
 
    Sheets follow the house mark-up style: A3, address and sheet name top-left,
    classification and notes down the left, the architectural plan faded in the middle
@@ -193,7 +195,7 @@ hold even if Claude slips:
   runs along at least half its length, so bearers spanning mid-room and deck beams stay
   as placed. Ends snap to the crossing walls, so footing corners close. Footing lines
   that are not on any wall are named in the warnings.
-- **Bearers are snapped to their footings and piers** on the footing & floor sheet: a bearer
+- **Bearers are snapped to their footings and piers** on the floor (or footing & floor) sheet: a bearer
   that is not on a wall but runs along a footing line (EB / SF / IB) is drawn 3 pt beside
   that footing on the side Claude placed it; a mid-room bearer over a row of piers /
   columns (2 or more within 6 pt) goes onto the line through them (averaged with its own
