@@ -117,8 +117,13 @@ def healthz() -> dict:
 
 @app.get("/references")
 def stored_references() -> list[dict]:
-    """Standards / guides with stored text extracts (pages already read once)."""
-    return [{k: v for k, v in d.items() if k != "pages"} for d in refstore.list_documents()]
+    """Standards / guides kept from earlier reviews (PDF and / or text extracts)."""
+    try:
+        docs = refstore.list_documents()
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, f"Could not read the standards store at {refstore.STORE_DIR}: {e}")
+    return [{k: v for k, v in d.items() if k != "pages"} for d in docs]
 
 
 @app.get("/references/{key}.txt", response_class=PlainTextResponse)

@@ -148,18 +148,21 @@ def _write_bytes(path: Path, data: bytes) -> None:
 
 def list_documents() -> list[dict]:
     out = []
-    if not STORE_DIR.exists():
+    if not os.path.isdir(STORE_DIR):
         return out
     for d in sorted(STORE_DIR.iterdir()):
-        meta_f = d / "meta.json"
-        if not meta_f.exists():
-            continue
-        meta = json.loads(meta_f.read_text())
-        pages = sorted(int(f.stem[1:]) for f in d.glob("p*.md"))
-        pdf = d / "source.pdf"
-        out.append({"key": d.name, "names": meta.get("names", []), "page_count": meta.get("page_count"),
-                    "pages_stored": len(pages), "pages": pages, "has_pdf": pdf.exists(),
-                    "mb": round(pdf.stat().st_size / 1048576, 1) if pdf.exists() else 0})
+        try:  # one unreadable entry (e.g. lost+found on a disk) must not hide the rest
+            if not re.fullmatch(r"[0-9a-f]{32}", d.name) or not (d / "meta.json").is_file():
+                continue
+            meta = json.loads((d / "meta.json").read_text())
+            pages = sorted(int(f.stem[1:]) for f in d.glob("p*.md") if f.stem[1:].isdigit())
+            pdf = d / "source.pdf"
+            has_pdf = pdf.is_file()
+            out.append({"key": d.name, "names": meta.get("names") or ["document.pdf"],
+                        "page_count": meta.get("page_count"), "pages_stored": len(pages), "pages": pages,
+                        "has_pdf": has_pdf, "mb": round(pdf.stat().st_size / 1048576, 1) if has_pdf else 0})
+        except (OSError, ValueError) as e:
+            print(f"[refstore] skipped {d.name}: {e}", flush=True)
     return out
 
 
