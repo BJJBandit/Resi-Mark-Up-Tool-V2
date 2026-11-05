@@ -473,7 +473,7 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "per bracing type used: tag '<type>': '<BRACING TYPE DESCRIPTION> TO <STANDARD>'. Notes "
         "include the tie-down this job needs. Classification: AS4055 wind class."
     ),
-    SheetKind.FOOTINGS: (
+    SheetKind.FOUNDATION: (
         "FOOTING & FLOOR PLAN - footings AND the floor framing / slab on ONE sheet. "
         "FOOTINGS to AS 2870 and the geotech report: edge beams / strip footings EB / SF "
         "as 'member' around the perimeter, internal beams IB, slab thickenings, piers "
@@ -490,6 +490,24 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "Schedule = 'FOOTING & FLOOR SCHEDULE:' (footings, floor members and columns). Notes: "
         "the footing, slab / floor, site preparation and drainage notes this site needs. "
         "Classification: 'AS2870 SITE CLASSIFICATION: <class>'."
+    ),
+    SheetKind.FOOTINGS: (
+        "FOOTING PLAN to AS 2870 and the geotech report. Edge beams / strip footings EB / SF "
+        "as 'member' around the perimeter, internal beams IB, slab thickenings, piers "
+        "'pier' (corners and max spacing), pads under point loads, step-downs. Strip footings "
+        f"are never narrower than {MIN_STRIP_WIDTH_MM} mm, and edge / internal beams that AS 2870 "
+        f"gives as {BEAM_WIDTH_FROM_MM} wide are {BEAM_WIDTH_TO_MM} wide. Callouts give each footing's size and "
+        "reinforcement as determined for this job. Schedule = 'FOOTING SCHEDULE:'. Notes: the "
+        "footing, site preparation and drainage notes this site needs. Classification: "
+        "'AS2870 SITE CLASSIFICATION: <class>'."
+    ),
+    SheetKind.FLOOR: (
+        "FLOOR FRAMING PLAN. Suspended floors: bearers B as 'member', joists J as 'span' "
+        "arrows (plus a 'member' on a representative joist), deck ledgers LD, deck bearers and "
+        "joists, columns C, piers under bearers. Slab on ground: slab extent as a 'cloud', "
+        "thickenings / set-downs / wet areas with callouts giving this job's slab thickness, "
+        "reinforcement and concrete as determined. Schedule = 'FLOOR FRAMING SCHEDULE:' "
+        "(include columns). Classification: 'AS2870 SITE CLASSIFICATION: <class>'."
     ),
     SheetKind.ARTICULATION: (
         "ARTICULATION JOINT ELEVATIONS - masonry only. Use the ELEVATION page (not a plan): choose "

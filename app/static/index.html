@@ -113,9 +113,11 @@
       <label class="check"><input type="checkbox" name="sheets" value="load_paths" checked> Load paths</label>
       <label class="check"><input type="checkbox" name="sheets" value="roof" checked> Roof framing</label>
       <label class="check"><input type="checkbox" name="sheets" value="walls" checked> Wall framing / bracing</label>
-      <label class="check"><input type="checkbox" name="sheets" value="footings" checked> Footings &amp; floor framing / slab</label>
+      <label class="check"><input type="checkbox" name="sheets" value="footings" checked> Footings</label>
+      <label class="check"><input type="checkbox" name="sheets" value="floor" checked> Floor framing / slab</label>
       <label class="check"><input type="checkbox" name="sheets" value="articulation" checked> Articulation joints <small>(masonry only)</small></label>
     </div>
+    <label class="check"><input type="checkbox" id="combineFoundation" checked> Footings and floor framing / slab on one sheet <small>(FOOTING &amp; FLOOR PLAN - one sheet call fewer; untick for separate sheets on busy suspended-floor jobs)</small></label>
     <p class="err" id="sheetMsg" hidden>Tick at least one sheet.</p>
 
     <label>Construction material / standard</label>
@@ -272,6 +274,7 @@ f.addEventListener('submit', async e => {
   box.innerHTML = 'Uploading…';
   try {
     const fd = new FormData(f);
+    fd.set('combine_foundation', document.getElementById('combineFoundation').checked ? 'true' : 'false');
     for (const r of archList.items) { fd.append('architectural', r.file, r.file.name); fd.append('architectural_pages', r.pages); }
     for (const r of geoList.items) { fd.append('geotech', r.file, r.file.name); fd.append('geotech_pages', r.pages); }
     for (const r of refList.items) { fd.append('references', r.file, r.file.name); fd.append('reference_pages', r.pages); }

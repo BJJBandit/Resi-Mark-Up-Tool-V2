@@ -162,10 +162,10 @@ async def create_job(
     rev: str = Form("A"),
     made_by: str = Form(""),
     sheets: list[str] = Form([]),
+    combine_foundation: bool = Form(True),
 ) -> dict:
     try:
-        # 'floor' was its own sheet; footings and floor are now one sheet.
-        chosen = list(dict.fromkeys(SheetKind("footings" if s == "floor" else s) for s in sheets))
+        chosen = [SheetKind(s) for s in sheets]
     except ValueError:
         raise HTTPException(400, "Unknown sheet selected.")
     # Architectural drawings: one or more sets, each with its own pages to review,
@@ -262,6 +262,7 @@ async def create_job(
         rev=rev.strip() or "A",
         made_by=made_by.strip().upper(),
         sheets=chosen,
+        combine_foundation=combine_foundation,
     )
     job_id = uuid.uuid4().hex
     JOBS[job_id] = Job(project=inp.project)

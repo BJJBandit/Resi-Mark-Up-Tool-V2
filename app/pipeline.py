@@ -31,6 +31,7 @@ class JobInput:
     made_by: str = ""
     sheet_notes: list[str] = field(default_factory=list)
     sheets: list[SheetKind] = field(default_factory=list)  # sheets to produce; empty = all
+    combine_foundation: bool = True  # footings + floor framing / slab on one sheet
     page_labels: list[str] = field(default_factory=list)  # source file + page of each page of arch_pdf  # engineer's notes added to every sheet as written
 
 
@@ -200,8 +201,7 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
         except Exception as e:  # keep the other sheets if one fails
             result.sheet_errors[kind] = str(e) or type(e).__name__
 
-    kinds = [k for k in SheetKind if (not job.sheets or k in job.sheets)
-             and (k != SheetKind.ARTICULATION or _masonry(design))]
+    kinds = [k for k in _wanted(job) if k != SheetKind.ARTICULATION or _masonry(design)]
     if not kinds:  # only the articulation sheet was ticked, and this isn't a masonry job
         result.base_warnings.append("Only the articulation joint sheet was selected, but the walls aren't "
                                     "masonry, so no sheets were produced.")
@@ -257,8 +257,30 @@ def _build(job: JobInput, result: JobResult) -> None:
     result.compose_warnings()
 
 
+def _wanted(job: JobInput) -> list[SheetKind]:
+    """Sheets to produce, in drawing order: footings and floor become one FOOTING & FLOOR
+    sheet when combining is ticked and both are wanted."""
+    wanted = [k for k in (job.sheets or SheetKind) if k != SheetKind.FOUNDATION]
+    if job.combine_foundation and SheetKind.FOOTINGS in wanted and SheetKind.FLOOR in wanted:
+        wanted = [k for k in wanted if k not in (SheetKind.FOOTINGS, SheetKind.FLOOR)] + [SheetKind.FOUNDATION]
+    return [k for k in SheetKind if k in wanted]
+
+
 def can_rerun(result: JobResult, kind: SheetKind) -> bool:
-    return result.ctx is not None and (kind != SheetKind.ARTICULATION or _masonry(result.design))
+    """Sheets offered for re-run / adding: those made, plus the others for this review's
+    combine-footings-and-floor choice."""
+    if result.ctx is None or (kind == SheetKind.ARTICULATION and not _masonry(result.design)):
+        return False
+    if kind in result.sheets:
+        return True
+    split = (SheetKind.FOOTINGS, SheetKind.FLOOR)
+    if SheetKind.FOUNDATION in result.sheets:
+        combined = True  # footings and floor already on one sheet: don't offer them again
+    elif any(k in result.sheets for k in split):
+        combined = False  # one of them made on its own: offer the other on its own
+    else:
+        combined = result.ctx.job.combine_foundation
+    return kind not in split if combined else kind != SheetKind.FOUNDATION
 
 
 def rerun_sheet(result: JobResult, kind: SheetKind, change: str = "",
