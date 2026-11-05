@@ -121,16 +121,16 @@ def cache_checks(calls: list[Call]) -> list[dict]:
     def cached(c: Call) -> int:
         return c.cache_read + c.cache_write_5m + c.cache_write_1h
 
-    # The geotech and drawing reviews don't write a cache (their answer formats stop
-    # the next step reusing it); these two checks only apply if one ever does.
+    # With ANTHROPIC_JSON_MODE=api the geotech and drawing reviews don't write a cache,
+    # so these two checks only apply when they do.
     if geo and design and cached(geo):
         # Only the standards are shared between these two (the geotech report isn't).
         verdict("Geotech review -> drawing review (standards)", design, min(cached(geo), cached(design)),
                 "the standards were sent again at full price")
     if design and sheets and cached(design):
         verdict("Drawing review -> first sheet (standards + drawings)", sheets[0], cached(design),
-                "the sheets did not reuse the drawing review's cache (likely its different answer format); "
-                "the first sheet cached it again and the other sheets reuse that")
+                "the first sheet did not reuse the drawing review's cache and cached it again "
+                "(the other sheets reuse that); check ANTHROPIC_JSON_MODE is 'local'")
     if len(sheets) > 1:
         bad = [c for c in sheets[1:] if c.cache_read < 0.5 * cached(c)]
         if cached(sheets[0]) < 1024:

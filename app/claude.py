@@ -93,6 +93,15 @@ CACHE = {"type": "ephemeral", "ttl": CACHE_TTL} if CACHE_TTL in ("5m", "1h") els
 BASE_EFFORT = "medium"
 _per_message_effort = os.environ.get("ANTHROPIC_PER_MESSAGE_EFFORT", "1") != "0"
 _step = contextvars.ContextVar("step", default="Claude call")
+# How the review steps (1, 2, sheets) get JSON back:
+#   "local" - the schema is given in the prompt (after the cached content) and the JSON is
+#             validated here, retrying on a mismatch. The API's structured-output format is
+#             part of the cached prompt, so with it each step (different schema) has its
+#             own cache; without it steps 1, 2 and the sheets share one cache of the
+#             standards and drawings.
+#   "api"   - the API's structured outputs (each step caches separately).
+JSON_MODE = os.environ.get("ANTHROPIC_JSON_MODE", "local").strip().lower()
+SHARED_CACHE = JSON_MODE == "local"
 
 
 def _schema(model: type[BaseModel]) -> dict:
@@ -168,24 +177,27 @@ def _request_retrying(messages: list[dict], max_tokens: int, schema: dict | None
             raise ClaudeError(f"the connection to Claude timed out or dropped twice ({type(e).__name__}).") from e
 
 
-def _call(content: list[dict], out: type[T], step: str, max_tokens: int = MAX_TOKENS, effort: str = EFFORT) -> T:
-    """Structured-output request. If the API rejects the schema (e.g. compiled
-    grammar too large), fall back to plain JSON validated locally. Errors name the step."""
+def _call(content: list[dict], out: type[T], step: str, max_tokens: int = MAX_TOKENS, effort: str = EFFORT,
+          local_json: bool = False) -> T:
+    """Request a JSON answer matching `out`: the API's structured outputs, or (local_json)
+    the schema in the prompt validated here. If the API rejects the schema (e.g. compiled
+    grammar too large) it also falls back to local validation. Errors name the step."""
     _step.set(step)
     try:
-        return _call_inner(content, out, max_tokens, effort)
+        return _call_inner(content, out, max_tokens, effort, local_json)
     except ClaudeError as e:
         raise ClaudeError(f"{step}: {e}") from e
 
 
-def _call_inner(content: list[dict], out: type[T], max_tokens: int, effort: str) -> T:
+def _call_inner(content: list[dict], out: type[T], max_tokens: int, effort: str, local_json: bool = False) -> T:
     schema = _schema(out)
-    messages = [{"role": "user", "content": content}]
-    try:
-        return out.model_validate_json(_request_retrying(messages, max_tokens, schema, effort))
-    except anthropic.BadRequestError as e:
-        if "grammar" not in str(e).lower() and "schema" not in str(e).lower():
-            raise
+    if not local_json:
+        messages = [{"role": "user", "content": content}]
+        try:
+            return out.model_validate_json(_request_retrying(messages, max_tokens, schema, effort))
+        except anthropic.BadRequestError as e:
+            if "grammar" not in str(e).lower() and "schema" not in str(e).lower():
+                raise
 
     instruction = (
         "Respond with ONLY a single JSON object (no prose, no code fences) that "
@@ -194,7 +206,7 @@ def _call_inner(content: list[dict], out: type[T], max_tokens: int, effort: str)
     )
     messages = [{"role": "user", "content": [*content, {"type": "text", "text": instruction}]}]
     last_error: Exception | None = None
-    for _ in range(2):
+    for _ in range(3):
         text = _request_retrying(messages, max_tokens, None, effort)
         try:
             return out.model_validate_json(_extract_json(text))
@@ -323,9 +335,10 @@ def review_geotech(
     refs: list[Reference] = [],
     direction: str = "",
 ) -> GeotechReview:
-    # No cache write here: the next step asks for a different answer format, which
+    # With the API's answer formats (ANTHROPIC_JSON_MODE=api) the next step can't reuse a
+    # cache written here, so only write one when the steps share a cache.
     # (measured) stops it reusing this step's cache, so a write would be wasted.
-    content: list[dict] = _ref_blocks(refs, cache=False)
+    content: list[dict] = _ref_blocks(refs, cache=SHARED_CACHE)
     docs = geotech_pdf if isinstance(geotech_pdf, list) else ([("Geotechnical report", geotech_pdf)] if geotech_pdf else [])
     for title, data in docs:
         content.append(_pdf_block(data, title))
@@ -353,7 +366,7 @@ def review_geotech(
             ),
         }
     )
-    return _call(content, GeotechReview, "Step 1 (geotech review)")
+    return _call(content, GeotechReview, "Step 1 (geotech review)", local_json=SHARED_CACHE)
 
 
 # ---------------------------------------------------------------------------
@@ -368,8 +381,8 @@ def assess_design(
     extra_notes: str,
     refs: list[Reference] = [],
 ) -> DesignAssessment:
-    # No cache write here either (see review_geotech): the sheets cache for each other.
-    content = _ref_blocks(refs, cache=False) + _page_blocks(pages, cache=False)
+    # As in review_geotech: cache only when the steps share a cache.
+    content = _ref_blocks(refs, cache=SHARED_CACHE) + _page_blocks(pages, cache=SHARED_CACHE)
     content.append(
         {
             "type": "text",
@@ -410,7 +423,8 @@ def assess_design(
             ),
         }
     )
-    return _call(content, DesignAssessment, "Step 2 (architectural review)", effort=DESIGN_EFFORT)
+    return _call(content, DesignAssessment, "Step 2 (architectural review)", effort=DESIGN_EFFORT,
+                 local_json=SHARED_CACHE)
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +575,8 @@ def plan_sheet(
             ),
         }
     )
-    return _call(content, MarkupSheet, f"Step 3 ({SHEET_TITLES[kind]})", effort=SHEET_EFFORT)
+    return _call(content, MarkupSheet, f"Step 3 ({SHEET_TITLES[kind]})", effort=SHEET_EFFORT,
+                 local_json=SHARED_CACHE)
 
 
 # ---------------------------------------------------------------------------

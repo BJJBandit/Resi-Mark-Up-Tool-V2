@@ -77,6 +77,7 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `REF_PAGE_CAP` | `150` | Most pages of standards / guides sent per review, all documents together (max 500) |
 | `REF_MODE` | `digest` | `digest` = read standards from stored extracts; `pdf` = send PDF pages every time |
 | `ANTHROPIC_CACHE_TTL` | `1h` | How long the references and drawing pages stay cached between steps (`1h` or `5m`) |
+| `ANTHROPIC_JSON_MODE` | `local` | `local` = answer schema in the prompt, JSON checked by the app, so all steps share one cache; `api` = the API's structured outputs |
 | `ANTHROPIC_PER_MESSAGE_EFFORT` | `1` | Set effort per message so all steps share one cache; `0` = per request |
 | `ANTHROPIC_SHEET_EFFORT` | `medium` | Reasoning depth for step 3 (placing the mark-ups on each sheet) |
 | `ANTHROPIC_TIMEOUT_S` | `1800` | Max seconds a Claude stream may sit silent before it is retried once |
@@ -99,11 +100,15 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 - **Caching.** The references and drawing pages are sent first in every step and cached:
   - for 1 hour (`ANTHROPIC_CACHE_TTL`), not the default 5 minutes, because steps can be
     more than 5 minutes apart and a lapsed cache means paying to send everything again;
-  - only by the sheets: a live run showed the sheets can't reuse the drawing review's
-    cache (each step's answer format is part of the cached prompt), so the geotech and
-    drawing reviews no longer pay to write one. The sheets cache the standards, drawings
-    and the review results (geotech + design assessment + house style) for each other, so
-    the second sheet onwards (and re-runs) read them at the cache price;
+  - shared by every step: the API's structured-output answer format is part of the
+    cached prompt, so steps with different answer formats couldn't share a cache (a live
+    run showed step 2's cache wasn't reused by the sheets). By default
+    (`ANTHROPIC_JSON_MODE=local`) the review steps instead get the answer schema in the
+    prompt, after the cached content, and the app validates the JSON (retrying up to 3 times
+    if it doesn't match). Step 1 caches the standards, step 2 reads them and caches the
+    drawings, and the sheets read both and cache the review results (geotech + design +
+    house style) for each other and for re-runs. `ANTHROPIC_JSON_MODE=api` goes back to the
+    API's structured outputs, where only the sheets share a cache;
   - effort (high for the geotech review, medium for the drawing review and sheets) is set per message after the
     cached content, so a change of effort between steps doesn't invalidate the cache. If
     the API refuses per-message effort the app falls back to per-request effort by itself.
