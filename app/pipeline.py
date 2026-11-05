@@ -43,6 +43,25 @@ class JobResult:
     warnings: list[str] = field(default_factory=list)
     pdf: bytes = b""
     usage: dict = field(default_factory=dict)  # tokens and estimated cost of every Claude call
+    # Kept so one sheet can be re-run without repeating the review (see rerun_sheet).
+    base_warnings: list[str] = field(default_factory=list)  # references + design assessment
+    sheet_warnings: dict[SheetKind, list[str]] = field(default_factory=dict)
+    build_warnings: list[str] = field(default_factory=list)
+    reruns: list[dict] = field(default_factory=list)  # {"sheet", "note", "ok", "detail"}
+    ctx: "RerunContext | None" = field(default=None, repr=False)
+
+    def compose_warnings(self) -> None:
+        self.warnings = self.base_warnings + [w for k in SheetKind for w in self.sheet_warnings.get(k, [])] \
+            + self.build_warnings
+
+
+@dataclass
+class RerunContext:
+    job: JobInput
+    pages: list  # rendered drawing pages, exactly as sent the first time (so the cache still matches)
+    text_refs: list  # stored text extracts of the standards (claude.Reference)
+    files: list[tuple[str, bytes]]  # standards pages sent as PDF (re-uploaded for a re-run)
+    log: usage.UsageLog
 
 
 def _joint(tag: str) -> bool:
@@ -102,24 +121,30 @@ def _stored_references(docs: list[RefDoc], progress: Callable[[str], None]):
 def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobResult:
     log = usage.start()
     try:
-        result = _run_all(job, progress)
+        result = _run_all(job, progress, log)
     finally:
-        s = log.summary()
-        print(f"[usage] review total: {len(s['calls'])} calls, est. ${s['cost_usd']:.2f}, "
-              f"cache hit {s['cache_hit_rate']:.0%}", flush=True)
-        for chk in s["cache_checks"]:
-            mark = {True: "YES", False: "NO", None: "n/a"}[chk["ok"]]
-            print(f"[cache] {chk['check']}: {mark} - {chk['detail']}", flush=True)
+        s = _report_usage(log, "review")
     result.usage = s
     return result
 
 
-def _run_all(job: JobInput, progress: Callable[[str], None]) -> JobResult:
+def _report_usage(log: usage.UsageLog, what: str) -> dict:
+    s = log.summary()
+    print(f"[usage] {what} total: {len(s['calls'])} calls, est. ${s['cost_usd']:.2f}, "
+          f"cache hit {s['cache_hit_rate']:.0%}", flush=True)
+    for chk in s["cache_checks"]:
+        mark = {True: "YES", False: "NO", None: "n/a"}[chk["ok"]]
+        print(f"[cache] {chk['check']}: {mark} - {chk['detail']}", flush=True)
+    return s
+
+
+def _run_all(job: JobInput, progress: Callable[[str], None], log: usage.UsageLog) -> JobResult:
     progress("Rendering architectural drawings")
     pages = render_pages(job.arch_pdf, job.pages or None)
 
     refs: list[claude.Reference] = []
     ref_warnings: list[str] = []
+    files: list[tuple[str, bytes]] = []
     if job.references:
         context = (
             f"Construction: {job.construction}\nWind class: {job.wind_class or 'not given'}\n"
@@ -130,13 +155,16 @@ def _run_all(job: JobInput, progress: Callable[[str], None]) -> JobResult:
         if refstore.enabled():
             refs, files, more = _stored_references(job.references, progress)
             ref_warnings += more
-        if files:
-            progress(f"Uploading {len(files)} reference document(s)")
-            refs += claude.upload_references(files)
+    text_refs = list(refs)
+    if files:
+        progress(f"Uploading {len(files)} reference document(s)")
+        refs += claude.upload_references(files)
     try:
         result = _run(job, pages, refs, progress)
         result.reference_pages = report(job.references)
-        result.warnings = ref_warnings + result.warnings
+        result.base_warnings = ref_warnings + result.base_warnings
+        result.compose_warnings()
+        result.ctx = RerunContext(job=job, pages=pages, text_refs=text_refs, files=files, log=log)
         return result
     finally:
         claude.delete_references(refs)
@@ -150,32 +178,19 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
     design = claude.assess_design(pages, geotech, job.construction, job.notes, refs)
     result = JobResult(geotech=geotech, design=design, references=[r.title for r in refs])
     # Claude's cross-reference of the plan and elevation views.
-    result.warnings += [f"Plan vs elevations: {x}" for x in design.opening_crosscheck]
-    result.warnings += [
+    result.base_warnings += [f"Plan vs elevations: {x}" for x in design.opening_crosscheck]
+    result.base_warnings += [
         f"Plan vs elevation dimensions - {d.item}: plan {d.plan}, elevation {d.elevation}"
         + (f" ({d.note})" if d.note else "")
         for d in design.dimension_crosscheck if d.status.strip().lower().startswith("mismatch")
     ]
     # Firm (office) rules are enforced on the output, not just requested in the prompt.
-    result.warnings += check_geotech([*geotech.recommendations, geotech.founding])
-    result.warnings += apply_rules(design, "Design assessment")
-
-    sheet_warnings: dict[SheetKind, list[str]] = {}
+    result.base_warnings += check_geotech([*geotech.recommendations, geotech.founding])
+    result.base_warnings += apply_rules(design, "Design assessment")
 
     def make(kind: SheetKind) -> None:
         try:
-            sheet = claude.plan_sheet(kind, pages, geotech, design, refs, job.notes)
-            if kind != SheetKind.ARTICULATION:
-                # Articulation / control joints belong on the elevation sheet only.
-                dropped = [e for e in sheet.elements if e.kind == "member" and _joint(e.tag)]
-                if dropped:
-                    sheet.elements = [e for e in sheet.elements if e not in dropped]
-            sheet_warnings[kind] = apply_rules(sheet, SHEET_TITLES[kind])
-            # The engineer's own notes go on every sheet word for word (after the rules,
-            # so they are never rewritten), skipping any Claude already wrote.
-            have = {_norm(n) for n in sheet.notes}
-            sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
-            result.sheets[kind] = sheet
+            _make_sheet(kind, job, pages, refs, result)
         except Exception as e:  # keep the other sheets if one fails
             result.sheet_errors[kind] = str(e) or type(e).__name__
 
@@ -187,15 +202,38 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
         for f in [usage.submit(pool, make, k) for k in kinds[1:]]:
             f.result()
 
-    for kind in SheetKind:
-        result.warnings += sheet_warnings.get(kind, [])
-
     progress("Building mark-up PDF")
-    result.pdf, build_warnings = build_markup_pdf(
+    _build(job, result)
+    return result
+
+
+def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, change: str = "") -> None:
+    """Plan one sheet and store it (with its rule warnings) on the result. Raises on failure."""
+    direction = job.notes
+    if change:
+        direction = (f"{direction}\n" if direction else "") + \
+            f"Re-run of this sheet - the engineer asked for this change: {change}"
+    sheet = claude.plan_sheet(kind, pages, result.geotech, result.design, refs, direction)
+    if kind != SheetKind.ARTICULATION:
+        # Articulation / control joints belong on the elevation sheet only.
+        dropped = [e for e in sheet.elements if e.kind == "member" and _joint(e.tag)]
+        if dropped:
+            sheet.elements = [e for e in sheet.elements if e not in dropped]
+    result.sheet_warnings[kind] = apply_rules(sheet, SHEET_TITLES[kind])
+    # The engineer's own notes go on every sheet word for word (after the rules,
+    # so they are never rewritten), skipping any Claude already wrote.
+    have = {_norm(n) for n in sheet.notes}
+    sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
+    result.sheets[kind] = sheet
+    result.sheet_errors.pop(kind, None)
+
+
+def _build(job: JobInput, result: JobResult) -> None:
+    result.pdf, result.build_warnings = build_markup_pdf(
         job.arch_pdf,
         job.project,
-        geotech,
-        design,
+        result.geotech,
+        result.design,
         result.sheets,
         result.references,
         job_no=job.job_no,
@@ -203,5 +241,43 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
         made_by=job.made_by,
         title_block=job.title_block,
     )
-    result.warnings += build_warnings
-    return result
+    result.compose_warnings()
+
+
+def can_rerun(result: JobResult, kind: SheetKind) -> bool:
+    return result.ctx is not None and (kind != SheetKind.ARTICULATION or _masonry(result.design))
+
+
+def rerun_sheet(result: JobResult, kind: SheetKind, change: str = "",
+                progress: Callable[[str], None] = lambda _: None) -> None:
+    """Re-plan one sheet from the stored review (geotech + design assessment are not
+    repeated) and rebuild the PDF. If the re-run fails the previous sheet is kept."""
+    ctx = result.ctx
+    assert ctx is not None
+    usage.use(ctx.log)  # the re-run's calls count toward this review's usage
+    title = SHEET_TITLES[kind]
+    refs = list(ctx.text_refs)
+    uploaded: list = []
+    entry = {"sheet": title, "note": change, "ok": True, "detail": ""}
+    try:
+        if ctx.files:
+            progress(f"Re-running {title}: uploading reference pages")
+            uploaded = claude.upload_references(ctx.files)
+        progress(f"Re-running {title}")
+        n0 = len(ctx.log.calls)
+        try:
+            _make_sheet(kind, ctx.job, ctx.pages, refs + uploaded, result, change)
+            cost = sum(c.cost_usd or 0 for c in ctx.log.calls[n0:])
+            entry["detail"] = f"re-run complete (est. US${cost:.2f})"
+        except Exception as e:
+            entry.update(ok=False, detail=(f"re-run failed ({e or type(e).__name__}); "
+                                           + ("the previous version is kept" if kind in result.sheets
+                                              else "sheet still not produced")))
+            if kind not in result.sheets:
+                result.sheet_errors[kind] = str(e) or type(e).__name__
+    finally:
+        claude.delete_references(uploaded)
+    progress("Rebuilding mark-up PDF")
+    _build(ctx.job, result)
+    result.reruns.append(entry)
+    result.usage = _report_usage(ctx.log, f"review + re-run of {title}")
