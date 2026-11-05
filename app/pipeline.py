@@ -196,10 +196,13 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
     result.base_warnings += apply_rules(design, "Design assessment")
 
     def make(kind: SheetKind) -> None:
-        try:
-            _make_sheet(kind, job, pages, refs, result)
-        except Exception as e:  # keep the other sheets if one fails
-            result.sheet_errors[kind] = str(e) or type(e).__name__
+        for attempt in (1, 2):  # one retry: a dropped stream or bad answer shouldn't lose the sheet
+            try:
+                _make_sheet(kind, job, pages, refs, result)
+                return
+            except Exception as e:  # keep the other sheets if one fails
+                print(f"[sheet] {SHEET_TITLES[kind]} attempt {attempt} failed: {e!r}", flush=True)
+                result.sheet_errors[kind] = str(e) or type(e).__name__
 
     kinds = [k for k in _wanted(job) if k != SheetKind.ARTICULATION or _masonry(design)]
     if not kinds:  # only the articulation sheet was ticked, and this isn't a masonry job
