@@ -97,7 +97,12 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
   - effort (high for the reviews, medium for the sheets) is set per message after the
     cached content, so a change of effort between steps doesn't invalidate the cache. If
     the API refuses per-message effort the app falls back to per-request effort by itself.
-  The "from cache" share on the results page shows whether caching is working.
+  The "from cache" share on the results page shows whether caching is working, and a
+  **Cache check** under the usage line says, for each hand-over, whether the next step
+  reused the cache (shared / not shared, with tokens read and written): geotech review ->
+  drawing review (standards), drawing review -> first sheet (standards + drawings), first
+  sheet -> other sheets. The same lines are printed to the server log as `[cache] ...: YES/NO`
+  and are in review.json under `usage.cache_checks`.
 
 ## Design rules
 

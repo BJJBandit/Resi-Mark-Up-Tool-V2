@@ -83,12 +83,64 @@ class UsageLog:
         known = [c.cost_usd for c in calls if c.cost_usd is not None]
         all_input = totals["input"] + totals["cache_write_5m"] + totals["cache_write_1h"] + totals["cache_read"]
         return {
+            "cache_checks": cache_checks(calls),
             "calls": [asdict(c) for c in calls],
             "totals": totals,
             "cache_hit_rate": round(totals["cache_read"] / all_input, 3) if all_input else 0.0,
             "cost_usd": round(sum(known), 2),
             "cost_complete": len(known) == len(calls),
         }
+
+
+def _k(n: int) -> str:
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+def cache_checks(calls: list[Call]) -> list[dict]:
+    """Did each step reuse what the step before it cached? One entry per hand-over:
+    {"check", "ok": True/False/None (can't tell), "detail"}."""
+    first: dict[str, Call] = {}
+    for c in calls:
+        first.setdefault(c.step, c)
+    geo = first.get("Step 1 (geotech review)")
+    design = first.get("Step 2 (architectural review)")
+    sheets = [c for s, c in first.items() if s.startswith("Step 3")]
+    out = []
+
+    def verdict(name: str, c: Call, expected: int, why_not: str) -> None:
+        w = c.cache_write_5m + c.cache_write_1h
+        if expected < 1024:  # below the cacheable minimum: nothing to share
+            out.append({"check": name, "ok": None, "detail": "too little shared content to cache"})
+        elif c.cache_read >= 0.5 * expected:
+            out.append({"check": name, "ok": True,
+                        "detail": f"read {_k(c.cache_read)} tokens from cache, wrote {_k(w)}"})
+        else:
+            out.append({"check": name, "ok": False,
+                        "detail": f"read only {_k(c.cache_read)} tokens from cache and wrote {_k(w)} - {why_not}"})
+
+    def cached(c: Call) -> int:
+        return c.cache_read + c.cache_write_5m + c.cache_write_1h
+
+    if geo and design:
+        # Only the standards are shared between these two (the geotech report isn't).
+        verdict("Geotech review -> drawing review (standards)", design, min(cached(geo), cached(design)),
+                "the standards were sent again at full price")
+    if design and sheets:
+        verdict("Drawing review -> first sheet (standards + drawings)", sheets[0], cached(design),
+                "the sheets did not reuse the drawing review's cache (likely its different answer format); "
+                "the first sheet cached it again and the other sheets reuse that")
+    if len(sheets) > 1:
+        bad = [c for c in sheets[1:] if c.cache_read < 0.5 * cached(c)]
+        if cached(sheets[0]) < 1024:
+            out.append({"check": "First sheet -> other sheets", "ok": None, "detail": "too little to cache"})
+        elif bad:
+            out.append({"check": "First sheet -> other sheets", "ok": False,
+                        "detail": f"{len(bad)} of {len(sheets) - 1} sheets sent the drawings again at full price: "
+                                  + ", ".join(c.step for c in bad)})
+        else:
+            out.append({"check": "First sheet -> other sheets", "ok": True,
+                        "detail": f"all {len(sheets) - 1} read the drawings from cache"})
+    return out
 
 
 _current: contextvars.ContextVar[UsageLog | None] = contextvars.ContextVar("usage_log", default=None)

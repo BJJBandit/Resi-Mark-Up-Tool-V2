@@ -210,7 +210,10 @@ function usageHtml(u) {
     ${u.calls.map(c => `<tr><td>${esc(c.step)}<br><span class="muted">${esc(c.model)}</span></td><td>${k(c.input)}</td>
       <td>${k(c.cache_write_5m + c.cache_write_1h)}</td><td>${k(c.cache_read)}</td><td>${k(c.output)}</td>
       <td>${c.cost_usd == null ? '?' : c.cost_usd.toFixed(3)}</td></tr>`).join('')}</table>
-    <p class="muted">Estimate from list prices; check the Claude Console for the actual bill.</p></details>`;
+    <p class="muted">Estimate from list prices; check the Claude Console for the actual bill.</p></details>
+    ${(u.cache_checks || []).length ? `<b>Cache check</b><ul>${u.cache_checks.map(c => `<li class="${c.ok === false ? 'err' : ''}">
+      ${c.ok === true ? '&#10003; shared' : c.ok === false ? '&#10007; not shared' : '&ndash;'}: ${esc(c.check)}
+      <span class="muted">(${esc(c.detail)})</span></li>`).join('')}</ul>` : ''}`;
 }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 

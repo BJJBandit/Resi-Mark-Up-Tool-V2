@@ -107,6 +107,9 @@ def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobR
         s = log.summary()
         print(f"[usage] review total: {len(s['calls'])} calls, est. ${s['cost_usd']:.2f}, "
               f"cache hit {s['cache_hit_rate']:.0%}", flush=True)
+        for chk in s["cache_checks"]:
+            mark = {True: "YES", False: "NO", None: "n/a"}[chk["ok"]]
+            print(f"[cache] {chk['check']}: {mark} - {chk['detail']}", flush=True)
     result.usage = s
     return result
 
