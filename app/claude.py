@@ -337,6 +337,7 @@ def _page_blocks(pages: list[PageImage], cache: bool = True) -> list[dict]:
                 "type": "text",
                 "text": f"--- Architectural page {p.number}" + (f" ({p.label})" if p.label else "") + " "
                 f"(image {p.width}x{p.height}px) ---\nExtracted text:\n{p.text[:4000] or '(none)'}"
+                + (f"\nDrawing scale: {p.scale_note}" if p.scale_note else "")
                 + (f"\nWritten dimensions / levels with position on this image (x,y 0-1; 'v' = written "
                    f"vertically):\n{p.dims}" if p.dims else ""),
             }
@@ -475,6 +476,16 @@ specification just because it looks typical.
   R = rafter, RB = ridge beam, UP = underpurlin, C = column, DS = double stud,
   EB = edge beam, IB = internal beam, SF = strip footing, P = pier / pad,
   CJ / AJ = control / articulation joint, LP = load path step. Number them B1, B2 ...
+- Lay members out to scale using the page's drawing scale (given with each page): spacing and
+  lengths on the plan should match the real ones.
+  - Bearers: draw EVERY bearer line, parallel, at its scheduled spacing across the whole floor
+    (e.g. bearers at 2200 ctrs are never drawn more than 2200 mm apart), each from pier / wall
+    to pier / wall.
+  - Rafters (deck, verandah, carport and other rafter-framed roofs): draw EVERY rafter as a
+    'member' at its scheduled spacing (e.g. 900 ctrs) across the roof area it covers, plus one
+    'span' arrow with the tag. Trusses and joists: one 'span' arrow and one representative
+    'member' only.
+  - Schedule bearers, joists and rafters with their spacing: '... AT <SPACING> CTRS'.
 - Draw each member once along its real position: 'member' from one end to the other,
   'span' double arrows across joists / rafters / trusses to show span direction,
   'column' at each post, 'pier' at each pier, 'bracing' along each bracing panel tagged

@@ -55,6 +55,7 @@ class PageImage:
     text: str
     dims: str = ""  # written dimensions with their positions, e.g. "4030@(0.21,0.12)"
     label: str = ""  # where it came from when several sets were uploaded, e.g. "Set B.pdf page 3"
+    scale_note: str = ""  # e.g. "1:100 - 1000 mm on site = 0.0238 of the image width ..."
 
 
 DIM_WORD = re.compile(r"^\d{3,5}$|^\d{1,2}\.\d{2,3}$")  # 4030, 11.25 (levels)
@@ -167,6 +168,20 @@ def _count(data: bytes) -> int:
         return d.page_count
 
 
+def _scale_note(page: pymupdf.Page) -> str:
+    """How long 1000 mm on site is on this page image, so Claude can lay members out at
+    their real spacing (bearers at 2200 ctrs, rafters at 900 ctrs ...)."""
+    try:
+        scale, how = drawing_scale(page)
+    except Exception:
+        return ""
+    if not scale:
+        return ""
+    paper = 1000 / scale * 72 / 25.4  # points on the page for 1000 mm on site
+    return (f"1:{scale} ({how}) - 1000 mm on site = {paper / page.rect.width:.4f} of the image width "
+            f"= {paper / page.rect.height:.4f} of its height")
+
+
 def render_pages(pdf_bytes: bytes, page_numbers: list[int] | None = None) -> list[PageImage]:
     doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     numbers = page_numbers or list(range(1, doc.page_count + 1))
@@ -186,6 +201,7 @@ def render_pages(pdf_bytes: bytes, page_numbers: list[int] | None = None) -> lis
                     jpeg=pix.tobytes("jpeg", jpg_quality=quality),
                     text=page.get_text("text").strip(),
                     dims=_dimension_text(page),
+                    scale_note=_scale_note(page),
                 )
             )
         if sum(len(p.jpeg) for p in out) <= IMAGE_BUDGET_BYTES:
@@ -509,6 +525,11 @@ class PlanMap:
             PLAN.x0 + (PLAN.width + w) / 2, PLAN.y0 + (PLAN.height + h) / 2,
         )
         self.src_page = src_page
+        self.mm_pt: float | None = None  # sheet points per real mm (set when the plan scale is known)
+        self.specs: dict[str, str] = {}  # schedule text by tag
+
+    def spec(self, tag: str) -> str:
+        return self.specs.get((tag or "").strip().upper(), "")
 
     def __call__(self, pt) -> pymupdf.Point:
         px = min(max(pt.x, 0), 1) * self.src_w
@@ -543,6 +564,28 @@ def _offset_label_point(a: pymupdf.Point, b: pymupdf.Point, dist: float = 4) -> 
     return pymupdf.Point(mid.x - 8, mid.y - dist) if horizontal else pymupdf.Point(mid.x + dist, mid.y + 6)
 
 
+# Real sizes of piers / columns, read from the schedule or the element's own text, so the
+# symbols are drawn roughly to scale on the plan (e.g. a 450 dia pier at 1:100).
+_DIA = re.compile(r"(\d{3,4})\s*(?:MM\s*)?(?:DIA\b|DIAM|Ø)", re.I)
+_SQUARE = re.compile(r"(\d{2,3})\s*[xX×]\s*(\d{2,3})(?=\s*(?:[xX×]\s*[\d.]+\s*)?(?:SHS|RHS|CHS|POST|BRICK|MASONRY|BLOCK|COLUMN|PIER|F\d|TP|HW|MGP|LVL|GALV))", re.I)
+_SHS = re.compile(r"(\d{2,3})\s*[xX×]\s*\d{1,2}(?:\.\d)?\s*(?:SHS|CHS|RHS)", re.I)
+PIER_DEFAULT_MM = 450.0
+
+
+def _sizes(text: str) -> tuple[float | None, float | None]:
+    """(bored pier diameter mm, square / post side mm) found in a schedule or note."""
+    d = _DIA.search(text or "")
+    sq = _SQUARE.search(text or "")
+    shs = _SHS.search(text or "")  # '89x3.5 SHS': size x wall thickness
+    side = float(max(sq.group(1), sq.group(2), key=int)) if sq else (float(shs.group(1)) if shs else None)
+    return (float(d.group(1)) if d else None), side
+
+
+def _scaled(m: PlanMap, mm: float, fallback: float, lo: float, hi: float) -> float:
+    """mm on site -> points on the sheet at the plan's scale, kept legible (lo..hi)."""
+    return fallback if not m.mm_pt else min(hi, max(lo, mm * m.mm_pt))
+
+
 def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
     a, b = m(e.start), m(e.end)
     colour = tag_colour(e.tag, e.kind)
@@ -562,18 +605,24 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
         if e.tag:
             _label(page, _offset_label_point(a, b, 3), e.tag, 7, TEAL, "Bracing Tag")
     elif e.kind == "pier":
-        r = 6.0
+        dia, side = _sizes(f"{e.text} {m.spec(e.tag)}")
+        r = _scaled(m, (dia or PIER_DEFAULT_MM) / 2, 6.0, 2.5, 16.0)
         _circle = page.add_circle_annot(pymupdf.Rect(a.x - r, a.y - r, a.x + r, a.y + r))
         _circle.set_border(width=1, dashes=[2, 2])
         _circle.set_colors(stroke=RED)
         _info(_circle, "Pier", content)
         _circle.update()
+        if side and m.mm_pt:  # brick / block pier on the bored pier, drawn to its size
+            h = _scaled(m, side / 2, 2.0, 1.2, 12.0)
+            _rect(page, pymupdf.Rect(a.x - h, a.y - h, a.x + h, a.y + h), RED, 0.75, "Pier")
         if e.tag:
             _label(page, pymupdf.Point(a.x + r + 1, a.y - r + 2), e.tag, 9, RED, "Pier Tag")
     elif e.kind == "column":
-        _rect(page, pymupdf.Rect(a.x - 2.5, a.y - 2.5, a.x + 2.5, a.y + 2.5), colour, 0.5, "Column", fill=colour)
+        _, side = _sizes(f"{e.text} {m.spec(e.tag)}")
+        h = _scaled(m, (side or 90.0) / 2, 2.5, 1.5, 8.0)
+        _rect(page, pymupdf.Rect(a.x - h, a.y - h, a.x + h, a.y + h), colour, 0.5, "Column", fill=colour)
         if e.tag:
-            _label(page, pymupdf.Point(a.x + 4, a.y - 3), e.tag, 11, colour, "Column Tag")
+            _label(page, pymupdf.Point(a.x + h + 1.5, a.y - 3), e.tag, 11, colour, "Column Tag")
     elif e.kind == "cloud":
         r = pymupdf.Rect(a, b).normalize()
         if r.width < 8 or r.height < 8:
@@ -849,6 +898,51 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
     return warnings
 
 
+_CTRS = re.compile(r"(\d{3,4})\s*(?:MM\s*)?(?:MAX\.?\s*)?(?:CTRS|CENTRES|CENTERS|CRS|C/C)\b", re.I)
+
+
+def _spacing_check(sheet: MarkupSheet, page: pymupdf.Page, scale: int | None, title: str) -> list[str]:
+    """Bearers / rafters drawn further apart than their scheduled spacing (e.g. 'AT MAX
+    2200 CTRS'), measured at the plan scale. Rafters with a spacing but only one line drawn
+    are named too."""
+    if not scale:
+        return []
+    w, h = page.rect.width, page.rect.height
+    per_mm = mm_to_pt(1, scale)
+    spec = {s.tag.strip().upper(): s.text for s in sheet.schedule}
+    groups: dict[str, list] = {}
+    for e in sheet.elements:
+        if e.kind == "member" and _prefix(e.tag) in ("B", "R"):
+            groups.setdefault(e.tag.strip().upper(), []).append(e)
+    out = []
+    for tag, els in groups.items():
+        m = _CTRS.search(spec.get(tag, "")) or _CTRS.search(" ".join(e.text for e in els))
+        if not m:
+            continue
+        ctrs = float(m.group(1))
+        lines = []
+        for e in els:
+            p, q = pymupdf.Point(e.start.x * w, e.start.y * h), pymupdf.Point(e.end.x * w, e.end.y * h)
+            horiz = abs(q.x - p.x) >= abs(q.y - p.y)
+            lo, hi = sorted((p.x, q.x) if horiz else (p.y, q.y))
+            lines.append((horiz, (p.y + q.y) / 2 if horiz else (p.x + q.x) / 2, lo, hi))
+        what = "bearers" if _prefix(tag) == "B" else "rafters"
+        if what == "rafters" and len(lines) == 1:
+            out.append(f"{title}: {tag} rafters are at {ctrs:.0f} ctrs but only one rafter is drawn - "
+                       "re-run the sheet if every rafter should be shown")
+            continue
+        worst = 0.0
+        for horiz in (True, False):
+            ls = sorted(l for l in lines if l[0] == horiz)
+            for a, b in zip(ls, ls[1:]):
+                if min(a[3], b[3]) - max(a[2], b[2]) > 0:  # side by side, not end to end
+                    worst = max(worst, (b[1] - a[1]) / per_mm)
+        if worst > ctrs * 1.25:
+            out.append(f"{title}: {tag} {what} are drawn up to {worst:.0f} mm apart but scheduled at "
+                       f"{ctrs:.0f} ctrs - check the layout (a {what[:-1]} may be missing)")
+    return out
+
+
 def _contain(geo: Geometry, sheet: MarkupSheet, lintels: list[int], bracing: list[int], pts, put,
              title: str, src_page: pymupdf.Page) -> list[str]:
     """Firm rule: lintels and bracing are inside the building (its walls and the rooms
@@ -944,6 +1038,13 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         warnings.append(f"{dwg_no}: {grown} mark-up(s) were placed outside the plan area Claude chose, so the "
                         "plan area was enlarged to show them - check they are on the right drawing")
     m = PlanMap(src[idx], sheet.plan_region)
+    try:  # draw piers / columns roughly to scale
+        scale, _ = drawing_scale(src[idx], Geometry(src[idx]))
+        if scale:
+            m.mm_pt = mm_to_pt(1, scale) * m.scale
+    except Exception:
+        pass
+    m.specs = {s.tag.strip().upper(): s.text for s in sheet.schedule}
     if kind == SheetKind.ARTICULATION:
         try:
             plan_page = src[plan_idx] if plan_idx is not None and 0 <= plan_idx < src.page_count else None
@@ -955,6 +1056,10 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
             warnings += _snap_to_drawing(src[idx], sheet, SHEET_TITLES[kind])
         except Exception as e:
             warnings.append(f"{dwg_no}: snapping to the drawing skipped ({e})")
+    try:
+        warnings += _spacing_check(sheet, src[idx], drawing_scale(src[idx])[0], SHEET_TITLES[kind])
+    except Exception:
+        pass
     if kind == SheetKind.WALLS:
         try:
             geo = Geometry(src[idx])
