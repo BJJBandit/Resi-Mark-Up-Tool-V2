@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
 
-from . import claude, refstore
+from . import claude, refstore, usage
 from .pdf import build_markup_pdf, extract_pages, format_ranges, render_pages
 from .refpages import MAX_REF_PAGES, RefDoc, prepare, report
 from .rules import apply_rules, check_geotech
@@ -42,6 +42,7 @@ class JobResult:
     reference_pages: list[dict] = field(default_factory=list)  # pages of each standard / guide used
     warnings: list[str] = field(default_factory=list)
     pdf: bytes = b""
+    usage: dict = field(default_factory=dict)  # tokens and estimated cost of every Claude call
 
 
 def _joint(tag: str) -> bool:
@@ -99,6 +100,18 @@ def _stored_references(docs: list[RefDoc], progress: Callable[[str], None]):
 
 
 def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobResult:
+    log = usage.start()
+    try:
+        result = _run_all(job, progress)
+    finally:
+        s = log.summary()
+        print(f"[usage] review total: {len(s['calls'])} calls, est. ${s['cost_usd']:.2f}, "
+              f"cache hit {s['cache_hit_rate']:.0%}", flush=True)
+    result.usage = s
+    return result
+
+
+def _run_all(job: JobInput, progress: Callable[[str], None]) -> JobResult:
     progress("Rendering architectural drawings")
     pages = render_pages(job.arch_pdf, job.pages or None)
 
@@ -168,7 +181,8 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
     make(kinds[0])  # first call warms the prompt cache for the rest
     progress("Step 3: marking up remaining sheets")
     with ThreadPoolExecutor(max_workers=4) as pool:
-        list(pool.map(make, kinds[1:]))
+        for f in [usage.submit(pool, make, k) for k in kinds[1:]]:
+            f.result()
 
     for kind in SheetKind:
         result.warnings += sheet_warnings.get(kind, [])

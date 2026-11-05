@@ -71,6 +71,8 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `ANTHROPIC_EFFORT` | `high` | Reasoning depth for steps 1-2 (geotech + architectural review): `low` / `medium` / `high` / `xhigh` / `max` |
 | `REF_STORE_DIR` | `data/references` | Where stored text extracts of standards are kept (a persistent disk on Render) |
 | `REF_MODE` | `digest` | `digest` = read standards from stored extracts; `pdf` = send PDF pages every time |
+| `ANTHROPIC_CACHE_TTL` | `1h` | How long the references and drawing pages stay cached between steps (`1h` or `5m`) |
+| `ANTHROPIC_PER_MESSAGE_EFFORT` | `1` | Set effort per message so all steps share one cache; `0` = per request |
 | `ANTHROPIC_SHEET_EFFORT` | `medium` | Reasoning depth for step 3 (placing the mark-ups on each sheet) |
 | `ANTHROPIC_TIMEOUT_S` | `1800` | Max seconds a Claude stream may sit silent before it is retried once |
 | `ANTHROPIC_MAX_TOKENS` | `64000` | Output cap per Claude call (thinking counts toward it); a cut-off call retries once at 128000 |
@@ -80,6 +82,22 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `TITLE_BLOCK_COMPANY` | `ARETE` | Company name in the title block |
 | `TITLE_BLOCK_COMPANY_SUB` | `ENGINEERING` | Second line under the company name |
 | `MARKUP_AUTHOR` | `Resi Mark-Up Tool` | Author shown on every annotation in Bluebeam's markup list |
+
+## Cost
+
+- **Usage and cost of every review.** Every Claude call's tokens (uncached input, cache
+  writes, cache reads, output including thinking) and an estimated US$ cost are recorded
+  (`app/usage.py`). The results page shows the total ("Claude usage: 9 calls - 360k input
+  tokens (89% from cache) - 64k output - est. US$1.50") with a per-step table; review.json
+  has the same under `usage`, and each call is printed to the server log as `[usage] ...`.
+  Prices are list prices in `app/usage.py` - an estimate; the Claude Console has the bill.
+- **Caching.** The references and drawing pages are sent first in every step and cached:
+  - for 1 hour (`ANTHROPIC_CACHE_TTL`), not the default 5 minutes, because steps can be
+    more than 5 minutes apart and a lapsed cache means paying to send everything again;
+  - effort (high for the reviews, medium for the sheets) is set per message after the
+    cached content, so a change of effort between steps doesn't invalidate the cache. If
+    the API refuses per-message effort the app falls back to per-request effort by itself.
+  The "from cache" share on the results page shows whether caching is working.
 
 ## Design rules
 

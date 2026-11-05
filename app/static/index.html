@@ -47,6 +47,8 @@
   .drop p { margin: 8px 0 0; }
   details#stored { margin-top: 8px; font-size: 14px; }
   details#stored summary { cursor: pointer; }
+  details.usage { margin: 6px 0 14px; }
+  details.usage summary { cursor: pointer; }
   button.secondary { margin: 0 10px 0 0; padding: 7px 12px; background: transparent; color: var(--accent); border: 1px solid var(--accent); font-weight: 600; }
   button.link { margin: 0; padding: 0; background: none; color: var(--err); border: 0; font-weight: 600; cursor: pointer; }
   a.btn { display:inline-block; margin: 8px 12px 0 0; color: var(--accent); font-weight: 600; }
@@ -197,6 +199,19 @@ refList.addEventListener('click', e => {
 ['dragenter', 'dragover'].forEach(t => refDrop.addEventListener(t, e => { e.preventDefault(); refDrop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(t => refDrop.addEventListener(t, e => { e.preventDefault(); refDrop.classList.remove('over'); }));
 refDrop.addEventListener('drop', e => addRefFiles([...e.dataTransfer.files]));
+const k = n => n >= 1000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : `${n}`;
+function usageHtml(u) {
+  if (!u || !(u.calls || []).length) return '';
+  const t = u.totals, inp = t.input + t.cache_write_5m + t.cache_write_1h + t.cache_read;
+  const cost = `US$${u.cost_usd.toFixed(2)}${u.cost_complete ? '' : '+'}`;
+  return `<details class="usage"><summary><b>Claude usage:</b> ${u.calls.length} calls &middot; ${k(inp)} input tokens
+    (${Math.round(u.cache_hit_rate * 100)}% from cache) &middot; ${k(t.output)} output &middot; <b>est. ${cost}</b></summary>
+    <table class="dims"><tr><th>Step</th><th>Input</th><th>Cache write</th><th>Cache read</th><th>Output</th><th>Est. US$</th></tr>
+    ${u.calls.map(c => `<tr><td>${esc(c.step)}<br><span class="muted">${esc(c.model)}</span></td><td>${k(c.input)}</td>
+      <td>${k(c.cache_write_5m + c.cache_write_1h)}</td><td>${k(c.cache_read)}</td><td>${k(c.output)}</td>
+      <td>${c.cost_usd == null ? '?' : c.cost_usd.toFixed(3)}</td></tr>`).join('')}</table>
+    <p class="muted">Estimate from list prices; check the Claude Console for the actual bill.</p></details>`;
+}
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 f.addEventListener('submit', async e => {
@@ -251,6 +266,7 @@ async function poll(id) {
     </table>` : ''}
     <b>Engineer to check</b>
     <ul>${s.engineer_checks.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
+    ${usageHtml(j.usage)}
     <a class="btn" href="/jobs/${id}/markup.pdf">Download mark-up PDF</a>
     <a class="btn" href="/jobs/${id}/review.json" target="_blank">Raw review (JSON)</a>`;
   go.disabled = false;

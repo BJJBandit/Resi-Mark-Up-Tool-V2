@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import contextvars
 import os
 from dataclasses import dataclass
 from typing import TypeVar
@@ -12,6 +13,7 @@ import anthropic
 import httpx2
 from pydantic import BaseModel, ValidationError
 
+from . import usage
 from .pdf import PageImage
 from .rules import BEAM_WIDTH_FROM_MM, BEAM_WIDTH_TO_MM, MIN_STRIP_WIDTH_MM
 from .schemas import (
@@ -80,6 +82,16 @@ _TRANSIENT = (anthropic.APITimeoutError, anthropic.APIConnectionError, httpx2.Ti
 # max_tokens, so leave plenty of room; retry once at the model's maximum.
 MAX_TOKENS = int(os.environ.get("ANTHROPIC_MAX_TOKENS", "64000"))
 MAX_TOKENS_RETRY = 128000
+# Cache the references and drawing pages for an hour (not 5 minutes): a review's
+# steps can be more than 5 minutes apart, and a lapsed cache means re-sending them all.
+CACHE_TTL = os.environ.get("ANTHROPIC_CACHE_TTL", "1h")
+CACHE = {"type": "ephemeral", "ttl": CACHE_TTL} if CACHE_TTL in ("5m", "1h") else {"type": "ephemeral"}
+# Effort is set per message (after the cached content) rather than per request, so
+# steps at different efforts still share one cache: a request-level effort change
+# would invalidate it. Falls back to request-level effort if the API refuses.
+BASE_EFFORT = "medium"
+_per_message_effort = os.environ.get("ANTHROPIC_PER_MESSAGE_EFFORT", "1") != "0"
+_step = contextvars.ContextVar("step", default="Claude call")
 
 
 def _schema(model: type[BaseModel]) -> dict:
@@ -88,6 +100,22 @@ def _schema(model: type[BaseModel]) -> dict:
 
 def _request(messages: list[dict], max_tokens: int, schema: dict | None, effort: str = EFFORT) -> str:
     """One streamed request (avoids HTTP timeouts); returns the text output."""
+    global _per_message_effort
+    if _per_message_effort:
+        try:
+            return _send(messages + [{"role": "system", "content": [], "output_config": {"effort": effort}}],
+                         max_tokens, schema, BASE_EFFORT, ["mid-conversation-output-config-2026-07-01"])
+        except anthropic.BadRequestError as e:
+            msg = str(e).lower()
+            if "grammar" in msg or "schema" in msg or not any(
+                    k in msg for k in ("per-turn", "effort", "role", "system", "beta")):
+                raise
+            print(f"[claude] per-message effort refused, using request-level effort: {e}", flush=True)
+            _per_message_effort = False
+    return _send(messages, max_tokens, schema, effort, [])
+
+
+def _send(messages: list[dict], max_tokens: int, schema: dict | None, effort: str, betas: list[str]) -> str:
     output_config: dict = {"effort": effort}
     if schema is not None:
         output_config["format"] = {"type": "json_schema", "schema": schema}
@@ -95,7 +123,7 @@ def _request(messages: list[dict], max_tokens: int, schema: dict | None, effort:
         model=MODEL,
         max_tokens=max_tokens,
         system=SYSTEM,
-        betas=["server-side-fallback-2026-07-01"],
+        betas=["server-side-fallback-2026-07-01", *betas],
         fallbacks="default",
         # Summarised thinking streams text while Claude works, so the connection
         # never sits silent long enough to time out. Billed the same as omitted.
@@ -104,6 +132,7 @@ def _request(messages: list[dict], max_tokens: int, schema: dict | None, effort:
         messages=messages,
     ) as stream:
         message = stream.get_final_message()
+    usage.record(_step.get(), getattr(message, "model", MODEL) or MODEL, getattr(message, "usage", None))
 
     if message.stop_reason == "refusal":
         detail = getattr(message, "stop_details", None)
@@ -141,6 +170,7 @@ def _request_retrying(messages: list[dict], max_tokens: int, schema: dict | None
 def _call(content: list[dict], out: type[T], step: str, max_tokens: int = MAX_TOKENS, effort: str = EFFORT) -> T:
     """Structured-output request. If the API rejects the schema (e.g. compiled
     grammar too large), fall back to plain JSON validated locally. Errors name the step."""
+    _step.set(step)
     try:
         return _call_inner(content, out, max_tokens, effort)
     except ClaudeError as e:
@@ -235,7 +265,7 @@ def _ref_blocks(refs: list[Reference]) -> list[dict]:
         for r in refs
     ]
     # Every step resends the references first, so cache them.
-    blocks[-1]["cache_control"] = {"type": "ephemeral"}
+    blocks[-1]["cache_control"] = dict(CACHE)
     return blocks
 
 
@@ -275,7 +305,7 @@ def _page_blocks(pages: list[PageImage]) -> list[dict]:
         )
     # Cache the drawing set: steps 2 and 3 resend the same pages several times.
     if blocks:
-        blocks[-1]["cache_control"] = {"type": "ephemeral"}
+        blocks[-1]["cache_control"] = dict(CACHE)
     return blocks
 
 
