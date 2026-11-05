@@ -68,7 +68,8 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | (none, secret) | Claude API key |
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model used for every step |
-| `ANTHROPIC_EFFORT` | `high` | Reasoning depth for steps 1-2 (geotech + architectural review): `low` / `medium` / `high` / `xhigh` / `max` |
+| `ANTHROPIC_EFFORT` | `high` | Reasoning depth for step 1 (geotech review): `low` / `medium` / `high` / `xhigh` / `max` |
+| `ANTHROPIC_DESIGN_EFFORT` | `medium` | Reasoning depth for step 2 (architectural review - roof, walls, load paths, footings, bracing). Was `high`; `medium` cuts its thinking (output) cost - set `high` if the assessments get worse |
 | `REF_STORE_DIR` | `data/references` | Where stored text extracts of standards are kept (a persistent disk on Render) |
 | `REF_PAGE_CAP` | `150` | Most pages of standards / guides sent per review, all documents together (max 500) |
 | `REF_MODE` | `digest` | `digest` = read standards from stored extracts; `pdf` = send PDF pages every time |
@@ -100,7 +101,7 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
     drawing reviews no longer pay to write one. The sheets cache the standards, drawings
     and the review results (geotech + design assessment + house style) for each other, so
     the second sheet onwards (and re-runs) read them at the cache price;
-  - effort (high for the reviews, medium for the sheets) is set per message after the
+  - effort (high for the geotech review, medium for the drawing review and sheets) is set per message after the
     cached content, so a change of effort between steps doesn't invalidate the cache. If
     the API refuses per-message effort the app falls back to per-request effort by itself.
   The "from cache" share on the results page shows whether caching is working, and a
