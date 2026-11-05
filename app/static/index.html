@@ -151,7 +151,9 @@ const f = document.getElementById('f'), go = document.getElementById('go'), box 
 const storedList = document.getElementById('storedList');
 async function loadStored() {
   try {
-    const docs = await (await fetch('/references')).json();
+    const r = await fetch('/references');
+    const docs = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(docs)) throw new Error((docs && docs.detail) || `server answered ${r.status} ${r.statusText}`);
     storedList.innerHTML = docs.length ? docs.map(d => `<li class="ref"><div class="refhead">
       <label class="check usestd">${d.has_pdf ? `<input type="checkbox" data-use="${d.key}">` : ''}
         <span><b>${esc(d.names.join(' / '))}</b> <span class="muted">${d.page_count} pages &middot; ${d.pages_stored} read and stored${d.has_pdf ? '' : ' &middot; upload it once more to keep the PDF so it can be ticked'}</span></span></label>
@@ -160,7 +162,7 @@ async function loadStored() {
       <label class="stdpages" data-for="${d.key}" hidden>Pages to review <small>blank = picked from the contents &middot; or e.g. 45-60, 72 &middot; or all</small>
         <input type="text" data-stdpages="${d.key}" placeholder="auto (from contents)"></label></li>`).join('')
       : '<li class="muted">None yet - standards you upload are kept here for later reviews.</li>';
-  } catch (e) { storedList.innerHTML = '<li>Could not load the stored standards.</li>'; }
+  } catch (e) { storedList.innerHTML = `<li class="err">Could not load the stored standards: ${esc(e.message)}</li>`; }
 }
 storedList.addEventListener('change', e => {
   const k = e.target.dataset && e.target.dataset.use;
