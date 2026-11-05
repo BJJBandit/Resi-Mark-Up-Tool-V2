@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import contextvars
+from pathlib import Path
 import os
 import time
 from dataclasses import dataclass
@@ -65,6 +66,15 @@ SYSTEM += (
     "\n- FIRM RULE: every lintel and bracing panel is within the building - on a wall of the "
     "building's enclosed rooms. Never place one on a deck, verandah, porch, carport, pergola, "
     "eaves or fence line (use verandah / deck beams there, not lintels)."
+)
+
+# Office practice (app/office_rules.md): the office's standard materials, member forms and
+# details. Followed in every step unless the engineer's direction for the job says otherwise;
+# the FIRM RULES above still win.
+OFFICE_RULES = (Path(__file__).parent / "office_rules.md").read_text().strip()
+SYSTEM += (
+    "\n\nOFFICE PRACTICE - follow these in every step unless the engineer's direction for this "
+    "job says otherwise (the FIRM RULES above always apply):\n" + OFFICE_RULES + "\n"
 )
 
 
