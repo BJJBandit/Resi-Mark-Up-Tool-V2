@@ -152,6 +152,11 @@ def start() -> UsageLog:
     return log
 
 
+def use(log: UsageLog) -> None:
+    """Add this thread's calls to an existing review's log (e.g. a sheet re-run)."""
+    _current.set(log)
+
+
 def record(step: str, model: str, usage) -> None:
     if usage is None:
         return

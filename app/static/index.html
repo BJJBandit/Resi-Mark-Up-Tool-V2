@@ -48,6 +48,10 @@
   details#stored { margin-top: 8px; font-size: 14px; }
   details#stored summary { cursor: pointer; }
   details.usage { margin: 6px 0 14px; }
+  .rerun { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0 14px; }
+  .rerunrow { display: flex; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+  .rerunrow select { flex: 1; min-width: 200px; }
+  .rerunrow button { margin: 0; }
   details.usage summary { cursor: pointer; }
   button.secondary { margin: 0 10px 0 0; padding: 7px 12px; background: transparent; color: var(--accent); border: 1px solid var(--accent); font-weight: 600; }
   button.link { margin: 0; padding: 0; background: none; color: var(--err); border: 0; font-weight: 600; cursor: pointer; }
@@ -199,6 +203,28 @@ refList.addEventListener('click', e => {
 ['dragenter', 'dragover'].forEach(t => refDrop.addEventListener(t, e => { e.preventDefault(); refDrop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(t => refDrop.addEventListener(t, e => { e.preventDefault(); refDrop.classList.remove('over'); }));
 refDrop.addEventListener('drop', e => addRefFiles([...e.dataTransfer.files]));
+// Re-run one sheet (keeps the geotech + drawing review; only that sheet is redone).
+function rerunHtml(j) {
+  const opts = j.rerunnable || [];
+  if (!opts.length) return '';
+  const hist = (j.reruns || []).map(r => `<li class="${r.ok ? '' : 'err'}">${esc(r.sheet)}: ${esc(r.detail)}${r.note ? ` <span class="muted">- "${esc(r.note)}"</span>` : ''}</li>`).join('');
+  return `<div class="rerun"><b>Re-run a sheet</b> <small class="muted">only that sheet is redone; the geotech and drawing review are kept</small>
+    <div class="rerunrow"><select id="rrKind">${opts.map(o => `<option value="${o.kind}">${esc(o.title)}${o.made ? '' : ' (not produced)'}</option>`).join('')}</select>
+    <button type="button" class="secondary" id="rrGo">Re-run sheet</button></div>
+    <textarea id="rrChange" rows="2" placeholder="What should change? (optional) e.g. 'lintels missing over the laundry window', 'show bracing to the garage walls'"></textarea>
+    <p class="err" id="rrMsg" hidden></p>
+    ${hist ? `<ul>${hist}</ul>` : ''}</div>`;
+}
+box.addEventListener('click', async e => {
+  if (e.target.id !== 'rrGo') return;
+  const id = box.dataset.job, msg = document.getElementById('rrMsg');
+  const fd = new FormData();
+  fd.append('change', document.getElementById('rrChange').value);
+  e.target.disabled = true;
+  const r = await fetch(`/jobs/${id}/sheets/${document.getElementById('rrKind').value}`, { method: 'POST', body: fd });
+  if (!r.ok) { const j = await r.json().catch(() => ({})); msg.textContent = j.detail || r.statusText; msg.hidden = false; e.target.disabled = false; return; }
+  poll(id);
+});
 const k = n => n >= 1000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : `${n}`;
 function usageHtml(u) {
   if (!u || !(u.calls || []).length) return '';
@@ -236,6 +262,7 @@ f.addEventListener('submit', async e => {
 });
 
 async function poll(id) {
+  box.dataset.job = id;
   const r = await fetch(`/jobs/${id}`);
   const j = await r.json();
   if (!r.ok) { box.innerHTML = `<p class="err">${esc(j.detail)}</p>`; go.disabled = false; return; }
@@ -269,6 +296,7 @@ async function poll(id) {
     </table>` : ''}
     <b>Engineer to check</b>
     <ul>${s.engineer_checks.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
+    ${rerunHtml(j)}
     ${usageHtml(j.usage)}
     <a class="btn" href="/jobs/${id}/markup.pdf">Download mark-up PDF</a>
     <a class="btn" href="/jobs/${id}/review.json" target="_blank">Raw review (JSON)</a>`;

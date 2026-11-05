@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from . import pipeline, refstore
 from .pdf import check_pages, parse_page_range
 from .refpages import MAX_REF_PAGES, RefDoc
-from .schemas import SHEET_TITLES
+from .schemas import SHEET_TITLES, SheetKind
 
 app = FastAPI(title="Resi Mark-Up Tool")
 
@@ -64,6 +64,44 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
         traceback.print_exc()
         job.status = "error"
         job.error = str(e)
+
+
+def _rerun_worker(job_id: str, kind: SheetKind, change: str) -> None:
+    job = JOBS[job_id]
+
+    def progress(msg: str) -> None:
+        job.step = msg
+
+    try:
+        pipeline.rerun_sheet(job.result, kind, change, progress)
+    except Exception as e:  # never lose the finished review over a failed re-run
+        traceback.print_exc()
+        job.result.reruns.append({"sheet": SHEET_TITLES[kind], "note": change, "ok": False,
+                                  "detail": f"re-run failed ({e})"})
+    finally:
+        job.step = "Complete"
+        job.status = "done"
+        job.lock.release()
+
+
+@app.post("/jobs/{job_id}/sheets/{kind}")
+def rerun_sheet(job_id: str, kind: str, change: str = Form("")) -> dict:
+    """Re-run one sheet with an optional change request, reusing the review's
+    geotech and design assessment (and its cache), then rebuild the PDF."""
+    job = _job(job_id)
+    try:
+        sk = SheetKind(kind)
+    except ValueError:
+        raise HTTPException(404, f"Unknown sheet '{kind}'.")
+    if job.status != "done" or not job.result:
+        raise HTTPException(409, "The review is still running - wait for it to finish.")
+    if not pipeline.can_rerun(job.result, sk):
+        raise HTTPException(409, f"{SHEET_TITLES[sk]} can't be re-run for this review.")
+    if not job.lock.acquire(blocking=False):
+        raise HTTPException(409, "A sheet is already being re-run - wait for it to finish.")
+    job.status, job.step = "running", f"Re-running {SHEET_TITLES[sk]}"
+    threading.Thread(target=_rerun_worker, args=(job_id, sk, change.strip()), daemon=True).start()
+    return {"ok": True}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -197,6 +235,9 @@ def job_status(job_id: str) -> dict:
         body["reference_pages"] = job.result.reference_pages
         body["warnings"] = job.result.warnings
         body["usage"] = job.result.usage
+        body["reruns"] = job.result.reruns
+        body["rerunnable"] = [{"kind": k.value, "title": SHEET_TITLES[k], "made": k in job.result.sheets}
+                              for k in SheetKind if pipeline.can_rerun(job.result, k)]
         body["dimension_crosscheck"] = [d.model_dump() for d in job.result.design.dimension_crosscheck]
         body["sheet_errors"] = {SHEET_TITLES[k]: v for k, v in job.result.sheet_errors.items()}
         body["summary"] = {
