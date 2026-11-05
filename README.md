@@ -95,6 +95,11 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 - **Caching.** The references and drawing pages are sent first in every step and cached:
   - for 1 hour (`ANTHROPIC_CACHE_TTL`), not the default 5 minutes, because steps can be
     more than 5 minutes apart and a lapsed cache means paying to send everything again;
+  - only by the sheets: a live run showed the sheets can't reuse the drawing review's
+    cache (each step's answer format is part of the cached prompt), so the geotech and
+    drawing reviews no longer pay to write one. The sheets cache the standards, drawings
+    and the review results (geotech + design assessment + house style) for each other, so
+    the second sheet onwards (and re-runs) read them at the cache price;
   - effort (high for the reviews, medium for the sheets) is set per message after the
     cached content, so a change of effort between steps doesn't invalidate the cache. If
     the API refuses per-message effort the app falls back to per-request effort by itself.
