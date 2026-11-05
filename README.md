@@ -195,7 +195,9 @@ hold even if Claude slips:
   area it chose for the sheet, the plan area is enlarged to show them (with a warning to
   check they are on the right drawing); anything still outside, or a sheet that came back
   with no members at all, is named in the warnings. A sheet whose Claude call fails is
-  retried once before it is reported as not produced.
+  retried once before it is reported as not produced, and any Claude call that is refused
+  because the API is busy (rate limit 429, overloaded 529, server error) waits 30 s / 60 s /
+  120 s and tries again.
 - Mark-up positions come from Claude reading the page image, so they are approximate;
   check them and drag them into place in your PDF editor.
 - **Footings, bearers and beams are snapped to the walls** in a CAD-exported drawing:

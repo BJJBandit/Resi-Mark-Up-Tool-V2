@@ -6,6 +6,7 @@ import base64
 import json
 import contextvars
 import os
+import time
 from dataclasses import dataclass
 from typing import TypeVar
 
@@ -162,7 +163,30 @@ def _extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
+_BUSY_WAITS = (30, 60, 120)  # s: waits after a rate-limit / overloaded / server error
+
+
 def _request_retrying(messages: list[dict], max_tokens: int, schema: dict | None, effort: str) -> str:
+    """_request, waiting and retrying when the API is busy: rate limited (429, e.g. several
+    sheets at once on a low usage tier), overloaded (529) or a server error (5xx). The SDK's
+    own quick retries often aren't long enough for a per-minute limit to reset."""
+    for wait in (*_BUSY_WAITS, None):
+        try:
+            return _request_once(messages, max_tokens, schema, effort)
+        except (anthropic.RateLimitError, anthropic.InternalServerError) as e:
+            if wait is None:
+                raise ClaudeError(f"the Claude API was busy and refused the request 4 times ({e})") from e
+            print(f"[claude] {_step.get()}: API busy ({type(e).__name__}), retrying in {wait}s", flush=True)
+            time.sleep(wait)
+        except anthropic.APIStatusError as e:
+            if e.status_code not in (429, 503, 529) or wait is None:
+                raise
+            print(f"[claude] {_step.get()}: API busy ({e.status_code}), retrying in {wait}s", flush=True)
+            time.sleep(wait)
+    raise AssertionError("unreachable")
+
+
+def _request_once(messages: list[dict], max_tokens: int, schema: dict | None, effort: str) -> str:
     """Retry once on a cut-off (at the model maximum) or a dropped / timed-out stream."""
     try:
         return _request(messages, max_tokens, schema, effort)
