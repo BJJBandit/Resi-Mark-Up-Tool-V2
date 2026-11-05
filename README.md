@@ -104,6 +104,10 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
   sheet -> other sheets. The same lines are printed to the server log as `[cache] ...: YES/NO`
   and are in review.json under `usage.cache_checks`.
 
+- **Choose the sheets.** "Sheets to produce" on the form has a tick box per sheet (all
+  ticked by default; articulation joints are still only made on masonry jobs). Untick any
+  you don't need - each sheet left out saves one sheet call. A sheet left out can be added
+  later from the results with Re-run, without repeating the review.
 - **Re-run a single sheet.** Under the results, pick a sheet, optionally say what should
   change ("lintels missing over the laundry window"), and press **Re-run sheet**. Only that
   sheet is redone - the geotech and drawing review are kept, the drawings and standards are

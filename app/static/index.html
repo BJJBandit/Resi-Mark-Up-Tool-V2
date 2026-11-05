@@ -48,6 +48,9 @@
   details#stored { margin-top: 8px; font-size: 14px; }
   details#stored summary { cursor: pointer; }
   details.usage { margin: 6px 0 14px; }
+  .sheetpick { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .sheetpick label.check { margin-top: 6px; font-weight: 400; }
+  @media (max-width: 560px) { .sheetpick { grid-template-columns: 1fr; } }
   .rerun { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0 14px; }
   .rerunrow { display: flex; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
   .rerunrow select { flex: 1; min-width: 200px; }
@@ -114,6 +117,17 @@
         </select>
       </div>
     </div>
+
+    <label>Sheets to produce <small>untick any you don't need - fewer sheets cost less; you can add one later with Re-run</small></label>
+    <div class="sheetpick">
+      <label class="check"><input type="checkbox" name="sheets" value="load_paths" checked> Load paths</label>
+      <label class="check"><input type="checkbox" name="sheets" value="roof" checked> Roof framing</label>
+      <label class="check"><input type="checkbox" name="sheets" value="walls" checked> Wall framing / bracing</label>
+      <label class="check"><input type="checkbox" name="sheets" value="footings" checked> Footings</label>
+      <label class="check"><input type="checkbox" name="sheets" value="floor" checked> Floor framing / slab</label>
+      <label class="check"><input type="checkbox" name="sheets" value="articulation" checked> Articulation joints <small>(masonry only)</small></label>
+    </div>
+    <p class="err" id="sheetMsg" hidden>Tick at least one sheet.</p>
 
     <label>Construction material / standard</label>
     <select name="construction">
@@ -208,7 +222,7 @@ function rerunHtml(j) {
   const opts = j.rerunnable || [];
   if (!opts.length) return '';
   const hist = (j.reruns || []).map(r => `<li class="${r.ok ? '' : 'err'}">${esc(r.sheet)}: ${esc(r.detail)}${r.note ? ` <span class="muted">- "${esc(r.note)}"</span>` : ''}</li>`).join('');
-  return `<div class="rerun"><b>Re-run a sheet</b> <small class="muted">only that sheet is redone; the geotech and drawing review are kept</small>
+  return `<div class="rerun"><b>Re-run or add a sheet</b> <small class="muted">only that sheet is made; the geotech and drawing review are kept</small>
     <div class="rerunrow"><select id="rrKind">${opts.map(o => `<option value="${o.kind}">${esc(o.title)}${o.made ? '' : ' (not produced)'}</option>`).join('')}</select>
     <button type="button" class="secondary" id="rrGo">Re-run sheet</button></div>
     <textarea id="rrChange" rows="2" placeholder="What should change? (optional) e.g. 'lintels missing over the laundry window', 'show bracing to the garage walls'"></textarea>
@@ -245,6 +259,9 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 
 f.addEventListener('submit', async e => {
   e.preventDefault();
+  const sheetMsg = document.getElementById('sheetMsg');
+  sheetMsg.hidden = !!f.querySelector('input[name=sheets]:checked');
+  if (!sheetMsg.hidden) return;
   go.disabled = true;
   box.style.display = 'block';
   box.innerHTML = 'Uploading…';
