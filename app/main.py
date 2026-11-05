@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pymupdf
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
-from . import pipeline
+from . import pipeline, refstore
 from .pdf import check_pages, parse_page_range
 from .refpages import MAX_REF_PAGES, RefDoc
 from .schemas import SHEET_TITLES
@@ -74,6 +74,33 @@ def index() -> str:
 @app.get("/healthz")
 def healthz() -> dict:
     return {"ok": True}
+
+
+@app.get("/references")
+def stored_references() -> list[dict]:
+    """Standards / guides with stored text extracts (pages already read once)."""
+    return [{k: v for k, v in d.items() if k != "pages"} for d in refstore.list_documents()]
+
+
+@app.get("/references/{key}.txt", response_class=PlainTextResponse)
+def stored_reference_text(key: str) -> str:
+    try:
+        text = refstore.document_text(key)
+    except ValueError:
+        text = None
+    if text is None:
+        raise HTTPException(404, "No stored extract for that document.")
+    return text
+
+
+@app.delete("/references/{key}")
+def delete_stored_reference(key: str) -> dict:
+    """Forget a document's extracts (e.g. after finding a transcription error);
+    its pages are read from the PDF again next time."""
+    try:
+        return {"deleted": refstore.delete_document(key)}
+    except ValueError:
+        raise HTTPException(404, "No stored extract for that document.")
 
 
 @app.post("/jobs")

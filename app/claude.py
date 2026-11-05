@@ -187,7 +187,8 @@ def _call_inner(content: list[dict], out: type[T], max_tokens: int, effort: str)
 @dataclass
 class Reference:
     title: str
-    file_id: str
+    file_id: str = ""  # PDF pages uploaded via the Files API, or
+    text: str = ""  # stored text extract of the pages (app/refstore.py)
 
 
 def upload_references(files: list[tuple[str, bytes]]) -> list[Reference]:
@@ -205,6 +206,8 @@ def upload_references(files: list[tuple[str, bytes]]) -> list[Reference]:
 
 def delete_references(refs: list[Reference]) -> None:
     for r in refs:
+        if not r.file_id:
+            continue
         try:
             client.files.delete(r.file_id)
         except Exception:
@@ -220,10 +223,14 @@ def _ref_blocks(refs: list[Reference]) -> list[dict]:
             "text": "Reference standards, guides and codes supplied by the engineer "
             "(use these in preference to memory and cite their clause / table numbers). "
             "Where a title says 'pages X of Y', it is an extract of those pages of the "
-            "original document:",
+            "original document. Some are text extracts transcribed from the original pages "
+            "(marked by PDF page); treat them as the document itself:",
         }
     ]
     blocks += [
+        {"type": "document", "source": {"type": "text", "media_type": "text/plain", "data": r.text},
+         "title": r.title}
+        if r.text else
         {"type": "document", "source": {"type": "file", "file_id": r.file_id}, "title": r.title}
         for r in refs
     ]
@@ -504,6 +511,34 @@ REVIEW_TOPICS = """This review needs, for a residential (Class 1/10) building:
   underpurlins, verandah beams and posts (and the matching supplements / span tables)
 - masonry: articulation and control joints, lintels, veneer ties (AS 4773 / AS 3700)
 - floor framing / slab details relevant to the drawings"""
+
+
+REF_EXTRACT_EFFORT = os.environ.get("REF_EXTRACT_EFFORT", "low")  # transcription, not judgement
+
+
+def transcribe_reference_pages(stem: str, pdf: bytes, pages: list[int]) -> dict[int, str]:
+    """Transcribe pages of a standard / guide to text once, for the reference store.
+    pdf holds just these pages, in order."""
+    from .schemas import RefTranscript
+
+    mapping = ", ".join(f"page {i + 1} of the attachment = PDF page {p}" for i, p in enumerate(pages))
+    text = (
+        f"The attached PDF holds pages of '{stem}' ({mapping}).\n\n"
+        "Transcribe each page completely and exactly, for an engineer who will design from your text "
+        "instead of the page:\n"
+        "- every clause and sub-clause with its number and heading, word for word (no summarising);\n"
+        "- every table in full as a markdown table: its number and title, every column heading and "
+        "unit, every row and every value exactly as printed (keep blank / '-' / 'NA' cells), and its notes;\n"
+        "- equations, notes, footnotes and cross-references as printed;\n"
+        "- each figure: its number and title, and what it shows in words, with every dimension, value "
+        "and label on it;\n"
+        "- the printed page number if shown.\n"
+        "Skip only running headers / footers and copyright lines. Write [illegible] for anything you "
+        "can't read - never guess a value. Return one entry per page with pdf_page as given above."
+    )
+    result = _call([_pdf_block(pdf, stem), {"type": "text", "text": text}], RefTranscript,
+                   f"Extracting {stem}", effort=REF_EXTRACT_EFFORT)
+    return {p.pdf_page: p.text for p in result.pages if p.pdf_page in pages}
 
 
 def select_reference_pages(doc, bookmarks: str, contents: str, pmap: str, context: str, budget: int) -> list[dict]:

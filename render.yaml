@@ -32,3 +32,11 @@ services:
       # Reasoning depth for each Claude call: low | medium | high | xhigh | max
       - key: ANTHROPIC_EFFORT
         value: high
+      # Stored text extracts of standards / guides (app/refstore.py) live on the
+      # persistent disk below, so each page is read from the PDF only once ever.
+      - key: REF_STORE_DIR
+        value: /var/data/references
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1

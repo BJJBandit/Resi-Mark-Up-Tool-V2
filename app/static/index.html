@@ -45,6 +45,8 @@
   .drop { border: 1px dashed var(--line); border-radius: 8px; padding: 12px; }
   .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .drop p { margin: 8px 0 0; }
+  details#stored { margin-top: 8px; font-size: 14px; }
+  details#stored summary { cursor: pointer; }
   button.secondary { margin: 0 10px 0 0; padding: 7px 12px; background: transparent; color: var(--accent); border: 1px solid var(--accent); font-weight: 600; }
   button.link { margin: 0; padding: 0; background: none; color: var(--err); border: 0; font-weight: 600; cursor: pointer; }
   a.btn { display:inline-block; margin: 8px 12px 0 0; color: var(--accent); font-weight: 600; }
@@ -84,6 +86,9 @@
       <ul id="refList" class="files"></ul>
       <p class="err" id="refMsg" hidden></p>
     </div>
+    <details id="stored"><summary class="muted">Stored extracts <small>(pages already read once are reused, not read again)</small></summary>
+      <ul id="storedList" class="files"></ul>
+    </details>
 
     <div class="row">
       <div>
@@ -126,6 +131,25 @@
 </main>
 <script>
 const f = document.getElementById('f'), go = document.getElementById('go'), box = document.getElementById('status');
+// Stored text extracts of standards (app/refstore.py): list, view, forget.
+const storedList = document.getElementById('storedList');
+async function loadStored() {
+  try {
+    const docs = await (await fetch('/references')).json();
+    storedList.innerHTML = docs.length ? docs.map(d => `<li class="ref"><div class="refhead"><span><b>${esc(d.names.join(' / '))}</b>
+      <span class="muted">${d.pages_stored} of ${d.page_count} pages stored</span></span>
+      <span><a href="/references/${d.key}.txt" target="_blank">View</a> &middot;
+      <button type="button" class="link" data-key="${d.key}">Forget</button></span></div></li>`).join('')
+      : '<li>None yet - the first review that uses a standard stores the pages it reads.</li>';
+  } catch (e) { storedList.innerHTML = '<li>Could not load the stored extracts.</li>'; }
+}
+storedList.addEventListener('click', async e => {
+  const k = e.target.dataset && e.target.dataset.key;
+  if (!k || !confirm('Forget this document\'s stored extracts? Its pages will be read from the PDF again next time.')) return;
+  await fetch('/references/' + k, { method: 'DELETE' });
+  loadStored();
+});
+document.getElementById('stored').addEventListener('toggle', e => { if (e.target.open) loadStored(); });
 const tb = document.getElementById('tb'), tbFields = document.getElementById('tbFields');
 tb.addEventListener('change', () => { tbFields.hidden = !tb.checked; });
 // Standards / guides: kept in a list so each "Add" appends rather than replacing.
@@ -207,7 +231,7 @@ async function poll(id) {
     <h3 style="margin-top:0">Review complete</h3>
     <ul>
       <li>Standards / guides: ${(j.reference_pages || []).length ? '' : 'none'}
-        <ul>${(j.reference_pages || []).map(r => `<li><b>${esc(r.document)}</b>: ${r.pages_sent ? `pages ${esc(r.pages)} of ${r.page_count}` : `<span class="err">not used</span>`} (${r.pages_sent} pages; ${esc(r.how)})${(r.sections || []).length ? `<ul>${r.sections.map(x => `<li>${esc(x.title)} - p ${esc(x.pages)} <span class="muted">(${esc(x.why)})</span></li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>
+        <ul>${(j.reference_pages || []).map(r => `<li><b>${esc(r.document)}</b>: ${r.pages_sent ? `pages ${esc(r.pages)} of ${r.page_count}` : `<span class="err">not used</span>`} (${r.pages_sent} pages; ${esc(r.how)}${r.store ? `; ${esc(r.store)}` : ''})${(r.sections || []).length ? `<ul>${r.sections.map(x => `<li>${esc(x.title)} - p ${esc(x.pages)} <span class="muted">(${esc(x.why)})</span></li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>
       </li>
       <li>Site class: <b>${esc(s.site_class)}</b> · Wind: <b>${esc(s.wind_class || 'not provided')}</b></li>
       <li>Roof: ${esc(s.roof)}</li>

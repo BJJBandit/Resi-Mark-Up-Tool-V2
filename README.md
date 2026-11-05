@@ -69,6 +69,8 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `ANTHROPIC_API_KEY` | (none, secret) | Claude API key |
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model used for every step |
 | `ANTHROPIC_EFFORT` | `high` | Reasoning depth for steps 1-2 (geotech + architectural review): `low` / `medium` / `high` / `xhigh` / `max` |
+| `REF_STORE_DIR` | `data/references` | Where stored text extracts of standards are kept (a persistent disk on Render) |
+| `REF_MODE` | `digest` | `digest` = read standards from stored extracts; `pdf` = send PDF pages every time |
 | `ANTHROPIC_SHEET_EFFORT` | `medium` | Reasoning depth for step 3 (placing the mark-ups on each sheet) |
 | `ANTHROPIC_TIMEOUT_S` | `1800` | Max seconds a Claude stream may sit silent before it is retried once |
 | `ANTHROPIC_MAX_TOKENS` | `64000` | Output cap per Claude call (thinking counts toward it); a cut-off call retries once at 128000 |
@@ -103,6 +105,19 @@ hold even if Claude slips:
 ## Limits
 
 - Architectural sets can have up to 60 pages (`MAX_DRAWING_PAGES`), and each upload must be under 30 MB. Use **Drawing pages to review** (e.g. `3-12, 15`) to skip covers, 3D renders and BASIX pages: fewer pages is faster and cheaper. Large sets are sent at a lower image resolution so they fit in one request.
+- **Standards are read once, then reused** (`app/refstore.py`). The first time a page of a
+  standard / guide is needed, Claude transcribes it to text (clauses word for word, tables
+  row by row, notes, what each figure shows) and the text is stored, keyed by the PDF's
+  content (so renaming the file doesn't matter). Every step of the review, and every later
+  review that needs that page, sends the stored text instead of the PDF page - only pages
+  never read before are extracted. The results page shows, per document, how many pages
+  came from the store and how many were newly extracted. **Stored extracts** under the
+  standards box lists what's stored, lets you view the text (check a span table before
+  relying on it) and **Forget** a document so it is read from the PDF again. A page that
+  can't be transcribed is sent as a PDF page and retried next time.
+  The store is on the Render persistent disk (`REF_STORE_DIR`, 1 GB in `render.yaml`);
+  `REF_MODE=pdf` turns it off. `REF_EXTRACT_EFFORT` (default `low`) sets the transcription
+  reasoning depth.
 - Reference documents (standards, guides, codes) can be up to 100 MB each. Leave a
   document's **Pages to review** blank and the app reads its bookmarks, contents pages and
   the first lines of every page, asks Claude which sections this job needs (footings,
