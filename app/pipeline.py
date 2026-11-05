@@ -263,9 +263,15 @@ def _build(job: JobInput, result: JobResult) -> None:
 def _wanted(job: JobInput) -> list[SheetKind]:
     """Sheets to produce, in drawing order: footings and floor become one FOOTING & FLOOR
     sheet when combining is ticked and both are wanted."""
-    wanted = [k for k in (job.sheets or SheetKind) if k != SheetKind.FOUNDATION]
-    if job.combine_foundation and SheetKind.FOOTINGS in wanted and SheetKind.FLOOR in wanted:
-        wanted = [k for k in wanted if k not in (SheetKind.FOOTINGS, SheetKind.FLOOR)] + [SheetKind.FOUNDATION]
+    split = (SheetKind.FOOTINGS, SheetKind.FLOOR)
+    if job.sheets:
+        wanted = list(job.sheets)
+        if SheetKind.FOUNDATION in wanted:  # the combined sheet covers both
+            wanted = [k for k in wanted if k not in split]
+    else:  # no choice given (API clients): every sheet
+        wanted = [k for k in SheetKind if k != SheetKind.FOUNDATION]
+    if job.combine_foundation and all(k in wanted for k in split):
+        wanted = [k for k in wanted if k not in split] + [SheetKind.FOUNDATION]
     return [k for k in SheetKind if k in wanted]
 
 
@@ -282,7 +288,9 @@ def can_rerun(result: JobResult, kind: SheetKind) -> bool:
     elif any(k in result.sheets for k in split):
         combined = False  # one of them made on its own: offer the other on its own
     else:
-        combined = result.ctx.job.combine_foundation
+        job = result.ctx.job
+        combined = SheetKind.FOUNDATION in job.sheets or (
+            not any(k in job.sheets for k in split) and job.combine_foundation)
     return kind not in split if combined else kind != SheetKind.FOUNDATION
 
 

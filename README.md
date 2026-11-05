@@ -32,9 +32,10 @@ checked before use. It is not for construction.
 3. **Mark-up drawings.** Produces one PDF with:
    - one marked-up sheet each for load paths, roof (rafters only, including the deck),
      wall framing / racking / blockwork joints, footings (AS 2870) and floor framing or slab.
-     Footings and floor go on one sheet ("FOOTING & FLOOR PLAN") unless you untick
-     **Footings and floor framing / slab on one sheet** - then they are separate FOOTING PLAN
-     and FLOOR FRAMING PLAN sheets (clearer on busy suspended-floor jobs, one more sheet call)
+     Footings and floor are one sheet ("FOOTING & FLOOR PLAN", ticked by default) or, if you
+     tick **Footings (own sheet)** / **Floor framing / slab (own sheet)** instead, separate
+     FOOTING PLAN and FLOOR FRAMING PLAN sheets (clearer on busy suspended-floor jobs, one
+     more sheet call). Ticking one choice unticks the other.
 
    Sheets follow the house mark-up style: A3, address and sheet name top-left,
    classification and notes down the left, the architectural plan faded in the middle
