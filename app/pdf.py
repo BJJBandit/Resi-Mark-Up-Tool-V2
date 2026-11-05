@@ -1026,7 +1026,7 @@ def build_markup_pdf(
         dwg_no = f"SSK-{n}"
         before = out.page_count
         try:
-            plan_sheet = sheets.get(SheetKind.WALLS) or sheets.get(SheetKind.FLOOR)
+            plan_sheet = sheets.get(SheetKind.WALLS) or sheets.get(SheetKind.FOOTINGS)
             plan_idx = (plan_sheet.source_page_number - 1) if plan_sheet else None
             o, w = _markup_sheet(out, src, meta, kind, sheets[kind], dwg_no, plan_idx)
             overflow += o
