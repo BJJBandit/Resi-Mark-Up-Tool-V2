@@ -70,6 +70,7 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model used for every step |
 | `ANTHROPIC_EFFORT` | `high` | Reasoning depth for steps 1-2 (geotech + architectural review): `low` / `medium` / `high` / `xhigh` / `max` |
 | `REF_STORE_DIR` | `data/references` | Where stored text extracts of standards are kept (a persistent disk on Render) |
+| `REF_PAGE_CAP` | `150` | Most pages of standards / guides sent per review, all documents together (max 500) |
 | `REF_MODE` | `digest` | `digest` = read standards from stored extracts; `pdf` = send PDF pages every time |
 | `ANTHROPIC_CACHE_TTL` | `1h` | How long the references and drawing pages stay cached between steps (`1h` or `5m`) |
 | `ANTHROPIC_PER_MESSAGE_EFFORT` | `1` | Set effort per message so all steps share one cache; `0` = per request |
@@ -161,7 +162,10 @@ hold even if Claude slips:
   why. Type a range (e.g. `45-60, 72`) to choose yourself, or `all` for the whole document.
   Documents of 25 pages or less are sent whole. If a long document's contents can't be
   read (a scan) or no relevant section is found, it is not sent and a warning asks for its
-  pages. The pages sent across all documents total at most 500.
+  pages. The pages sent across all documents total at most 150 per review (`REF_PAGE_CAP`,
+  set low for beta to control cost; up to 500). When several documents are picked
+  automatically the cap is shared between them, and a typed range that goes over it is
+  refused with a message.
 - Mark-up positions come from Claude reading the page image, so they are approximate;
   check them and drag them into place in your PDF editor.
 - **Footings, bearers and beams are snapped to the walls** in a CAD-exported drawing:
