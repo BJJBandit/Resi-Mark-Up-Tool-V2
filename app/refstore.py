@@ -22,6 +22,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 
+from . import usage
+
 STORE_DIR = Path(os.environ.get("REF_STORE_DIR", "data/references"))
 MODE = os.environ.get("REF_MODE", "digest").strip().lower()  # digest | pdf
 CHUNK = 6  # pages per transcription call
@@ -107,7 +109,8 @@ def get_text(
                      f"({len(missing)} new page(s); {len(pages) - len(missing)} already stored)")
 
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        list(pool.map(run, chunks))
+        for f in [usage.submit(pool, run, c) for c in chunks]:
+            f.result()
     return have, len(missing) - len(failed), sorted(failed)
 
 
