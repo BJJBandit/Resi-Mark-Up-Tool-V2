@@ -77,24 +77,14 @@
       <div><label>Made by</label><input type="text" name="made_by" placeholder="Initials"></div>
     </div>
 
-    <label>Architectural drawings (PDF) *</label>
-    <input type="file" name="architectural" accept="application/pdf" required>
+    <label>Architectural drawings (PDF) * <small>one or more sets (e.g. plans, elevations, revised sheets) &middot; up to 60 pages in total</small></label>
+    <div class="drop" id="archDrop"></div>
 
-    <label>Drawing pages to review <small>optional &middot; e.g. 3-12, 15 &middot; blank = all (max 60)</small></label>
-    <input type="text" name="drawing_pages" placeholder="all">
-
-    <label>Geotechnical report (PDF) <small>optional</small></label>
-    <input type="file" name="geotech" accept="application/pdf">
+    <label>Geotechnical documents (PDF) <small>optional &middot; report, addenda, borehole logs &middot; up to 22 MB in total</small></label>
+    <div class="drop" id="geoDrop"></div>
 
     <label>Standards, guides &amp; codes (PDF) <small>optional &middot; add as many as you need &middot; only the relevant pages are sent (up to {{REF_PAGE_CAP}} per review)</small></label>
-    <div class="drop" id="refDrop">
-      <input type="file" accept="application/pdf" multiple id="refs" hidden>
-      <button type="button" class="secondary" id="refAdd">Add standards / guides&hellip;</button>
-      <span class="muted">or drag PDFs here &middot; add more at any time</span>
-      <p class="muted" id="refCount">No documents added.</p>
-      <ul id="refList" class="files"></ul>
-      <p class="err" id="refMsg" hidden></p>
-    </div>
+    <div class="drop" id="refDrop"></div>
     <details id="stored"><summary class="muted">Stored extracts <small>(pages already read once are reused, not read again)</small></summary>
       <ul id="storedList" class="files"></ul>
     </details>
@@ -172,51 +162,65 @@ storedList.addEventListener('click', async e => {
 document.getElementById('stored').addEventListener('toggle', e => { if (e.target.open) loadStored(); });
 const tb = document.getElementById('tb'), tbFields = document.getElementById('tbFields');
 tb.addEventListener('change', () => { tbFields.hidden = !tb.checked; });
-// Standards / guides: kept in a list so each "Add" appends rather than replacing.
-const refs = document.getElementById('refs'), refList = document.getElementById('refList');
-const refCount = document.getElementById('refCount'), refMsg = document.getElementById('refMsg');
-const refDrop = document.getElementById('refDrop');
-const refItems = [];  // { file, pages }
+// Document lists (drawings, geotech, standards): each "Add" appends rather than
+// replacing; every file can be removed and has its own "Pages to review".
 const mb = n => (n / 1048576).toFixed(1);
 
-function addRefFiles(files) {
-  const skipped = [];
-  for (const file of files) {
-    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { skipped.push(`${file.name} (not a PDF)`); continue; }
-    if (refItems.some(r => r.file.name === file.name && r.file.size === file.size)) { skipped.push(`${file.name} (already added)`); continue; }
-    refItems.push({ file, pages: '' });
+function fileList(dropId, { add, pagesHelp, placeholder }) {
+  const drop = document.getElementById(dropId), items = [];  // { file, pages }
+  drop.innerHTML = `<input type="file" accept="application/pdf" multiple hidden>
+    <button type="button" class="secondary">${add}&hellip;</button>
+    <span class="muted">or drag PDFs here &middot; add more at any time</span>
+    <p class="muted count">No documents added.</p><ul class="files"></ul><p class="err" hidden></p>`;
+  const input = drop.querySelector('input'), list = drop.querySelector('ul'),
+        count = drop.querySelector('.count'), msg = drop.querySelector('.err');
+
+  function addFiles(files) {
+    const skipped = [];
+    for (const file of files) {
+      if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { skipped.push(`${file.name} (not a PDF)`); continue; }
+      if (items.some(r => r.file.name === file.name && r.file.size === file.size)) { skipped.push(`${file.name} (already added)`); continue; }
+      items.push({ file, pages: '' });
+    }
+    msg.hidden = !skipped.length;
+    msg.textContent = skipped.length ? 'Not added: ' + skipped.join(', ') : '';
+    render();
   }
-  refMsg.hidden = !skipped.length;
-  refMsg.textContent = skipped.length ? 'Not added: ' + skipped.join(', ') : '';
-  renderRefs();
+
+  function render() {
+    const total = items.reduce((a, r) => a + r.file.size, 0);
+    count.textContent = items.length
+      ? `${items.length} document${items.length > 1 ? 's' : ''} added (${mb(total)} MB):` : 'No documents added.';
+    list.innerHTML = items.map((r, i) => `
+      <li class="ref">
+        <div class="refhead">
+          <span><b>${i + 1}.</b> ${esc(r.file.name)} <span class="muted">(${mb(r.file.size)} MB)</span></span>
+          <button type="button" class="link" data-remove="${i}" aria-label="Remove ${esc(r.file.name)}">Remove</button>
+        </div>
+        <label>Pages to review <small>${pagesHelp}</small>
+          <input type="text" data-pages="${i}" value="${esc(r.pages)}" placeholder="${placeholder}"></label>
+      </li>`).join('');
+  }
+
+  drop.querySelector('button').addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { addFiles([...input.files]); input.value = ''; });
+  list.addEventListener('input', e => { const i = e.target.dataset.pages; if (i !== undefined) items[i].pages = e.target.value; });
+  list.addEventListener('click', e => {
+    const i = e.target.dataset.remove;
+    if (i !== undefined) { items.splice(Number(i), 1); msg.hidden = true; render(); }
+  });
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
+  return { items, error(text) { msg.textContent = text; msg.hidden = !text; } };
 }
 
-function renderRefs() {
-  const total = refItems.reduce((a, r) => a + r.file.size, 0);
-  refCount.textContent = refItems.length
-    ? `${refItems.length} document${refItems.length > 1 ? 's' : ''} added (${mb(total)} MB):`
-    : 'No documents added.';
-  refList.innerHTML = refItems.map((r, i) => `
-    <li class="ref">
-      <div class="refhead">
-        <span><b>${i + 1}.</b> ${esc(r.file.name)} <span class="muted">(${mb(r.file.size)} MB)</span></span>
-        <button type="button" class="link" data-remove="${i}" aria-label="Remove ${esc(r.file.name)}">Remove</button>
-      </div>
-      <label>Pages to review <small>blank = picked from the contents &middot; or e.g. 45-60, 72 &middot; or all</small>
-        <input type="text" data-pages="${i}" value="${esc(r.pages)}" placeholder="auto (from contents)"></label>
-    </li>`).join('');
-}
-
-document.getElementById('refAdd').addEventListener('click', () => refs.click());
-refs.addEventListener('change', () => { addRefFiles([...refs.files]); refs.value = ''; });
-refList.addEventListener('input', e => { const i = e.target.dataset.pages; if (i !== undefined) refItems[i].pages = e.target.value; });
-refList.addEventListener('click', e => {
-  const i = e.target.dataset.remove;
-  if (i !== undefined) { refItems.splice(Number(i), 1); refMsg.hidden = true; renderRefs(); }
-});
-['dragenter', 'dragover'].forEach(t => refDrop.addEventListener(t, e => { e.preventDefault(); refDrop.classList.add('over'); }));
-['dragleave', 'drop'].forEach(t => refDrop.addEventListener(t, e => { e.preventDefault(); refDrop.classList.remove('over'); }));
-refDrop.addEventListener('drop', e => addRefFiles([...e.dataTransfer.files]));
+const archList = fileList('archDrop', { add: 'Add drawings', placeholder: 'all',
+  pagesHelp: 'blank = all &middot; or e.g. 3-12, 15 to skip covers, 3D renders and BASIX pages' });
+const geoList = fileList('geoDrop', { add: 'Add geotechnical documents', placeholder: 'all',
+  pagesHelp: 'blank = all &middot; or e.g. 1-14 to skip appendices' });
+const refList = fileList('refDrop', { add: 'Add standards / guides', placeholder: 'auto (from contents)',
+  pagesHelp: 'blank = picked from the contents &middot; or e.g. 45-60, 72 &middot; or all' });
 // Re-run one sheet (keeps the geotech + drawing review; only that sheet is redone).
 function rerunHtml(j) {
   const opts = j.rerunnable || [];
@@ -262,12 +266,16 @@ f.addEventListener('submit', async e => {
   const sheetMsg = document.getElementById('sheetMsg');
   sheetMsg.hidden = !!f.querySelector('input[name=sheets]:checked');
   if (!sheetMsg.hidden) return;
+  archList.error(archList.items.length ? '' : 'Add at least one architectural drawing set.');
+  if (!archList.items.length) { document.getElementById('archDrop').scrollIntoView({ block: 'center' }); return; }
   go.disabled = true;
   box.style.display = 'block';
   box.innerHTML = 'Uploading…';
   try {
     const fd = new FormData(f);
-    for (const r of refItems) { fd.append('references', r.file, r.file.name); fd.append('reference_pages', r.pages); }
+    for (const r of archList.items) { fd.append('architectural', r.file, r.file.name); fd.append('architectural_pages', r.pages); }
+    for (const r of geoList.items) { fd.append('geotech', r.file, r.file.name); fd.append('geotech_pages', r.pages); }
+    for (const r of refList.items) { fd.append('references', r.file, r.file.name); fd.append('reference_pages', r.pages); }
     const r = await fetch('/jobs', { method: 'POST', body: fd });
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.statusText);

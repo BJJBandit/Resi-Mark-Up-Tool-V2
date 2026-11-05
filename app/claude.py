@@ -287,7 +287,7 @@ def _page_blocks(pages: list[PageImage]) -> list[dict]:
         blocks.append(
             {
                 "type": "text",
-                "text": f"--- Architectural page {p.number} "
+                "text": f"--- Architectural page {p.number}" + (f" ({p.label})" if p.label else "") + " "
                 f"(image {p.width}x{p.height}px) ---\nExtracted text:\n{p.text[:4000] or '(none)'}"
                 + (f"\nWritten dimensions / levels with position on this image (x,y 0-1; 'v' = written "
                    f"vertically):\n{p.dims}" if p.dims else ""),
@@ -315,21 +315,25 @@ def _page_blocks(pages: list[PageImage]) -> list[dict]:
 
 
 def review_geotech(
-    geotech_pdf: bytes | None,
+    geotech_pdf: bytes | None | list[tuple[str, bytes]],
     wind_class: str | None,
     site_class: str | None,
     refs: list[Reference] = [],
     direction: str = "",
 ) -> GeotechReview:
     content: list[dict] = _ref_blocks(refs)
-    if geotech_pdf:
-        content.append(_pdf_block(geotech_pdf, "Geotechnical report"))
+    docs = geotech_pdf if isinstance(geotech_pdf, list) else ([("Geotechnical report", geotech_pdf)] if geotech_pdf else [])
+    for title, data in docs:
+        content.append(_pdf_block(data, title))
+    if len(docs) > 1:
+        content.append({"type": "text", "text": f"{len(docs)} geotechnical documents are attached (e.g. report, "
+                        "addendum, borehole logs); review them together and say which one each finding is from."})
     content.append(
         {
             "type": "text",
             "text": (
                 "Step 1 - Review the geotechnical report"
-                + ("" if geotech_pdf else " (NONE PROVIDED - set report_provided=false and flag it)")
+                + ("" if docs else " (NONE PROVIDED - set report_provided=false and flag it)")
                 + ".\n"
                 f"User-provided wind classification: {wind_class or 'not provided'}.\n"
                 f"User-provided site classification override: {site_class or 'none'}.\n"

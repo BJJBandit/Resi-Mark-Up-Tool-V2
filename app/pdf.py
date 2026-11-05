@@ -54,6 +54,7 @@ class PageImage:
     jpeg: bytes
     text: str
     dims: str = ""  # written dimensions with their positions, e.g. "4030@(0.21,0.12)"
+    label: str = ""  # where it came from when several sets were uploaded, e.g. "Set B.pdf page 3"
 
 
 DIM_WORD = re.compile(r"^\d{3,5}$|^\d{1,2}\.\d{2,3}$")  # 4030, 11.25 (levels)
@@ -131,12 +132,12 @@ def extract_pages(pdf_bytes: bytes, pages: list[int]) -> bytes:
         return out.tobytes(garbage=3, deflate=True)
 
 
-def check_pages(pdf_bytes: bytes, spec: str = "") -> list[int]:
+def check_pages(pdf_bytes: bytes, spec: str = "", name: str = "Architectural PDF") -> list[int]:
     """Validate the set and selection up front so problems show at upload time."""
     with pymupdf.open(stream=pdf_bytes, filetype="pdf") as doc:
         count = doc.page_count
     if count == 0:
-        raise ValueError("Architectural PDF has no pages.")
+        raise ValueError(f"{name} has no pages.")
     pages = parse_page_range(spec, count)
     if len(pages) > MAX_PAGES:
         raise ValueError(
@@ -144,6 +145,26 @@ def check_pages(pdf_bytes: bytes, spec: str = "") -> list[int]:
             "to review' to pick the plans, elevations and sections (e.g. 3-12)."
         )
     return pages
+
+
+def combine_pdfs(parts: list[tuple[str, bytes, list[int]]]) -> tuple[bytes, list[str]]:
+    """One PDF holding the chosen pages of each uploaded document, in upload order.
+    Returns (pdf, label per page: '<file> page <n>')."""
+    if len(parts) == 1 and parts[0][2] == list(range(1, _count(parts[0][1]) + 1)):
+        name, data, pages = parts[0]
+        return data, [f"{name} page {p}" for p in pages]
+    out, labels = pymupdf.open(), []
+    for name, data, pages in parts:
+        with pymupdf.open(stream=data, filetype="pdf") as src:
+            for p in pages:
+                out.insert_pdf(src, from_page=p - 1, to_page=p - 1)
+                labels.append(f"{name} page {p}")
+    return out.tobytes(garbage=3, deflate=True), labels
+
+
+def _count(data: bytes) -> int:
+    with pymupdf.open(stream=data, filetype="pdf") as d:
+        return d.page_count
 
 
 def render_pages(pdf_bytes: bytes, page_numbers: list[int] | None = None) -> list[PageImage]:
