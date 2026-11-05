@@ -33,6 +33,7 @@ class RefDoc:
     pages: list[int] | None = None  # None = choose automatically from the contents
     how: str = ""
     sections: list[dict] = field(default_factory=list)
+    store: str = ""  # how the pages were read: stored extracts / newly extracted / PDF
 
     @property
     def stem(self) -> str:
@@ -162,6 +163,7 @@ def report(docs: list[RefDoc]) -> list[dict]:
             "pages_sent": len(d.pages or []),
             "how": d.how,
             "sections": d.sections,
+            "store": d.store,
         }
         for d in docs
     ]

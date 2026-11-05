@@ -214,3 +214,12 @@ class RefSection(Strict):
 
 class RefSelection(Strict):
     sections: list[RefSection]
+
+
+class RefPageText(Strict):
+    pdf_page: int = Field(description="PDF page number of the original document (as given in the request).")
+    text: str = Field(description="Complete transcription of the page (see instructions).")
+
+
+class RefTranscript(Strict):
+    pages: list[RefPageText]

@@ -7,8 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
 
-from . import claude
-from .pdf import build_markup_pdf, render_pages
+from . import claude, refstore
+from .pdf import build_markup_pdf, extract_pages, format_ranges, render_pages
 from .refpages import MAX_REF_PAGES, RefDoc, prepare, report
 from .rules import apply_rules, check_geotech
 from .schemas import SHEET_TITLES, DesignAssessment, GeotechReview, MarkupSheet, SheetKind
@@ -62,6 +62,42 @@ def _masonry(design: DesignAssessment) -> bool:
     return re.search(r"brick|masonry|block|veneer|AS ?3700|AS ?4773", text, re.I) is not None
 
 
+def _stored_references(docs: list[RefDoc], progress: Callable[[str], None]):
+    """Read each document's chosen pages from the reference store, transcribing (once,
+    ever) any page not stored yet. Pages that can't be transcribed go as PDF pages.
+    Returns (text references, [(name, pdf)] still to upload, warnings)."""
+    refs: list[claude.Reference] = []
+    files: list[tuple[str, bytes]] = []
+    warnings: list[str] = []
+    for d in docs:
+        if not d.pages:
+            continue
+        key = refstore.doc_key(d.data)
+
+        def transcribe(chunk: list[int], d=d) -> dict[int, str]:
+            return claude.transcribe_reference_pages(d.stem, extract_pages(d.data, chunk), chunk)
+
+        texts, new, failed = refstore.get_text(key, d.name, d.page_count, d.pages, transcribe, progress)
+        reused = len(d.pages) - new - len(failed)
+        parts = []
+        if reused:
+            parts.append(f"{reused} from stored extracts")
+        if new:
+            parts.append(f"{new} newly extracted and stored")
+        if failed:
+            parts.append(f"{len(failed)} sent as PDF pages")
+        d.store = "; ".join(parts)
+        if texts:
+            refs.append(claude.Reference(title=f"{d.stem} (text extract of PDF pages {format_ranges(sorted(texts))})",
+                                         text=refstore.as_text(d.stem, texts)))
+        if failed:
+            warnings.append(f"{d.stem}: pages {format_ranges(failed)} could not be extracted to text, so they "
+                            "were sent as PDF pages (they will be tried again next time).")
+            files.append((f"{d.stem} (pages {format_ranges(failed)} of {d.page_count}).pdf",
+                          extract_pages(d.data, failed)))
+    return refs, files, warnings
+
+
 def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobResult:
     progress("Rendering architectural drawings")
     pages = render_pages(job.arch_pdf, job.pages or None)
@@ -75,8 +111,12 @@ def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobR
             "Drawing text (excerpt): " + " ".join(p.text for p in pages)[:3000]
         )
         files, ref_warnings = prepare(job.references, context, claude.select_reference_pages, MAX_REF_PAGES, progress)
-        progress(f"Uploading {len(files)} reference document(s)")
-        refs = claude.upload_references(files)
+        if refstore.enabled():
+            refs, files, more = _stored_references(job.references, progress)
+            ref_warnings += more
+        if files:
+            progress(f"Uploading {len(files)} reference document(s)")
+            refs += claude.upload_references(files)
     try:
         result = _run(job, pages, refs, progress)
         result.reference_pages = report(job.references)
