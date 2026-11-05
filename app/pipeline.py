@@ -29,7 +29,8 @@ class JobInput:
     pages: list[int] = field(default_factory=list)  # selected drawing pages (1-based); empty = all
     rev: str = "A"
     made_by: str = ""
-    sheet_notes: list[str] = field(default_factory=list)  # engineer's notes added to every sheet as written
+    sheet_notes: list[str] = field(default_factory=list)
+    sheets: list[SheetKind] = field(default_factory=list)  # sheets to produce; empty = all  # engineer's notes added to every sheet as written
 
 
 @dataclass
@@ -194,7 +195,14 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
         except Exception as e:  # keep the other sheets if one fails
             result.sheet_errors[kind] = str(e) or type(e).__name__
 
-    kinds = [k for k in SheetKind if k != SheetKind.ARTICULATION or _masonry(design)]
+    kinds = [k for k in SheetKind if (not job.sheets or k in job.sheets)
+             and (k != SheetKind.ARTICULATION or _masonry(design))]
+    if not kinds:  # only the articulation sheet was ticked, and this isn't a masonry job
+        result.base_warnings.append("Only the articulation joint sheet was selected, but the walls aren't "
+                                    "masonry, so no sheets were produced.")
+        progress("Building mark-up PDF")
+        _build(job, result)
+        return result
     progress(f"Step 3: marking up sheets (1 of {len(kinds)})")
     make(kinds[0])  # first call warms the prompt cache for the rest
     progress("Step 3: marking up remaining sheets")

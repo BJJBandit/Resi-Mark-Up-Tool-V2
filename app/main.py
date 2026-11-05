@@ -158,7 +158,12 @@ async def create_job(
     job_no: str = Form(""),
     rev: str = Form("A"),
     made_by: str = Form(""),
+    sheets: list[str] = Form([]),
 ) -> dict:
+    try:
+        chosen = [SheetKind(s) for s in sheets]
+    except ValueError:
+        raise HTTPException(400, "Unknown sheet selected.")
     arch = await _read(architectural, "Architectural drawings")
     if arch is None:
         raise HTTPException(400, "Architectural drawings are required.")
@@ -212,6 +217,7 @@ async def create_job(
         job_no=job_no.strip(),
         rev=rev.strip() or "A",
         made_by=made_by.strip().upper(),
+        sheets=chosen,
     )
     job_id = uuid.uuid4().hex
     JOBS[job_id] = Job(project=inp.project)
