@@ -244,7 +244,7 @@ def delete_references(refs: list[Reference]) -> None:
             pass
 
 
-def _ref_blocks(refs: list[Reference]) -> list[dict]:
+def _ref_blocks(refs: list[Reference], cache: bool = True) -> list[dict]:
     if not refs:
         return []
     blocks: list[dict] = [
@@ -264,8 +264,9 @@ def _ref_blocks(refs: list[Reference]) -> list[dict]:
         {"type": "document", "source": {"type": "file", "file_id": r.file_id}, "title": r.title}
         for r in refs
     ]
-    # Every step resends the references first, so cache them.
-    blocks[-1]["cache_control"] = dict(CACHE)
+    # The sheets resend the references first, so cache them there.
+    if cache:
+        blocks[-1]["cache_control"] = dict(CACHE)
     return blocks
 
 
@@ -281,7 +282,7 @@ def _pdf_block(pdf_bytes: bytes, title: str) -> dict:
     }
 
 
-def _page_blocks(pages: list[PageImage]) -> list[dict]:
+def _page_blocks(pages: list[PageImage], cache: bool = True) -> list[dict]:
     blocks: list[dict] = []
     for p in pages:
         blocks.append(
@@ -303,8 +304,8 @@ def _page_blocks(pages: list[PageImage]) -> list[dict]:
                 },
             }
         )
-    # Cache the drawing set: steps 2 and 3 resend the same pages several times.
-    if blocks:
+    # Cache the drawing set: every sheet resends the same pages.
+    if blocks and cache:
         blocks[-1]["cache_control"] = dict(CACHE)
     return blocks
 
@@ -321,7 +322,9 @@ def review_geotech(
     refs: list[Reference] = [],
     direction: str = "",
 ) -> GeotechReview:
-    content: list[dict] = _ref_blocks(refs)
+    # No cache write here: the next step asks for a different answer format, which
+    # (measured) stops it reusing this step's cache, so a write would be wasted.
+    content: list[dict] = _ref_blocks(refs, cache=False)
     docs = geotech_pdf if isinstance(geotech_pdf, list) else ([("Geotechnical report", geotech_pdf)] if geotech_pdf else [])
     for title, data in docs:
         content.append(_pdf_block(data, title))
@@ -364,7 +367,8 @@ def assess_design(
     extra_notes: str,
     refs: list[Reference] = [],
 ) -> DesignAssessment:
-    content = _ref_blocks(refs) + _page_blocks(pages)
+    # No cache write here either (see review_geotech): the sheets cache for each other.
+    content = _ref_blocks(refs, cache=False) + _page_blocks(pages, cache=False)
     content.append(
         {
             "type": "text",
@@ -510,14 +514,24 @@ def plan_sheet(
     direction: str = "",
 ) -> MarkupSheet:
     content = _ref_blocks(refs) + _page_blocks(pages)
+    # The same for every sheet: cached after the first sheet so the others read it cheaply.
+    content.append(
+        {
+            "type": "text",
+            "text": (
+                f"{HOUSE_STYLE}\n\n"
+                f"Geotechnical review:\n{geotech.model_dump_json(indent=2)}\n\n"
+                f"Design assessment:\n{design.model_dump_json(indent=2)}"
+            ),
+            "cache_control": dict(CACHE),
+        }
+    )
     content.append(
         {
             "type": "text",
             "text": (
                 f"Step 3 - Produce the '{SHEET_TITLES[kind]}' mark-up sheet.\n\n"
-                f"{SHEET_BRIEFS[kind]}\n\n{HOUSE_STYLE}\n\n"
-                f"Geotechnical review:\n{geotech.model_dump_json(indent=2)}\n\n"
-                f"Design assessment:\n{design.model_dump_json(indent=2)}\n\n"
+                f"{SHEET_BRIEFS[kind]}\n\n"
                 f"Engineer's direction (follow it on this sheet where it applies; it overrides "
                 f"defaults but not the FIRM RULES): {direction or 'none'}\n\n"
                 "Choose ONE plan page to mark up and give plan_region tightly around the plan "

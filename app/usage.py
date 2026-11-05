@@ -121,11 +121,13 @@ def cache_checks(calls: list[Call]) -> list[dict]:
     def cached(c: Call) -> int:
         return c.cache_read + c.cache_write_5m + c.cache_write_1h
 
-    if geo and design:
+    # The geotech and drawing reviews don't write a cache (their answer formats stop
+    # the next step reusing it); these two checks only apply if one ever does.
+    if geo and design and cached(geo):
         # Only the standards are shared between these two (the geotech report isn't).
         verdict("Geotech review -> drawing review (standards)", design, min(cached(geo), cached(design)),
                 "the standards were sent again at full price")
-    if design and sheets:
+    if design and sheets and cached(design):
         verdict("Drawing review -> first sheet (standards + drawings)", sheets[0], cached(design),
                 "the sheets did not reuse the drawing review's cache (likely its different answer format); "
                 "the first sheet cached it again and the other sheets reuse that")
@@ -139,7 +141,7 @@ def cache_checks(calls: list[Call]) -> list[dict]:
                                   + ", ".join(c.step for c in bad)})
         else:
             out.append({"check": "First sheet -> other sheets", "ok": True,
-                        "detail": f"all {len(sheets) - 1} read the drawings from cache"})
+                        "detail": f"all {len(sheets) - 1} read the drawings and review results from cache"})
     return out
 
 
