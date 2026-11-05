@@ -164,7 +164,8 @@ async def create_job(
     sheets: list[str] = Form([]),
 ) -> dict:
     try:
-        chosen = [SheetKind(s) for s in sheets]
+        # 'floor' was its own sheet; footings and floor are now one sheet.
+        chosen = list(dict.fromkeys(SheetKind("footings" if s == "floor" else s) for s in sheets))
     except ValueError:
         raise HTTPException(400, "Unknown sheet selected.")
     # Architectural drawings: one or more sets, each with its own pages to review,

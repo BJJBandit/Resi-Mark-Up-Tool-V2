@@ -131,8 +131,7 @@ class SheetKind(str, Enum):
     LOAD_PATHS = "load_paths"
     ROOF = "roof"
     WALLS = "walls"
-    FOOTINGS = "footings"
-    FLOOR = "floor"
+    FOOTINGS = "footings"  # footings and floor framing / slab on one sheet
     ARTICULATION = "articulation"  # masonry jobs only; drawn on the elevations
 
 
@@ -140,8 +139,7 @@ SHEET_TITLES: dict[SheetKind, str] = {
     SheetKind.LOAD_PATHS: "LOAD PATH PLAN",
     SheetKind.ROOF: "ROOF FRAMING PLAN",
     SheetKind.WALLS: "WALL FRAMING PLAN",
-    SheetKind.FOOTINGS: "FOOTING PLAN",
-    SheetKind.FLOOR: "FLOOR FRAMING PLAN",
+    SheetKind.FOOTINGS: "FOOTING & FLOOR PLAN",
     SheetKind.ARTICULATION: "ARTICULATION JOINT ELEVATIONS",
 }
 
