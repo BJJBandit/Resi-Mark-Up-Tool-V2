@@ -55,6 +55,7 @@ class PageImage:
     text: str
     dims: str = ""  # written dimensions with their positions, e.g. "4030@(0.21,0.12)"
     label: str = ""  # where it came from when several sets were uploaded, e.g. "Set B.pdf page 3"
+    scale_note: str = ""  # e.g. "1:100 - 1000 mm on site = 0.0238 of the image width ..."
 
 
 DIM_WORD = re.compile(r"^\d{3,5}$|^\d{1,2}\.\d{2,3}$")  # 4030, 11.25 (levels)
@@ -167,6 +168,20 @@ def _count(data: bytes) -> int:
         return d.page_count
 
 
+def _scale_note(page: pymupdf.Page) -> str:
+    """How long 1000 mm on site is on this page image, so Claude can lay members out at
+    their real spacing (bearers at 2200 ctrs, rafters at 900 ctrs ...)."""
+    try:
+        scale, how = drawing_scale(page)
+    except Exception:
+        return ""
+    if not scale:
+        return ""
+    paper = 1000 / scale * 72 / 25.4  # points on the page for 1000 mm on site
+    return (f"1:{scale} ({how}) - 1000 mm on site = {paper / page.rect.width:.4f} of the image width "
+            f"= {paper / page.rect.height:.4f} of its height")
+
+
 def render_pages(pdf_bytes: bytes, page_numbers: list[int] | None = None) -> list[PageImage]:
     doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     numbers = page_numbers or list(range(1, doc.page_count + 1))
@@ -186,6 +201,7 @@ def render_pages(pdf_bytes: bytes, page_numbers: list[int] | None = None) -> lis
                     jpeg=pix.tobytes("jpeg", jpg_quality=quality),
                     text=page.get_text("text").strip(),
                     dims=_dimension_text(page),
+                    scale_note=_scale_note(page),
                 )
             )
         if sum(len(p.jpeg) for p in out) <= IMAGE_BUDGET_BYTES:
@@ -882,6 +898,51 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
     return warnings
 
 
+_CTRS = re.compile(r"(\d{3,4})\s*(?:MM\s*)?(?:MAX\.?\s*)?(?:CTRS|CENTRES|CENTERS|CRS|C/C)\b", re.I)
+
+
+def _spacing_check(sheet: MarkupSheet, page: pymupdf.Page, scale: int | None, title: str) -> list[str]:
+    """Bearers / rafters drawn further apart than their scheduled spacing (e.g. 'AT MAX
+    2200 CTRS'), measured at the plan scale. Rafters with a spacing but only one line drawn
+    are named too."""
+    if not scale:
+        return []
+    w, h = page.rect.width, page.rect.height
+    per_mm = mm_to_pt(1, scale)
+    spec = {s.tag.strip().upper(): s.text for s in sheet.schedule}
+    groups: dict[str, list] = {}
+    for e in sheet.elements:
+        if e.kind == "member" and _prefix(e.tag) in ("B", "R"):
+            groups.setdefault(e.tag.strip().upper(), []).append(e)
+    out = []
+    for tag, els in groups.items():
+        m = _CTRS.search(spec.get(tag, "")) or _CTRS.search(" ".join(e.text for e in els))
+        if not m:
+            continue
+        ctrs = float(m.group(1))
+        lines = []
+        for e in els:
+            p, q = pymupdf.Point(e.start.x * w, e.start.y * h), pymupdf.Point(e.end.x * w, e.end.y * h)
+            horiz = abs(q.x - p.x) >= abs(q.y - p.y)
+            lo, hi = sorted((p.x, q.x) if horiz else (p.y, q.y))
+            lines.append((horiz, (p.y + q.y) / 2 if horiz else (p.x + q.x) / 2, lo, hi))
+        what = "bearers" if _prefix(tag) == "B" else "rafters"
+        if what == "rafters" and len(lines) == 1:
+            out.append(f"{title}: {tag} rafters are at {ctrs:.0f} ctrs but only one rafter is drawn - "
+                       "re-run the sheet if every rafter should be shown")
+            continue
+        worst = 0.0
+        for horiz in (True, False):
+            ls = sorted(l for l in lines if l[0] == horiz)
+            for a, b in zip(ls, ls[1:]):
+                if min(a[3], b[3]) - max(a[2], b[2]) > 0:  # side by side, not end to end
+                    worst = max(worst, (b[1] - a[1]) / per_mm)
+        if worst > ctrs * 1.25:
+            out.append(f"{title}: {tag} {what} are drawn up to {worst:.0f} mm apart but scheduled at "
+                       f"{ctrs:.0f} ctrs - check the layout (a {what[:-1]} may be missing)")
+    return out
+
+
 def _contain(geo: Geometry, sheet: MarkupSheet, lintels: list[int], bracing: list[int], pts, put,
              title: str, src_page: pymupdf.Page) -> list[str]:
     """Firm rule: lintels and bracing are inside the building (its walls and the rooms
@@ -995,6 +1056,10 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
             warnings += _snap_to_drawing(src[idx], sheet, SHEET_TITLES[kind])
         except Exception as e:
             warnings.append(f"{dwg_no}: snapping to the drawing skipped ({e})")
+    try:
+        warnings += _spacing_check(sheet, src[idx], drawing_scale(src[idx])[0], SHEET_TITLES[kind])
+    except Exception:
+        pass
     if kind == SheetKind.WALLS:
         try:
             geo = Geometry(src[idx])
