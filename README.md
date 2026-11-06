@@ -32,7 +32,7 @@ checked before use. It is not for construction.
 3. **Mark-up drawings.** Produces one PDF with:
    - one marked-up sheet each for load paths, roof (rafters only, including the deck),
      wall framing / racking / blockwork joints, footings (AS 2870) and floor framing or slab.
-     Footings and floor are one sheet ("FOOTING & FLOOR PLAN", ticked by default) or, if you
+     Footings and floor are one sheet ("FOOTING & FLOOR PLAN") or, if you
      tick **Footings (own sheet)** / **Floor framing / slab (own sheet)** instead, separate
      FOOTING PLAN and FLOOR FRAMING PLAN sheets (clearer on busy suspended-floor jobs, one
      more sheet call). Ticking one choice unticks the other.
@@ -120,9 +120,9 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
   sheet -> other sheets. The same lines are printed to the server log as `[cache] ...: YES/NO`
   and are in review.json under `usage.cache_checks`.
 
-- **Choose the sheets.** "Sheets to produce" on the form has a tick box per sheet (all
-  ticked by default; articulation joints are still only made on masonry jobs). Untick any
-  you don't need - each sheet left out saves one sheet call. A sheet left out can be added
+- **Choose the sheets.** "Sheets to produce" on the form has a tick box per sheet, all
+  unticked to start; tick the ones you need (at least one) - each sheet left out saves one
+  sheet call. Articulation joints are still only made on masonry jobs. A sheet left out can be added
   later from the results with Re-run, without repeating the review.
 - **Re-run a single sheet.** Under the results, pick a sheet, optionally say what should
   change ("lintels missing over the laundry window"), and press **Re-run sheet**. Only that
