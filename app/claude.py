@@ -481,13 +481,16 @@ specification just because it looks typical.
   - Bearers: draw EVERY bearer line, parallel, at its scheduled spacing across the whole floor
     (e.g. bearers at 2200 ctrs are never drawn more than 2200 mm apart), each from pier / wall
     to pier / wall.
-  - Rafters (deck, verandah, carport and other rafter-framed roofs): draw EVERY rafter as a
-    'member' at its scheduled spacing (e.g. 900 ctrs) across the roof area it covers, plus one
-    'span' arrow with the tag. Trusses and joists: one 'span' arrow and one representative
-    'member' only.
+  - Joists and rafters: one representative 'member' drawn along a typical joist / rafter
+    from support to support (its span), plus a 'span' double arrow drawn
+    PERPENDICULAR to that member - across the members, parallel to their supports - covering
+    the full width of the area where that member repeats at its spacing. Tag both the same
+    (J1, R1 ...). Do not draw every joist or rafter.
+  - Trusses (by the truss manufacturer): one 'span' arrow ALONG the truss span, tagged T,
+    showing the assumed truss span direction.
   - Schedule bearers, joists and rafters with their spacing: '... AT <SPACING> CTRS'.
 - Draw each member once along its real position: 'member' from one end to the other,
-  'span' double arrows across joists / rafters / trusses to show span direction,
+  'span' double arrows across (perpendicular to) joists / rafters to show where they repeat,
   'column' at each post, 'pier' at each pier, 'bracing' along each bracing panel tagged
   '<bracing type> - <panel length mm>' (type d, diagonal strap, is drawn dashed).
 - Callouts carry the construction notes for the element they point at, in the form
@@ -510,7 +513,7 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "each LP step (what it carries and where it goes). Classification: AS4055 wind class."
     ),
     SheetKind.ROOF: (
-        "ROOF FRAMING PLAN - rafters only (and the deck / verandah roof). Rafters R 'span' "
+        "ROOF FRAMING PLAN - rafters only (and the deck / verandah roof). Rafters R 'span' (across the rafters) "
         "arrows plus a 'member' on a representative rafter, ridge / hip / valley members, "
         "underpurlins, verandah beams VB, columns C, double studs DS at beam supports. "
         "If the main roof is trusses, note that they are by the truss manufacturer and show "
