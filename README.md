@@ -294,6 +294,12 @@ hold even if Claude slips:
   the nearest member (bearer, beam, edge beam, verandah beam ...) or wall line within 6 pt,
   keeping their spacing along it. Points with nothing nearby stay put. Runs last, after
   the members have snapped.
+- **Joist and rafter arrows run across the members** (house style): each joist / rafter group
+  is one representative member drawn along its span plus a double arrow drawn
+  PERPENDICULAR to it, across the area where it repeats at its spacing. An arrow Claude
+  draws along the span is turned 90 degrees about its middle. Truss arrows (T) still show
+  the assumed truss span direction. Span arrowheads are small (3 pt, about a quarter of
+  the old size) and each arrow is one editable polyline.
 - **Joists and rafters are snapped to their supports**: each end of a joist / rafter
   (J, R, T tags - span arrows and representative members) moves onto the wall, bearer,
   beam, ledger, lintel or footing it bears on (walls from the drawing, the rest from the

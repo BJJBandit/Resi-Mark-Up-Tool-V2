@@ -347,6 +347,27 @@ def _line(page, a, b, colour, width, subject, content="", dashes=None, arrows=Fa
     ln.update()
 
 
+ARROW_HEAD = 3.0  # pt: span arrowheads (a quarter of the default closed-arrow ends)
+
+
+def _arrow(page, a, b, colour, width, subject, content="", head: float = ARROW_HEAD) -> None:
+    """Double-headed arrow with small open heads, as ONE polyline annotation (so it moves
+    and edits as a unit in Bluebeam / Acrobat)."""
+    d = b - a
+    n = abs(d)
+    if n < 1e-6:
+        return
+    u = d / n
+    v = pymupdf.Point(-u.y, u.x)
+    h, w = min(head, n / 3), min(head, n / 3) * 0.6
+    pts = [a + u * h + v * w, a, a + u * h - v * w, a, b, b - u * h + v * w, b, b - u * h - v * w]
+    ln = page.add_polyline_annot(pts)
+    ln.set_border(width=width)
+    ln.set_colors(stroke=colour)
+    _info(ln, subject, content)
+    ln.update()
+
+
 def _rect(page, r, colour, width, subject, fill=None, dashes=None, clouds=-1) -> None:
     a = page.add_rect_annot(r)
     a.set_border(width=width, dashes=dashes, clouds=clouds)
@@ -596,7 +617,7 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
         if e.tag:
             _label(page, _offset_label_point(a, b), e.tag, 11, colour, "Member Tag")
     elif e.kind == "span":
-        _line(page, a, b, colour, 1.5, "Span", content, arrows=True)
+        _arrow(page, a, b, colour, 1.5, "Span", content)
         if e.tag:
             _label(page, _offset_label_point(a, b, 6), e.tag, 11, colour, "Member Tag")
     elif e.kind == "bracing":
@@ -864,6 +885,7 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
                  if (e.kind in ("span", "member") and _prefix(e.tag) in SPAN_TAGS)
                  or (e.kind == "span" and not _prefix(e.tag))]
         points = [i for i, e in enumerate(sheet.elements) if e.kind in ("pier", "column")]
+    _turn_span_arrows(sheet, pts, put)
     if spans:
         # Supports: walls in the drawing plus this sheet's (already snapped) bearers,
         # beams, ledgers, lintels and footings.
@@ -927,10 +949,6 @@ def _spacing_check(sheet: MarkupSheet, page: pymupdf.Page, scale: int | None, ti
             lo, hi = sorted((p.x, q.x) if horiz else (p.y, q.y))
             lines.append((horiz, (p.y + q.y) / 2 if horiz else (p.x + q.x) / 2, lo, hi))
         what = "bearers" if _prefix(tag) == "B" else "rafters"
-        if what == "rafters" and len(lines) == 1:
-            out.append(f"{title}: {tag} rafters are at {ctrs:.0f} ctrs but only one rafter is drawn - "
-                       "re-run the sheet if every rafter should be shown")
-            continue
         worst = 0.0
         for horiz in (True, False):
             ls = sorted(l for l in lines if l[0] == horiz)
@@ -941,6 +959,27 @@ def _spacing_check(sheet: MarkupSheet, page: pymupdf.Page, scale: int | None, ti
             out.append(f"{title}: {tag} {what} are drawn up to {worst:.0f} mm apart but scheduled at "
                        f"{ctrs:.0f} ctrs - check the layout (a {what[:-1]} may be missing)")
     return out
+
+
+def _turn_span_arrows(sheet: MarkupSheet, pts, put) -> None:
+    """House style: a joist / rafter / truss arrow runs PERPENDICULAR to the members' span
+    (across them, showing how far they repeat), and a representative 'member' runs along
+    the span. Turn an arrow 90 degrees about its middle if it was drawn along the span."""
+    along: dict[str, bool] = {}
+    for e in sheet.elements:
+        if e.kind == "member" and _prefix(e.tag) in SPAN_TAGS:
+            a, b = pts(e)
+            along.setdefault(e.tag.strip().upper(), abs(b.x - a.x) >= abs(b.y - a.y))
+    for i, e in enumerate(sheet.elements):
+        if e.kind != "span" or _prefix(e.tag) not in ("J", "R"):
+            continue  # truss arrows (T) show the truss span direction, so they stay along it
+        member_horiz = along.get(e.tag.strip().upper())
+        a, b = pts(e)
+        if member_horiz is None or (abs(b.x - a.x) >= abs(b.y - a.y)) != member_horiz:
+            continue  # no representative member to go by, or already across the members
+        mid, half = (a + b) * 0.5, abs(b - a) / 2
+        put(i, (pymupdf.Point(mid.x, mid.y - half), pymupdf.Point(mid.x, mid.y + half)) if member_horiz
+            else (pymupdf.Point(mid.x - half, mid.y), pymupdf.Point(mid.x + half, mid.y)))
 
 
 def _contain(geo: Geometry, sheet: MarkupSheet, lintels: list[int], bracing: list[int], pts, put,
