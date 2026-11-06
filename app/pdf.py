@@ -617,7 +617,7 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
         if e.tag:
             _label(page, _offset_label_point(a, b), e.tag, 11, colour, "Member Tag")
     elif e.kind == "span":
-        _arrow(page, a, b, colour, 1.5, "Span", content)
+        _arrow(page, a, b, colour, 1.0, "Span", content)
         if e.tag:
             _label(page, _offset_label_point(a, b, 6), e.tag, 11, colour, "Member Tag")
     elif e.kind == "bracing":
@@ -886,6 +886,12 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
                  or (e.kind == "span" and not _prefix(e.tag))]
         points = [i for i, e in enumerate(sheet.elements) if e.kind in ("pier", "column")]
     _turn_span_arrows(sheet, pts, put)
+    joist_fp = None
+    if any(_prefix(e.tag) == "J" for e in sheet.elements):
+        try:
+            joist_fp = Footprint(geo)
+        except Exception:
+            joist_fp = None
     if spans:
         # Supports: walls in the drawing plus this sheet's (already snapped) bearers,
         # beams, ledgers, lintels and footings.
@@ -900,6 +906,21 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
             r = snap_span_ends(geo, *pts(sheet.elements[i]), supports)
             if r is not None and r[2]:
                 put(i, r[:2])
+    perimeter = []
+    for e in sheet.elements:  # perimeter footings (already snapped onto the walls)
+        if e.kind == "member" and _prefix(e.tag) in ("SF", "EB"):
+            a, b = pts(e)
+            h_ = abs(b.x - a.x) >= abs(b.y - a.y)
+            lo, hi = sorted((a.x, b.x) if h_ else (a.y, b.y))
+            perimeter.append((h_, (a.y + b.y) / 2 if h_ else (a.x + b.x) / 2, lo, hi))
+    if perimeter or (joist_fp is not None and joist_fp.ok):
+        # Floor joists wall to wall; their arrows across them, ending at the walls.
+        for i, e in enumerate(sheet.elements):
+            if _prefix(e.tag) == "J" and e.kind in ("member", "span"):
+                r = _wall_to_wall(geo, joist_fp if joist_fp is not None and joist_fp.ok else None,
+                                  *pts(e), perimeter=perimeter or None)
+                if r is not None:
+                    put(i, r)
     if points:
         # Lines a pier / column can sit on: this sheet's (snapped) members and the walls.
         members = []
@@ -959,6 +980,43 @@ def _spacing_check(sheet: MarkupSheet, page: pymupdf.Page, scale: int | None, ti
             out.append(f"{title}: {tag} {what} are drawn up to {worst:.0f} mm apart but scheduled at "
                        f"{ctrs:.0f} ctrs - check the layout (a {what[:-1]} may be missing)")
     return out
+
+
+def _wall_to_wall(geo: Geometry, fp: Footprint | None, p: pymupdf.Point, q: pymupdf.Point,
+                  perimeter: list | None = None):
+    """Stretch / trim a line inside the building to run from wall to wall: along its own
+    line, out from its middle to the external walls on each side. The external walls are
+    this sheet's perimeter footing lines (SF / EB) when it has them - they follow recesses
+    and decks exactly - otherwise the building outline. Each end goes on that wall's
+    centreline. Lines whose middle is outside the building (decks) are left alone."""
+    horiz = abs(q.x - p.x) >= abs(q.y - p.y)
+    c = (p.y + q.y) / 2 if horiz else (p.x + q.x) / 2
+    mid = (p.x + q.x) / 2 if horiz else (p.y + q.y) / 2
+    at = (lambda v: pymupdf.Point(v, c)) if horiz else (lambda v: pymupdf.Point(c, v))
+    if perimeter:
+        cross = [pc for ph, pc, lo, hi in perimeter if ph != horiz and lo - 2 <= c <= hi + 2]
+        below, above = [v for v in cross if v < mid - 4], [v for v in cross if v > mid + 4]
+        if below and above:
+            return at(max(below)), at(min(above))
+        return None  # outside the footing outline (e.g. a deck): leave it
+    if fp is None or not fp.contains(at(mid), tol=0):
+        return None
+    ends = []
+    for step in (-2.0, 2.0):
+        v = mid
+        while fp.contains(at(v + step), tol=0) and abs(v - mid) < 1500:
+            v += step
+        ends.append(v)
+    walls = [w for w in _wall_runs(geo, not horiz) if w[1] - w[3] <= c <= w[2] + w[3]]
+
+    def snap(v: float, inward: float) -> float:
+        near = [w[0] for w in walls if abs(w[0] - v) <= max(8.0, w[3] * 1.5)]
+        return min(near, key=lambda x: abs(x - (v + inward))) if near else v
+
+    a, b = snap(ends[0], 2.0), snap(ends[1], -2.0)
+    if b - a < 8:
+        return None
+    return at(a), at(b)
 
 
 def _turn_span_arrows(sheet: MarkupSheet, pts, put) -> None:

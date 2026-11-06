@@ -301,7 +301,15 @@ hold even if Claude slips:
   PERPENDICULAR to it, across the area where it repeats at its spacing. An arrow Claude
   draws along the span is turned 90 degrees about its middle. Truss arrows (T) still show
   the assumed truss span direction. Span arrowheads are small (3 pt, about a quarter of
-  the old size) and each arrow is one editable polyline.
+  the old size) and each arrow is one editable polyline (1 pt line).
+- **Floor joists span wall to wall.** The representative joist is stretched / trimmed to run
+  from external wall to external wall, continuous over the bearers, and the joist arrow is
+  trimmed so it ends at the walls (never past them). The external walls are the sheet's
+  perimeter footing lines (SF / EB) where drawn - they follow recesses and decks - else the
+  building outline. Deck joists (outside the building) are left as drawn.
+- **Schedules list only the member type and spacing.** Notes, locations, spans, roof load
+  widths and fixings are cut from schedule and legend items (they belong in callouts /
+  notes); footing and slab reinforcement and any "AT ... CTRS" spacing are kept.
 - **Joists and rafters are snapped to their supports**: each end of a joist / rafter
   (J, R, T tags - span arrows and representative members) moves onto the wall, bearer,
   beam, ledger, lintel or footing it bears on (walls from the drawing, the rest from the

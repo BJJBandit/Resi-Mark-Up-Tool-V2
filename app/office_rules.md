@@ -21,11 +21,13 @@ Edit this file to change them - one rule per bullet.
 - Strip footings: 450 wide x min 450 deep with 4/L11 TM top and bottom, 50 cover (never narrower than 450).
 - Internal beams: 300 wide x min 450 deep with 3/L11 TM bottom (made 450 wide where AS 2870 gives 300 - firm rule).
 - Bored piers: 450 dia at corners, steps and articulation joints and at 3000 centres under strip footings (closer only where the ground or loads need it - say why), 1/N16 central, lapped into the footing; founded as the geotechnical report requires (to rock / the stated bearing stratum).
-- Isolated brick piers: 230x230 up to 1500 high; 350x350 where higher; each on a 450 dia bored pier.
+- Isolated brick piers under bearers: 230x230 up to 1500 high; 350x350 where higher; each on a 450 dia bored pier; at 3000 centres along each bearer (the bearer is sized to span 3000), plus at bearer ends and joins. Do not add piers closer than the office spacing unless a load needs one - say why.
 - Carport / garage slabs: 100 thick reinforced slab with SL82 top, 450 wide x min 450 deep edge beams with 4/L11 TM top and bottom, 300 x 450 internal beams with 3/L11 TM bottom.
 
 ## Floor framing
-- Timber floor framing is F7 treated pine (TP) unless spans need more: e.g. B1 2/240x45 F7 TP continuous bearer (or 2/140x45 F17/LVL equivalent), J1 140x45 F7 TP continuous joists at 450 centres.
+- Timber floor framing is F7 treated pine (TP) unless spans need more: e.g. B1 2/240x45 F7 TP continuous bearer on piers at 3000 centres (or 2/140x45 F17/LVL equivalent), J1 140x45 F7 TP continuous joists at 450 centres.
+- Keep member types to a minimum: where the same kind of member (joists, deck joists, bearers, rafters, lintels in one wall) has a shorter span in one area, use the size needed for the longest span everywhere and give it ONE tag (e.g. all deck joists J2, not J2 and J3).
+- Joists span wall to wall: draw the representative joist from external wall / footing to external wall / footing, continuous over the bearers in between (not bearer to bearer). Deck joists run from the house ledger to the outer deck bearer.
 - Decks are timber - bearers, joists AND ledgers - unless the engineer's direction for the job says otherwise. A steel / proprietary deck system named on the architectural drawings (e.g. a bushfire-rated steel system) is NOT used: draw the deck in timber and list the named system as an engineer check ("ARCHITECTURAL DRAWINGS NAME <SYSTEM> - DECK DESIGNED IN TIMBER, CONFIRM"). Typical: deck bearers 2/190x45 or 2/240x45 F7 TP, deck joists 140x45 F7 TP at 400 centres (block between as needed), deck ledgers 190x45 / 240x45 F7 TP bolted through to the floor framing with M12 bolts / threaded rod at each end and max 600 centres. If the BAL rating may affect the deck material, keep it timber and list it as an engineer check.
 - Columns: 89x3.5 SHS (89x5 SHS where heavier), on a 90x190x10 plate with 4/M12 4.6 bolts chemset (min 100 embedment) into a 450 dia bored pier; continuous columns where a column carries through to the roof.
 
