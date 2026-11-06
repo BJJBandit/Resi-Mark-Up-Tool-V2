@@ -28,6 +28,7 @@ from .snap import (
     snap_point,
     snap_span,
     snap_span_ends,
+    snap_to_wall,
 )
 from .schemas import (
     SHEET_TITLES,
@@ -854,7 +855,16 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
                 coded = find_openings(src_page, geo, scale)
             except Exception:
                 coded = []
+    specs = {s.tag.strip().upper(): s.text.upper() for s in sheet.schedule}
     for i in lintels:
+        e = sheet.elements[i]
+        if any(w in f"{specs.get(e.tag.strip().upper(), '')} {e.text}".upper() for w in ("CONTINUOUS", "CONTINOUS", "LEDGER")):
+            # A continuous lintel / ledger runs over several openings: keep its length and
+            # only bring it onto its wall (snapping it to one opening would cut it short).
+            r = snap_to_wall(geo, *pts(e))
+            if r is not None:
+                put(i, r)
+            continue
         # The architect's code picks WHICH opening; its jamb lines then give the exact edges.
         rc = _lintel_from_codes(*pts(sheet.elements[i]), coded)
         if rc is not None:
