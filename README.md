@@ -331,6 +331,8 @@ hold even if Claude slips:
   none is printed, inferred from the 90 mm stud walls; and slid along the wall off any
   window (glazing line) or door (gap in the wall faces). Panels not on a wall, or with no
   solid wall long enough nearby, are left as placed and named in the warnings.
+- **Continuous lintels / ledgers** (schedule says CONTINUOUS or LEDGER) keep their length and
+  are only moved onto their wall - they are not cut down to one opening.
 - **Lintels are snapped to the openings** when the architectural PDF is a CAD export
   (vector line work): each lintel is moved onto the wall centreline, from jamb to jamb
   plus about one wall thickness of bearing each side (`app/snap.py`). Where no clear
