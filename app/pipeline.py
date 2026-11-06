@@ -80,6 +80,37 @@ def _as_note(note: str) -> str:
     return note if note.startswith("-") else f"-{note}"
 
 
+_SPACING = re.compile(r"\b(?:AT\s+)?(?:MAX\.?\s+)?\d{3,4}\s*(?:MM\s*)?(?:CTRS|CENTRES|CENTERS|CRS)\b", re.I)
+
+
+_REO = re.compile(r"\b\d+\s*/\s*[LN]\d{2}\s*TM?\b(?:\s+(?:TOP\s*(?:AND|&)\s*BOTTOM|TOP|BOTTOM|T&B))?|\bSL\d{2,3}\b(?:\s+TOP)?|\b[LN]\d{2}\s+(?:LIGS|LIGATURES)\b[^,.;]*", re.I)
+
+
+def short_spec(text: str) -> str:
+    """Schedule / legend text cut to the member type (size, grade, member, reinforcement)
+    and its spacing: everything after the first note break ('. ', ' - ', ' (', '; ') goes,
+    and a spacing given later is kept."""
+    t = " ".join((text or "").split())
+    cut = len(t)
+    for sep in (". ", " - ", " – ", " (", "; ", " -- "):
+        i = t.find(sep)
+        while i != -1 and i < 15:  # too early to be the end of the member type ('TYPE (h) ...')
+            i = t.find(sep, i + 1)
+        if 0 < i < cut:
+            cut = i
+    head = t[:cut].rstrip(" .,;:-")
+    rest = t[cut:]
+    reo = [m.group(0).upper() for m in _REO.finditer(rest) if m.group(0).upper() not in head.upper()]
+    if reo:  # footings / slabs: keep the reinforcement, it is part of the type
+        head += ", " + ", ".join(dict.fromkeys(reo))
+    if not _SPACING.search(head):
+        m = _SPACING.search(rest)
+        if m:
+            sp = m.group(0).upper()
+            head += " " + (sp if sp.startswith("AT") else "AT " + sp)
+    return head or t
+
+
 def _masonry(design: DesignAssessment) -> bool:
     text = f"{design.external_wall_type} {design.framing_material} {design.governing_standard}"
     return re.search(r"brick|masonry|block|veneer|AS ?3700|AS ?4773", text, re.I) is not None
@@ -236,6 +267,9 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
         if dropped:
             sheet.elements = [e for e in sheet.elements if e not in dropped]
     result.sheet_warnings[kind] = apply_rules(sheet, SHEET_TITLES[kind])
+    # House style: schedules list only the member type and spacing - no notes.
+    sheet.schedule = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.schedule]
+    sheet.legend = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.legend]
     # The engineer's own notes go on every sheet word for word (after the rules,
     # so they are never rewritten), skipping any Claude already wrote.
     have = {_norm(n) for n in sheet.notes}

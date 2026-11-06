@@ -484,8 +484,9 @@ specification just because it looks typical.
   - Joists and rafters: one representative 'member' drawn along a typical joist / rafter
     from support to support (its span), plus a 'span' double arrow drawn
     PERPENDICULAR to that member - across the members, parallel to their supports - covering
-    the full width of the area where that member repeats at its spacing. Tag both the same
-    (J1, R1 ...). Do not draw every joist or rafter.
+    the full width of the area where that member repeats at its spacing, from wall to wall
+    and never past a wall. Tag both the same (J1, R1 ...). Do not draw every joist or rafter.
+    Floor joists: the representative joist runs wall to wall, continuous over the bearers.
   - Trusses (by the truss manufacturer): one 'span' arrow ALONG the truss span, tagged T,
     showing the assumed truss span direction.
   - Schedule bearers, joists and rafters with their spacing: '... AT <SPACING> CTRS'.
@@ -500,7 +501,9 @@ specification just because it looks typical.
 - Be economical: one element per real member (no duplicates), tag repeated items once and
   rely on 'TYPICAL.', and aim for under ~150 elements per sheet.
 - Schedule items: tag + UPPERCASE '<NUMBER/><DEPTH>x<BREADTH> <GRADE> <MEMBER> [AT <SPACING> CTRS]'
-  for timber, '<SECTION> <MEMBER>' for steel - sized for this job.
+  for timber, '<SECTION> <MEMBER>' for steel - sized for this job. ONLY the member type and
+  spacing (for footings / slabs: size and reinforcement) - no locations, spans, roof load
+  widths, fixings, tie-downs, reasons or notes in the schedule; those go in callouts / notes.
 - Notes: UPPERCASE, each starting with '-': the general notes this sheet needs for this job.
 - All text UPPERCASE. Australian spelling and units (mm, kPa, kN)."""
 
