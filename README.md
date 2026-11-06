@@ -148,7 +148,11 @@ material, not a size to copy. Edit the file (one rule per bullet) to change them
   building's outline measured from its walls (e.g. "16.3 m across x 9.9 m up the page; the
   shorter direction is up / down the page"). Claude first works out which walls carry
   roof load from the truss / rafter direction - lintels in gable-end and non-loadbearing
-  walls are sized without roof load (usually L1 / L2).
+  walls are sized without roof load (usually L1 / L2). Office defaults for a single-storey
+  sheet roof (roof load width up to ~5 m): loadbearing walls - up to 1200 L1 (L2), up to
+  2400 L3 140x45, larger L4 190x45; gable / non-loadbearing walls L1 / L2. Larger only for
+  tile roofs, wider roof load widths, girder / point loads, beams over the opening or a
+  storey above, with the reason in the notes.
 - **Studs / tie-down:** F17 jamb studs > 1500 openings, 2/90x35 F17 DS > 2000; tie-down
   type (a) to lintels, type (b) double strap + M12 for lintels spanning 1800+.
 - **Bracing:** a mix of h(b) ply, d strap (internal walls) and g panels, distributed through
@@ -302,7 +306,9 @@ hold even if Claude slips:
 - **Joist and rafter arrows run across the members** (house style): each joist / rafter group
   is one representative member drawn along its span plus a double arrow drawn
   PERPENDICULAR to it, across the area where it repeats at its spacing. An arrow Claude
-  draws along the span is turned 90 degrees about its middle. Truss arrows (T) still show
+  draws along the span is turned 90 degrees about its middle (each arrow is checked against
+  the nearest member with its tag, so two decks both tagged J2 can span different ways), and
+  every representative joist / rafter without its own arrow gets one, across its middle. Truss arrows (T) still show
   the assumed truss span direction. Span arrowheads are small (3 pt, about a quarter of
   the old size) and each arrow is one editable polyline (1 pt line).
 - **Floor joists span wall to wall.** The representative joist is stretched / trimmed to run

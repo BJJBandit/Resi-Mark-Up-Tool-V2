@@ -1046,25 +1046,64 @@ def _wall_to_wall(geo: Geometry, fp: Footprint | None, p: pymupdf.Point, q: pymu
 
 
 def _turn_span_arrows(sheet: MarkupSheet, pts, put) -> None:
-    """House style: a joist / rafter / truss arrow runs PERPENDICULAR to the members' span
-    (across them, showing how far they repeat), and a representative 'member' runs along
-    the span. Turn an arrow 90 degrees about its middle if it was drawn along the span."""
-    along: dict[str, bool] = {}
+    """House style: a joist / rafter arrow runs PERPENDICULAR to the members' span (across
+    them, showing how far they repeat), and a representative 'member' runs along the span.
+    Each arrow is checked against the NEAREST member with its tag (the same tag can be used
+    in areas spanning different ways, e.g. two decks), and turned 90 degrees about its
+    middle if it was drawn along that member."""
+    members: dict[str, list] = {}
     for e in sheet.elements:
         if e.kind == "member" and _prefix(e.tag) in SPAN_TAGS:
-            a, b = pts(e)
-            along.setdefault(e.tag.strip().upper(), abs(b.x - a.x) >= abs(b.y - a.y))
+            members.setdefault(e.tag.strip().upper(), []).append(pts(e))
+
+    def dist(pt: pymupdf.Point, a: pymupdf.Point, b: pymupdf.Point) -> float:
+        d = b - a
+        n2 = d.x * d.x + d.y * d.y
+        t = 0.0 if n2 == 0 else max(0.0, min(1.0, ((pt - a).x * d.x + (pt - a).y * d.y) / n2))
+        return abs(pt - (a + d * t))
+
     for i, e in enumerate(sheet.elements):
         if e.kind != "span" or _prefix(e.tag) not in ("J", "R"):
             continue  # truss arrows (T) show the truss span direction, so they stay along it
-        member_horiz = along.get(e.tag.strip().upper())
+        mine = members.get(e.tag.strip().upper())
+        if not mine:
+            continue  # no representative member to go by
         a, b = pts(e)
-        if member_horiz is None or (abs(b.x - a.x) >= abs(b.y - a.y)) != member_horiz:
-            continue  # no representative member to go by, or already across the members
-        mid, half = (a + b) * 0.5, abs(b - a) / 2
+        mid = (a + b) * 0.5
+        ma, mb = min(mine, key=lambda m: dist(mid, *m))
+        member_horiz = abs(mb.x - ma.x) >= abs(mb.y - ma.y)
+        if (abs(b.x - a.x) >= abs(b.y - a.y)) != member_horiz:
+            continue  # already across the members
+        half = abs(b - a) / 2
         put(i, (pymupdf.Point(mid.x, mid.y - half), pymupdf.Point(mid.x, mid.y + half)) if member_horiz
             else (pymupdf.Point(mid.x - half, mid.y), pymupdf.Point(mid.x + half, mid.y)))
 
+    # Every representative joist / rafter has its own arrow across it: pair each arrow with
+    # its nearest member, then add an arrow (through the member's middle, across it) for any
+    # member left without one. Floor-joist arrows are then run wall to wall.
+    arrows = [(e.tag.strip().upper(), pts(e)) for e in sheet.elements
+              if e.kind == "span" and _prefix(e.tag) in ("J", "R")]
+    owned: set[tuple] = set()
+    for tag, (a, b) in arrows:
+        mine = members.get(tag)
+        if mine:
+            mid = (a + b) * 0.5
+            m = min(mine, key=lambda m: dist(mid, *m))
+            owned.add((tag, round(m[0].x, 1), round(m[0].y, 1)))
+    for e in list(sheet.elements):
+        if e.kind != "member" or _prefix(e.tag) not in ("J", "R"):
+            continue
+        tag = e.tag.strip().upper()
+        ma, mb = pts(e)
+        if (tag, round(ma.x, 1), round(ma.y, 1)) in owned:
+            continue
+        mid, half = (ma + mb) * 0.5, max(abs(mb - ma), 40.0) / 2
+        horiz = abs(mb.x - ma.x) >= abs(mb.y - ma.y)
+        sheet.elements.append(e.model_copy(update={"kind": "span", "text": ""}))
+        put(len(sheet.elements) - 1,
+            (pymupdf.Point(mid.x, mid.y - half), pymupdf.Point(mid.x, mid.y + half)) if horiz
+            else (pymupdf.Point(mid.x - half, mid.y), pymupdf.Point(mid.x + half, mid.y)))
+        owned.add((tag, round(ma.x, 1), round(ma.y, 1)))
 
 def _contain(geo: Geometry, sheet: MarkupSheet, lintels: list[int], bracing: list[int], pts, put,
              title: str, src_page: pymupdf.Page) -> list[str]:
