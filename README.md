@@ -302,7 +302,9 @@ hold even if Claude slips:
 - **Joist and rafter arrows run across the members** (house style): each joist / rafter group
   is one representative member drawn along its span plus a double arrow drawn
   PERPENDICULAR to it, across the area where it repeats at its spacing. An arrow Claude
-  draws along the span is turned 90 degrees about its middle. Truss arrows (T) still show
+  draws along the span is turned 90 degrees about its middle (each arrow is checked against
+  the nearest member with its tag, so two decks both tagged J2 can span different ways), and
+  every representative joist / rafter without its own arrow gets one, across its middle. Truss arrows (T) still show
   the assumed truss span direction. Span arrowheads are small (3 pt, about a quarter of
   the old size) and each arrow is one editable polyline (1 pt line).
 - **Floor joists span wall to wall.** The representative joist is stretched / trimmed to run

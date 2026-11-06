@@ -1078,6 +1078,33 @@ def _turn_span_arrows(sheet: MarkupSheet, pts, put) -> None:
         put(i, (pymupdf.Point(mid.x, mid.y - half), pymupdf.Point(mid.x, mid.y + half)) if member_horiz
             else (pymupdf.Point(mid.x - half, mid.y), pymupdf.Point(mid.x + half, mid.y)))
 
+    # Every representative joist / rafter has its own arrow across it: pair each arrow with
+    # its nearest member, then add an arrow (through the member's middle, across it) for any
+    # member left without one. Floor-joist arrows are then run wall to wall.
+    arrows = [(e.tag.strip().upper(), pts(e)) for e in sheet.elements
+              if e.kind == "span" and _prefix(e.tag) in ("J", "R")]
+    owned: set[tuple] = set()
+    for tag, (a, b) in arrows:
+        mine = members.get(tag)
+        if mine:
+            mid = (a + b) * 0.5
+            m = min(mine, key=lambda m: dist(mid, *m))
+            owned.add((tag, round(m[0].x, 1), round(m[0].y, 1)))
+    for e in list(sheet.elements):
+        if e.kind != "member" or _prefix(e.tag) not in ("J", "R"):
+            continue
+        tag = e.tag.strip().upper()
+        ma, mb = pts(e)
+        if (tag, round(ma.x, 1), round(ma.y, 1)) in owned:
+            continue
+        mid, half = (ma + mb) * 0.5, max(abs(mb - ma), 40.0) / 2
+        horiz = abs(mb.x - ma.x) >= abs(mb.y - ma.y)
+        sheet.elements.append(e.model_copy(update={"kind": "span", "text": ""}))
+        put(len(sheet.elements) - 1,
+            (pymupdf.Point(mid.x, mid.y - half), pymupdf.Point(mid.x, mid.y + half)) if horiz
+            else (pymupdf.Point(mid.x - half, mid.y), pymupdf.Point(mid.x + half, mid.y)))
+        owned.add((tag, round(ma.x, 1), round(ma.y, 1)))
+
 def _contain(geo: Geometry, sheet: MarkupSheet, lintels: list[int], bracing: list[int], pts, put,
              title: str, src_page: pymupdf.Page) -> list[str]:
     """Firm rule: lintels and bracing are inside the building (its walls and the rooms
