@@ -143,7 +143,10 @@ material, not a size to copy. Edit the file (one rule per bullet) to change them
   190x45) to the AS 1684.2 span tables, not doubled MGP; continuous lintel / ledger where one
   runs over several openings or carries a carport. Trusses / rafters are taken to span the
   shorter direction of the building, perpendicular to the ridge (checked against the roof
-  plan), unless the drawings show otherwise. Claude first works out which walls carry
+  plan's ridge and fall arrows - sheeting ribs run down the slope - and the overall
+  dimensions), unless the drawings show otherwise. Each plan page sent to Claude states the
+  building's outline measured from its walls (e.g. "16.3 m across x 9.9 m up the page; the
+  shorter direction is up / down the page"). Claude first works out which walls carry
   roof load from the truss / rafter direction - lintels in gable-end and non-loadbearing
   walls are sized without roof load (usually L1 / L2).
 - **Studs / tie-down:** F17 jamb studs > 1500 openings, 2/90x35 F17 DS > 2000; tie-down

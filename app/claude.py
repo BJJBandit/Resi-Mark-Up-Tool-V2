@@ -338,6 +338,7 @@ def _page_blocks(pages: list[PageImage], cache: bool = True) -> list[dict]:
                 "text": f"--- Architectural page {p.number}" + (f" ({p.label})" if p.label else "") + " "
                 f"(image {p.width}x{p.height}px) ---\nExtracted text:\n{p.text[:4000] or '(none)'}"
                 + (f"\nDrawing scale: {p.scale_note}" if p.scale_note else "")
+                + (f"\nIf this is a floor plan, measured from its walls: {p.outline_note}" if p.outline_note else "")
                 + (f"\nWritten dimensions / levels with position on this image (x,y 0-1; 'v' = written "
                    f"vertically):\n{p.dims}" if p.dims else ""),
             }
