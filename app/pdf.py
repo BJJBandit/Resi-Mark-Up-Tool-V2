@@ -56,6 +56,7 @@ class PageImage:
     dims: str = ""  # written dimensions with their positions, e.g. "4030@(0.21,0.12)"
     label: str = ""  # where it came from when several sets were uploaded, e.g. "Set B.pdf page 3"
     scale_note: str = ""  # e.g. "1:100 - 1000 mm on site = 0.0238 of the image width ..."
+    outline_note: str = ""  # measured building outline on a plan, e.g. "16.3 m across x 8.9 m up the page"
 
 
 DIM_WORD = re.compile(r"^\d{3,5}$|^\d{1,2}\.\d{2,3}$")  # 4030, 11.25 (levels)
@@ -182,6 +183,30 @@ def _scale_note(page: pymupdf.Page) -> str:
             f"= {paper / page.rect.height:.4f} of its height")
 
 
+def _outline_note(page: pymupdf.Page) -> str:
+    """The building's overall size measured from the wall line work (plans only), so the
+    roof span direction isn't guessed: trusses normally span the shorter way."""
+    try:
+        geo = Geometry(page)
+        if not geo.usable:
+            return ""
+        scale, _ = drawing_scale(page, geo)
+        fp = Footprint(geo)
+        if not scale or not fp.ok:
+            return ""
+        xs = [v for h, c, lo, hi, t in fp.walls for v in ((lo, hi) if h else (c,))]
+        ys = [v for h, c, lo, hi, t in fp.walls for v in ((c,) if h else (lo, hi))]
+        w_mm = (max(xs) - min(xs)) / mm_to_pt(1, scale)
+        h_mm = (max(ys) - min(ys)) / mm_to_pt(1, scale)
+    except Exception:
+        return ""
+    if min(w_mm, h_mm) < 4000 or max(w_mm, h_mm) > 60000:
+        return ""
+    short = "up / down the page" if h_mm < w_mm else "across the page (left / right)"
+    return (f"main building walls measure about {w_mm / 1000:.1f} m across the page x {h_mm / 1000:.1f} m "
+            f"up / down the page; the shorter direction is {short}")
+
+
 def render_pages(pdf_bytes: bytes, page_numbers: list[int] | None = None) -> list[PageImage]:
     doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     numbers = page_numbers or list(range(1, doc.page_count + 1))
@@ -202,6 +227,7 @@ def render_pages(pdf_bytes: bytes, page_numbers: list[int] | None = None) -> lis
                     text=page.get_text("text").strip(),
                     dims=_dimension_text(page),
                     scale_note=_scale_note(page),
+                    outline_note=_outline_note(page),
                 )
             )
         if sum(len(p.jpeg) for p in out) <= IMAGE_BUDGET_BYTES:
