@@ -13,6 +13,9 @@ Edit this file to change them - one rule per bullet.
   - Walls carrying roof load: openings up to 1200 wide - L1 90x35 (L2 120x35 at the upper end); up to 2400 wide - L3 140x45; larger - L4 190x45 (or LVL by calculation).
   - Gable-end and non-loadbearing walls: L1 90x35 or L2 120x35 whatever the opening width up to 2400.
   - Go larger only for a tile roof, a roof load width over about 5 m, a girder truss / point load or a carport / verandah beam bearing over the opening, or a second storey above - and say why in the notes.
+  - Entry doors and other openings up to 1200 wide: L1 90x35.
+  - A continuous lintel / ledger along a wall carrying a carport or verandah: L4 190x45 F17/LVL CONTINUOUS LINTEL/LEDGER.
+  - Trusses cantilevering over a recessed wall (eaves overhang / truss cantilever): keep the normal lintel size for the wall (do not upsize for the cantilever) and add the callout 'TRUSS MANUFACTURER TO CONFIRM ABILITY FOR TRUSSES TO CANTILEVER.'
 - Where one member runs continuously over several openings or carries a carport / verandah along a wall, use a continuous lintel / ledger (e.g. 190x45 F17/LVL CONTINUOUS LINTEL/LEDGER) rather than separate short lintels.
 - Jamb studs: min F17 studs to the sides of openings over 1500 wide; 2/90x35 F17 nail-laminated double studs (DS) to the sides of openings over 2000 wide and under girder / concentrated loads. All studs over 2600 high are F17.
 - Lintel tie-down: typical tie-down type (a) to the sides of lintels - 30x0.8 G.I. strap with 6/30x2.8 dia nails each end of the strap and M10 bolts to floor; double strap tie-down type (b) and M12 bolt to floor framing for lintels spanning 1800 and over.
@@ -26,7 +29,7 @@ Edit this file to change them - one rule per bullet.
 - Internal beams: 300 wide x min 450 deep with 3/L11 TM bottom (made 450 wide where AS 2870 gives 300 - firm rule).
 - Bored piers: 450 dia at corners, steps and articulation joints and at 3000 centres under strip footings (closer only where the ground or loads need it - say why), 1/N16 central, lapped into the footing; founded as the geotechnical report requires (to rock / the stated bearing stratum).
 - Isolated brick piers under bearers: 230x230 up to 1500 high; 350x350 where higher; each on a 450 dia bored pier; at 3000 centres along each bearer (the bearer is sized to span 3000), plus at bearer ends and joins. Do not add piers closer than the office spacing unless a load needs one - say why.
-- Carport / garage slabs: 100 thick reinforced slab with SL82 top, 450 wide x min 450 deep edge beams with 4/L11 TM top and bottom, 300 x 450 internal beams with 3/L11 TM bottom.
+- Carport / garage slabs: 100 thick reinforced slab with SL82 top and 450 wide x min 450 deep edge beams with 4/L11 TM top and bottom. No internal beam in a slab up to 8 m long in both directions (a single / double carport or garage); add internal beams (450 wide x min 450 deep, 3/L11 TM bottom) only where a slab dimension is over 8 m or a load needs one - and say why.
 
 ## Floor framing
 - Timber floor framing is F7 treated pine (TP) unless spans need more: e.g. B1 2/240x45 F7 TP continuous bearer on piers at 3000 centres (or 2/140x45 F17/LVL equivalent), J1 140x45 F7 TP continuous joists at 450 centres.
@@ -37,3 +40,16 @@ Edit this file to change them - one rule per bullet.
 
 ## Site classification
 - Use the site class the geotechnical report gives. A layer or band of low-bearing material is dealt with by founding below it (state the founding depth / stratum), not by re-classifying the site as P. Classify P only if the report itself says P (or gives no class and the conditions clearly require it), and say why.
+
+## Member sizes - office stock list
+Use these sections first for every member on every mark-up, wherever one works (the smallest that does). Only if none on the list works, use another section and flag it as an engineer check with the reason.
+- Timber, F17 / LVL: 90x35, 90x45; 120x35, 2/120x35, 120x45; 140x35, 140x45, 2/140x45; 190x35, 2/190x35, 190x45, 2/190x45; 240x35, 240x45, 2/240x45; 290x35, 2/290x35, 2/290x45.
+- Timber, F7 treated pine (TP): 90x45, 2/90x45; 140x35, 140x45, 2/140x45; 190x45, 2/190x35, 2/190x45; 240x45, 2/240x45; 2/290x45; 90 TP post.
+- Timber, MGP10: 2/90x35.
+- Steel SHS: 75x4, 75x5, 89x3.5, 89x5.
+- Steel CHS: 89x5, 89x5.9, 114.3x5.4.
+- Steel RHS: 150x100x6, 200x100x6.
+- Steel PFC: 180 PFC, 200 PFC, 250 PFC.
+- Steel UB: 200UB22, 250UB31.4, 250UB37, 310UB40, 310UB46.2.
+- Steel angles and flat bar (masonry lintels): 75x10 FL, 100x75x8 UA, 150x100x10 UA.
+- Steel purlins: Lysaght Z/C 15015.

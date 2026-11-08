@@ -167,6 +167,17 @@ material, not a size to copy. Edit the file (one rule per bullet) to change them
 - **Site class:** the class the geotechnical report gives - a low-bearing band is handled by
   founding below it, not by re-classifying as P unless the report says P.
 
+- **Member sizes - office stock list:** timber F17/LVL, F7 TP and MGP10 sections, SHS / CHS /
+  RHS / PFC / UB, masonry angles and flat bar, and Lysaght Z/C 15015 purlins (listed in
+  `app/office_rules.md`). Claude uses these first for every member wherever one works; any
+  schedule size not on the list is named in the warnings ("size(s) not on the office stock
+  list"). Edit the list in the file and the check follows it.
+- **Lintel extras:** entry doors / openings up to 1200 L1 90x35; a continuous lintel / ledger
+  carrying a carport or verandah L4 190x45; trusses cantilevering over a recessed wall keep the
+  normal lintel with "TRUSS MANUFACTURER TO CONFIRM ABILITY FOR TRUSSES TO CANTILEVER".
+- **Carport / garage slabs:** no internal beam up to 8 m long both ways; internal beams only
+  where a dimension is over 8 m or a load needs one, with the reason.
+
 These are instructions to Claude (not enforced afterwards like the firm rules), so check
 the mark-ups as usual.
 
