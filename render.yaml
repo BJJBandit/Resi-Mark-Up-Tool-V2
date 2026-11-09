@@ -27,6 +27,13 @@ services:
       # created. Get a key at https://platform.claude.com/settings/keys
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Secret: shared password for the app (browser asks for it; any user name).
+      # Set it in the service's Environment tab - without it the app is open.
+      - key: APP_PASSWORD
+        sync: false
+      # Finished reviews are saved here so they survive restarts / redeploys.
+      - key: JOBS_DIR
+        value: /var/data/jobs
       - key: PYTHON_VERSION
         value: 3.13.1
       # Reasoning depth for each Claude call: low | medium | high | xhigh | max
