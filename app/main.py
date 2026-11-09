@@ -37,6 +37,13 @@ class Job:
 
 
 JOBS: dict[str, Job] = {}
+MAX_KEPT_JOBS = 8  # finished reviews kept in memory (each holds its drawings and PDF)
+
+
+def _evict_old_jobs() -> None:
+    done = [k for k, j in JOBS.items() if j.status in ("done", "error")]
+    for k in done[:-MAX_KEPT_JOBS]:
+        JOBS.pop(k, None)
 
 
 async def _read(f: UploadFile | None, name: str, limit: int = MAX_UPLOAD) -> bytes | None:
@@ -289,6 +296,7 @@ async def create_job(
         combine_foundation=combine_foundation,
     )
     job_id = uuid.uuid4().hex
+    _evict_old_jobs()
     JOBS[job_id] = Job(project=inp.project)
     threading.Thread(target=_worker, args=(job_id, inp), daemon=True).start()
     return {"id": job_id}

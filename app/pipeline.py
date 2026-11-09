@@ -50,6 +50,10 @@ class JobResult:
     base_warnings: list[str] = field(default_factory=list)  # references + design assessment
     sheet_warnings: dict[SheetKind, list[str]] = field(default_factory=dict)
     build_warnings: list[str] = field(default_factory=list)
+    # Sheets as planned by Claude (after the rules), before any snapping / checks. Every PDF
+    # build starts from copies of these: building moves members and adds check clouds, and
+    # doing that twice (a re-run rebuilds every sheet) would duplicate the clouds.
+    planned: dict[SheetKind, MarkupSheet] = field(default_factory=dict)
     reruns: list[dict] = field(default_factory=list)  # {"sheet", "note", "ok", "detail"}
     ctx: "RerunContext | None" = field(default=None, repr=False)
 
@@ -275,11 +279,13 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
     # so they are never rewritten), skipping any Claude already wrote.
     have = {_norm(n) for n in sheet.notes}
     sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
+    result.planned[kind] = sheet
     result.sheets[kind] = sheet
     result.sheet_errors.pop(kind, None)
 
 
 def _build(job: JobInput, result: JobResult) -> None:
+    result.sheets = {k: result.planned[k].model_copy(deep=True) for k in SheetKind if k in result.planned}
     result.pdf, result.build_warnings = build_markup_pdf(
         job.arch_pdf,
         job.project,
