@@ -238,21 +238,19 @@ def _call_inner(content: list[dict], out: type[T], max_tokens: int, effort: str,
         "validates against this JSON schema. Every property is required.\n"
         + json.dumps(schema)
     )
-    messages = [{"role": "user", "content": [*content, {"type": "text", "text": instruction}]}]
     last_error: Exception | None = None
     for _ in range(3):
+        # Each try is a fresh request (same cached prefix) with the last error appended:
+        # replaying a model turn without its thinking blocks can be rejected.
+        note = [] if last_error is None else [{"type": "text", "text": (
+            "Your previous answer was rejected because the JSON was invalid: "
+            f"{str(last_error)[:1500]}\nAnswer again with a complete, corrected JSON object only.")}]
+        messages = [{"role": "user", "content": [*content, {"type": "text", "text": instruction}, *note]}]
         text = _request_retrying(messages, max_tokens, None, effort)
         try:
             return out.model_validate_json(_extract_json(text))
         except (ValueError, ValidationError) as err:
             last_error = err
-            messages += [
-                {"role": "assistant", "content": text},
-                {
-                    "role": "user",
-                    "content": f"That JSON was invalid: {err}. Reply with the corrected JSON object only.",
-                },
-            ]
     raise ClaudeError(f"Claude's JSON did not match the expected structure: {last_error}")
 
 
