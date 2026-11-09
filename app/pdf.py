@@ -353,7 +353,29 @@ def _text(
     )
     _info(a, subject, text)
     a.update()
+    _editor_style(page, a, text, fs, colour, align)
     return a
+
+
+def _editor_style(page: pymupdf.Page, a: pymupdf.Annot, text: str, fs: float, colour, align: int) -> None:
+    """Tell PDF editors the text style to use when the box is clicked for editing.
+    PyMuPDF writes only /DA; Bluebeam and Acrobat edit from the default style (/DS) and
+    rich text (/RC) and, finding neither, fall back to their own default (12 pt) - so a
+    6.5 pt callout jumped to 12 pt when clicked. Never fails the sheet."""
+    try:
+        doc = page.parent
+        rgb = "#%02X%02X%02X" % tuple(round(max(0.0, min(1.0, c)) * 255) for c in (colour or BLACK))
+        style = (f"font: Helvetica,sans-serif {fs:g}pt; text-align:{('left', 'center', 'right')[align]}; "
+                 f"color:{rgb}")
+        esc = lambda t: t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")  # noqa: E731
+        body = "".join(f"<p>{esc(line) or '&#160;'}</p>" for line in text.split("\n"))
+        rc = ('<?xml version="1.0"?><body xmlns="http://www.w3.org/1999/xhtml" '
+              'xmlns:xfa="http://www.xfa.org/schema/xfa-data/1.0/" xfa:APIVersion="Acrobat:11.0.0" '
+              f'xfa:spec="2.0.2" style="{style}">{body}</body>')
+        doc.xref_set_key(a.xref, "DS", pymupdf.get_pdf_str(style))
+        doc.xref_set_key(a.xref, "RC", pymupdf.get_pdf_str(rc))
+    except Exception:
+        pass
 
 
 def _label(page: pymupdf.Page, at: pymupdf.Point, text: str, fs: float, colour, subject: str) -> None:

@@ -171,3 +171,14 @@ def test_cache_checks_report_shared_and_not_shared():
     broken = cache_checks([call("Step 2 (architectural review)", write=40000),
                            call("Step 3 (WALL FRAMING PLAN)", write=55000)])
     assert broken[0]["ok"] is False
+
+
+def test_text_boxes_carry_their_font_size_for_editors():
+    """Bluebeam / Acrobat edit from /DS and /RC; without them a clicked box jumps to 12 pt."""
+    from app import pdf as P
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    a = P._text(page, pymupdf.Rect(100, 100, 250, 140), "C1 89X3.5 SHS\nCONTINUOUS", 6.5, P.RED, "Callout", align=1)
+    obj = doc.xref_object(a.xref)
+    assert "/DS (font: Helvetica,sans-serif 6.5pt; text-align:center; color:#FF0000)" in obj
+    assert "/RC" in obj and "6.5pt" in obj.split("/RC", 1)[1]
