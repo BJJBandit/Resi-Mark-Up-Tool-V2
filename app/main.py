@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import os
+import secrets
 import threading
 import traceback
 import uuid
@@ -10,15 +13,37 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pymupdf
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
-from . import pipeline, refstore
+from . import jobstore, pipeline, refstore
 from .pdf import MAX_PAGES, check_pages, combine_pdfs, extract_pages, parse_page_range
 from .refpages import MAX_REF_PAGES, RefDoc
 from .schemas import SHEET_TITLES, SheetKind
 
 app = FastAPI(title="Resi Mark-Up Tool")
+
+# Shared password (HTTP Basic - any user name). Without it anyone with the address can
+# spend the API credits and delete the stored standards. Unset = open (local use).
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+if not APP_PASSWORD:
+    print("[auth] APP_PASSWORD is not set - the app is open to anyone with its address", flush=True)
+
+
+@app.middleware("http")
+async def _require_password(request: Request, call_next):
+    if APP_PASSWORD and request.url.path != "/healthz":
+        given = ""
+        header = request.headers.get("authorization", "")
+        if header.lower().startswith("basic "):
+            try:
+                given = base64.b64decode(header[6:]).decode("utf-8", "replace").partition(":")[2]
+            except Exception:
+                given = ""
+        if not secrets.compare_digest(given.encode(), APP_PASSWORD.encode()):
+            return Response("Password required.", status_code=401,
+                            headers={"WWW-Authenticate": 'Basic realm="Resi Mark-Up Tool", charset="UTF-8"'})
+    return await call_next(request)
 
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text().replace("{{REF_PAGE_CAP}}", str(MAX_REF_PAGES))
 MAX_UPLOAD = 30 * 1024 * 1024  # Claude request limit is 32 MB
@@ -68,6 +93,7 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
         job.result = pipeline.run(inp, progress)
         job.status = "done"
         job.step = "Complete"
+        _save(job_id, job)
     except Exception as e:
         traceback.print_exc()
         job.status = "error"
@@ -89,6 +115,7 @@ def _rerun_worker(job_id: str, kind: SheetKind, change: str) -> None:
     finally:
         job.step = "Complete"
         job.status = "done"
+        _save(job_id, job)
         job.lock.release()
 
 
@@ -305,14 +332,13 @@ async def create_job(
 def _job(job_id: str) -> Job:
     job = JOBS.get(job_id)
     if job is None:
-        raise HTTPException(404, "Job not found (the server may have restarted).")
+        raise HTTPException(404, "This review is no longer in memory (the server restarted, or it is an older "
+                                 "review) - run the review again to re-run a sheet.")
     return job
 
 
-@app.get("/jobs/{job_id}")
-def job_status(job_id: str) -> dict:
-    job = _job(job_id)
-    body: dict = {"status": job.status, "step": job.step, "error": job.error}
+def _status_body(job: Job) -> dict:
+    body: dict = {"status": job.status, "step": job.step, "error": job.error, "project": job.project}
     if job.result:
         body["references"] = job.result.references
         body["reference_pages"] = job.result.reference_pages
@@ -335,37 +361,72 @@ def job_status(job_id: str) -> dict:
     return body
 
 
+def _review_body(r: pipeline.JobResult) -> dict:
+    return json.loads(json.dumps({
+        "geotech": r.geotech.model_dump(),
+        "design": r.design.model_dump(),
+        "sheets": {k.value: v.model_dump() for k, v in r.sheets.items()},
+        "sheet_errors": {k.value: v for k, v in r.sheet_errors.items()},
+        "warnings": r.warnings,
+        "reference_pages": r.reference_pages,
+        "usage": r.usage,
+    }))
+
+
+def _save(job_id: str, job: Job) -> None:
+    """Keep the finished review on disk so it survives a restart (never fails the review)."""
+    try:
+        jobstore.save(job_id, job.project, _status_body(job), _review_body(job.result), job.result.pdf)
+    except Exception as e:
+        print(f"[jobstore] could not save review {job_id}: {e}", flush=True)
+
+
+def _pdf_name(project: str) -> str:
+    return (project or "markup").replace('"', "").replace(" ", "_") + "_markup.pdf"
+
+
+@app.get("/jobs")
+def saved_jobs() -> list[dict]:
+    """Finished reviews kept on disk (newest first)."""
+    return jobstore.list_saved()
+
+
+@app.get("/jobs/{job_id}")
+def job_status(job_id: str) -> dict:
+    job = JOBS.get(job_id)
+    if job is not None:
+        return _status_body(job)
+    saved = jobstore.load_status(job_id)
+    if saved is None:
+        raise HTTPException(404, "Review not found.")
+    # From disk: view and download only (the drawings aren't kept, so no re-run).
+    return {**saved, "rerunnable": [], "saved": True}
+
+
 @app.get("/jobs/{job_id}/markup.pdf")
 def job_pdf(job_id: str) -> Response:
-    job = _job(job_id)
-    if not job.result:
-        raise HTTPException(409, "Job not finished.")
-    name = (job.project or "markup").replace('"', "").replace(" ", "_")
-    return Response(
-        job.result.pdf,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{name}_markup.pdf"'},
-    )
+    job = JOBS.get(job_id)
+    if job is not None:
+        if not job.result:
+            raise HTTPException(409, "Job not finished.")
+        pdf, project = job.result.pdf, job.project
+    else:
+        pdf = jobstore.load_file(job_id, "markup.pdf")
+        if pdf is None:
+            raise HTTPException(404, "Review not found.")
+        project = (jobstore.load_status(job_id) or {}).get("project", "")
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{_pdf_name(project)}"'})
 
 
 @app.get("/jobs/{job_id}/review.json")
 def job_json(job_id: str) -> JSONResponse:
-    job = _job(job_id)
-    if not job.result:
-        raise HTTPException(409, "Job not finished.")
-    r = job.result
-    return JSONResponse(
-        json.loads(
-            json.dumps(
-                {
-                    "geotech": r.geotech.model_dump(),
-                    "design": r.design.model_dump(),
-                    "sheets": {k.value: v.model_dump() for k, v in r.sheets.items()},
-                    "sheet_errors": {k.value: v for k, v in r.sheet_errors.items()},
-                    "warnings": r.warnings,
-                    "reference_pages": r.reference_pages,
-                    "usage": r.usage,
-                }
-            )
-        )
-    )
+    job = JOBS.get(job_id)
+    if job is not None:
+        if not job.result:
+            raise HTTPException(409, "Job not finished.")
+        return JSONResponse(_review_body(job.result))
+    data = jobstore.load_file(job_id, "review.json")
+    if data is None:
+        raise HTTPException(404, "Review not found.")
+    return JSONResponse(json.loads(data))

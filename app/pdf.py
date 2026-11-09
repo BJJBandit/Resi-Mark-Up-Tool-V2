@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
+from . import office_checks
 from .footprint import Footprint
 from .elevation import cross_check, snap_joint_elevation
 from .elevation import find_openings as find_elevation_openings
@@ -1229,7 +1230,10 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         except Exception as e:
             warnings.append(f"{dwg_no}: snapping to the drawing skipped ({e})")
     try:
-        warnings += _spacing_check(sheet, src[idx], drawing_scale(src[idx])[0], SHEET_TITLES[kind])
+        scale_ = drawing_scale(src[idx])[0]
+        warnings += _spacing_check(sheet, src[idx], scale_, SHEET_TITLES[kind])
+        warnings += office_checks.pier_spacing(sheet, src[idx], scale_, SHEET_TITLES[kind])
+        warnings += office_checks.schedule_practice(sheet, SHEET_TITLES[kind])
     except Exception:
         pass
     if kind == SheetKind.WALLS:

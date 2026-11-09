@@ -71,6 +71,10 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | Env var | Default | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | (none, secret) | Claude API key |
+| `APP_PASSWORD` | (none, secret) | Shared password for the app (browser asks once; any user name). Unset = open to anyone with the address |
+| `JOBS_DIR` | `data/jobs` | Where finished reviews are saved (a persistent disk on Render) |
+| `JOBS_KEEP` | `40` | How many saved reviews to keep |
+| `OFFICE_PIER_SPACING_MM` | `3000` | Office pier spacing used by the pier spacing check |
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model used for every step |
 | `ANTHROPIC_EFFORT` | `high` | Reasoning depth for step 1 (geotech review): `low` / `medium` / `high` / `xhigh` / `max` |
 | `ANTHROPIC_DESIGN_EFFORT` | `medium` | Reasoning depth for step 2 (architectural review - roof, walls, load paths, footings, bracing). Was `high`; `medium` cuts its thinking (output) cost - set `high` if the assessments get worse |
@@ -178,7 +182,12 @@ material, not a size to copy. Edit the file (one rule per bullet) to change them
 - **Carport / garage slabs:** no internal beam up to 8 m long both ways; internal beams only
   where a dimension is over 8 m or a load needs one, with the reason.
 
-These are instructions to Claude (not enforced afterwards like the firm rules), so check
+**Checked afterwards** (`app/office_checks.py`, warnings only - nothing is changed): piers
+drawn more than the office 3000 mm apart along a bearer / footing line; deck framing in
+steel; lintels that aren't single F17 / LVL members; more than one deck joist type; all
+bracing panels of one type; plus sizes not on the stock list.
+
+The rest are instructions to Claude (not enforced afterwards like the firm rules), so check
 the mark-ups as usual.
 
 ## Design rules
@@ -350,8 +359,28 @@ hold even if Claude slips:
   opening is found, or two openings fit equally well, the lintel is left as Claude
   placed it and named in the warnings. Scanned drawings have no vectors, so nothing is
   snapped and a warning says so.
-- Jobs are kept in memory only, so download the results before the service restarts
-  or redeploys.
+- **Finished reviews are saved** (`app/jobstore.py`, on the Render disk): the results page,
+  review.json and mark-up PDF of the newest 40 reviews survive restarts and redeploys and are
+  listed under **Previous reviews**. A saved review can be opened and downloaded; re-running a
+  sheet needs the review still in memory (the last 8 since the service started), because the
+  drawings themselves are not stored.
+
+## Password
+
+Set `APP_PASSWORD` in the Render service's **Environment** tab. The browser then asks for a
+user name (anything) and that password once per session; without it the page, the API and the
+stored standards are open to anyone who has the address. `/healthz` stays open for Render.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests -q
+```
+
+The tests need no API key and no client drawings (Claude is never called): firm rules,
+schedule trimming, stock list, sheet selection, arrows, office checks, cache checks, the
+password, saved reviews, stored standards and PDF rebuilds.
 
 ## Code layout
 

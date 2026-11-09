@@ -50,6 +50,7 @@
   .stored label.usestd { margin: 0; font-weight: 400; align-items: baseline; }
   .stored label.stdpages { margin: 6px 0 0; font-size: 13px; }
   details.usage { margin: 6px 0 14px; }
+  details.saved summary { cursor: pointer; }
   .sheetpick { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
   .sheetpick label.check { margin-top: 6px; font-weight: 400; }
   @media (max-width: 560px) { .sheetpick { grid-template-columns: 1fr; } }
@@ -144,6 +145,11 @@
   </form>
 
   <div class="card" id="status"></div>
+
+  <details class="card saved" id="saved" style="display:block">
+    <summary><b>Previous reviews</b> <small class="muted">saved on the server - open one to see its results and download the mark-up again</small></summary>
+    <ul id="savedList" class="files"></ul>
+  </details>
 </main>
 <script>
 const f = document.getElementById('f'), go = document.getElementById('go'), box = document.getElementById('status');
@@ -175,6 +181,27 @@ storedList.addEventListener('click', async e => {
   loadStored();
 });
 window.addEventListener('DOMContentLoaded', loadStored);
+// Reviews saved on the server (they survive restarts): open to view / download again.
+const savedList = document.getElementById('savedList');
+async function loadSaved() {
+  try {
+    const r = await fetch('/jobs');
+    const jobs = await r.json();
+    if (!r.ok || !Array.isArray(jobs)) throw new Error(`server answered ${r.status}`);
+    savedList.innerHTML = jobs.length ? jobs.map(j => `<li class="ref"><div class="refhead">
+      <span><b>${esc(j.project)}</b> <span class="muted">${j.saved_at ? new Date(j.saved_at * 1000).toLocaleString() : ''}
+        &middot; ${esc((j.sheets || []).join(', ') || 'no sheets')}${j.cost_usd != null ? ` &middot; est. US$${j.cost_usd.toFixed(2)}` : ''}</span></span>
+      <span><button type="button" class="link" style="color:var(--accent)" data-open="${j.id}">Open</button> &middot;
+        <a href="/jobs/${j.id}/markup.pdf">PDF</a></span></div></li>`).join('')
+      : '<li class="muted">None yet.</li>';
+  } catch (e) { savedList.innerHTML = `<li class="err">Could not load the saved reviews: ${esc(e.message)}</li>`; }
+}
+savedList.addEventListener('click', e => {
+  const id = e.target.dataset && e.target.dataset.open;
+  if (!id) return;
+  box.style.display = 'block'; box.innerHTML = 'Loading…'; poll(id); box.scrollIntoView({ block: 'start' });
+});
+document.getElementById('saved').addEventListener('toggle', e => { if (e.target.open) loadSaved(); });
 // Footings & floor: one combined sheet OR separate footing / floor sheets, never both.
 document.querySelector('.sheetpick').addEventListener('change', e => {
   const v = e.target.value, box = v2 => document.querySelector(`.sheetpick input[value=${v2}]`);
@@ -325,7 +352,8 @@ async function poll(id) {
   }
   const s = j.summary, errs = Object.entries(j.sheet_errors || {});
   box.innerHTML = `
-    <h3 style="margin-top:0">Review complete</h3>
+    <h3 style="margin-top:0">Review complete${j.project ? ` - ${esc(j.project)}` : ''}</h3>
+    ${j.saved ? '<p class="muted">Opened from the saved reviews: view and download only. To change a sheet, run the review again.</p>' : ''}
     <ul>
       <li>Standards / guides: ${(j.reference_pages || []).length ? '' : 'none'}
         <ul>${(j.reference_pages || []).map(r => `<li><b>${esc(r.document)}</b>: ${r.pages_sent ? `pages ${esc(r.pages)} of ${r.page_count}` : `<span class="err">not used</span>`} (${r.pages_sent} pages; ${esc(r.how)}${r.store ? `; ${esc(r.store)}` : ''})${(r.sections || []).length ? `<ul>${r.sections.map(x => `<li>${esc(x.title)} - p ${esc(x.pages)} <span class="muted">(${esc(x.why)})</span></li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>
@@ -353,6 +381,7 @@ async function poll(id) {
     <a class="btn" href="/jobs/${id}/markup.pdf">Download mark-up PDF</a>
     <a class="btn" href="/jobs/${id}/review.json" target="_blank">Raw review (JSON)</a>`;
   go.disabled = false;
+  if (document.getElementById('saved').open) loadSaved();
 }
 </script>
 </body>
