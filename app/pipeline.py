@@ -99,8 +99,8 @@ def short_spec(text: str) -> str:
     for sep in (". ", " - ", " – ", " (", "; ", " -- "):
         i = t.find(sep)
         # Too early to be the end of the member type ('TYPE (h) ...'), or a short code in
-        # brackets that IS part of the type ('PANEL TYPE (h)', 'TYPE (g)'): keep looking.
-        while i != -1 and (i < 15 or (sep == " (" and re.match(r" \([A-Za-z0-9]{1,4}\)", t[i:]))):
+        # brackets that IS part of the type (one or two letters) ('PANEL TYPE (h)', 'TYPE (g)'): keep looking.
+        while i != -1 and (i < 15 or (sep == " (" and re.match(r" \([A-Za-z]{1,2}\)", t[i:]))):
             i = t.find(sep, i + 1)
         if 0 < i < cut:
             cut = i
