@@ -515,7 +515,8 @@ def _title_block(page, project: str, dwg_title: str, dwg_no: str, job_no: str, r
     cell(tb.x0 + 95, mid_y, tb.x1, tb.y1, dwg_title)
 
 
-def _schedule(page, title: str, items: list[ScheduleItem], legend_title: str, legend: list[ScheduleItem], box=SCHEDULE) -> None:
+def _schedule(page, title: str, items: list[ScheduleItem], legend_title: str, legend: list[ScheduleItem], box=SCHEDULE,
+              masonry: bool = False) -> None:
     entries: list[tuple[str, tuple, bool, str]] = []  # text, colour, is_heading, legend tag
     if items:
         entries.append((title or "SCHEDULE:", BLACK, True, ""))
@@ -525,6 +526,13 @@ def _schedule(page, title: str, items: list[ScheduleItem], legend_title: str, le
             entries.append(("", BLACK, False, ""))
         entries.append((legend_title or "LEGEND:", BLACK, True, ""))
         entries += [(i.text, TEAL, False, i.tag) for i in legend]
+    if masonry:  # brick veneer / masonry: the office steel lintel schedule, as its own section
+        if entries:
+            entries.append(("", BLACK, False, ""))
+        entries.append(("MASONRY LINTEL SCHEDULE:", BLACK, True, ""))
+        entries.append(("SPAN - STEEL SIZE (GALVANISED)", RED, False, ""))
+        entries += [(f"{span}: {size}", RED, False, "") for span, size in MASONRY_LINTELS]
+        entries.append((MASONRY_LINTEL_NOTE, RED, False, ""))
     if not entries:
         return
     inner = box.width - 12
@@ -1120,6 +1128,19 @@ class SheetMeta:
     made_by: str
     date: str
     title_block: bool = False
+    masonry: bool = False  # brick veneer / masonry walls: wall sheet gets the masonry lintel schedule
+
+
+# Office masonry lintel schedule (office_rules.md): steel lintels for the outer brick skin.
+MASONRY_LINTELS = [("UP TO 900", "75x10 FL"), ("900 - 1500", "100x75x8 UA"), ("1500 - 3300", "150x100x10 UA")]
+MASONRY_LINTEL_NOTE = "ALL MASONRY LINTELS TO BEAR MIN 150 INTO BRICKWORK EACH END. OVER 3300 BY ENGINEER."
+
+
+def _is_masonry(design) -> bool:
+    if design is None:
+        return False
+    text = " ".join(str(getattr(design, k, "") or "") for k in ("external_wall_type", "framing_material", "governing_standard"))
+    return re.search(r"brick|masonry|block|veneer|AS ?3700|AS ?4773", text, re.I) is not None
 
 
 def _new_sheet(out: pymupdf.Document, meta: SheetMeta, title: str, dwg_no: str) -> pymupdf.Page:
@@ -1643,7 +1664,8 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     overflow = _notes(page, sheet.classification, notes)
     try:
         _schedule(page, sheet.schedule_title, sheet.schedule, sheet.legend_title, sheet.legend,
-                  SCHEDULE if meta.title_block else SCHEDULE_NO_TB)
+                  SCHEDULE if meta.title_block else SCHEDULE_NO_TB,
+                  masonry=meta.masonry and kind == SheetKind.WALLS)
     except Exception as e:
         warnings.append(f"{dwg_no}: schedule not drawn ({e})")
     return [f"{dwg_no}: {n.lstrip('-')}" for n in overflow], warnings
@@ -1689,7 +1711,8 @@ def build_markup_pdf(
     Returns (pdf bytes, warnings). Never fails because of one bad element."""
     src = pymupdf.open(stream=arch_pdf, filetype="pdf")
     out = pymupdf.open()
-    meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"), title_block)
+    meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"), title_block,
+                     masonry=_is_masonry(design))
     overflow: list[str] = []
     warnings: list[str] = []
     n = 1
