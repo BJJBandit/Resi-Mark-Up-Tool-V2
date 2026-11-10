@@ -97,6 +97,12 @@ _SPACING = re.compile(r"\b(?:AT\s+)?(?:MAX\.?\s+)?\d{3,4}\s*(?:MM\s*)?(?:CTRS|CE
 _REO = re.compile(r"\b\d+\s*/\s*[LN]\d{2}\s*TM?\b(?:\s+(?:TOP\s*(?:AND|&)\s*BOTTOM|TOP|BOTTOM|T&B))?|\bSL\d{2,3}\b(?:\s+TOP)?|\b[LN]\d{2}\s+(?:LIGS|LIGATURES)\b[^,.;]*", re.I)
 
 
+def _abbrev(before: str) -> bool:
+    """The full stop ending 'before' belongs to an abbreviation ('G.I', 'CL', 'NO'), not a sentence."""
+    word = before.split()[-1] if before.split() else ""
+    return "." in word or (word.isalpha() and len(word) <= 2) or word.upper() in ("CL", "NO", "APPROX", "MIN", "MAX")
+
+
 def short_spec(text: str) -> str:
     """Schedule / legend text cut to the member type (size, grade, member, reinforcement)
     and its spacing: everything after the first note break ('. ', ' - ', ' (', '; ') goes,
@@ -107,7 +113,8 @@ def short_spec(text: str) -> str:
         i = t.find(sep)
         # Too early to be the end of the member type ('TYPE (h) ...'), or a short code in
         # brackets that IS part of the type (one or two letters) ('PANEL TYPE (h)', 'TYPE (g)'): keep looking.
-        while i != -1 and (i < 15 or (sep == " (" and re.match(r" \([A-Za-z]{1,2}\)", t[i:]))):
+        while i != -1 and (i < 15 or (sep == " (" and re.match(r" \([A-Za-z]{1,2}\)", t[i:]))
+                           or (sep == ". " and _abbrev(t[:i]))):
             i = t.find(sep, i + 1)
         if 0 < i < cut:
             cut = i

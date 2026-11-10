@@ -94,6 +94,33 @@ def warnings(checks: list[DirectionCheck]) -> list[str]:
     return out
 
 
+_ASCII = {"→": "->", "⇒": "->", "≈": "~", "≃": "~", "−": "-", "–": "-", "—": "-", "×": "x", "≥": ">=",
+          "≤": "<=", "’": "'", "‘": "'", "“": '"', "”": '"', "…": "..."}
+
+
+def _plain(text: str) -> str:
+    """Characters the sheet's PDF font shows (no arrows / approx signs)."""
+    return "".join(_ASCII.get(ch, ch) for ch in text)
+
+
+def _brief(text: str, n: int = 90) -> str:
+    """First clause of a long description, at most about n characters."""
+    t = " ".join(str(text or "").split())
+    for sep in (". ", "; ", " (", ", WITH ", " - "):
+        i = t.upper().find(sep)
+        if 0 < i < len(t):
+            t = t[:i]
+    if len(t) > n:
+        t = t[:n].rsplit(" ", 1)[0] + " ..."
+    return t.rstrip(" .,;")
+
+
+def _bracing_item(topic: str) -> bool:
+    """Claude's own racking / bracing working - the app's check (from the panels actually
+    drawn) replaces it, so the sheet never shows two different totals."""
+    return re.search(r"RACKING|BRACING", topic or "", re.I) is not None
+
+
 def _f(x: float) -> str:
     return f"{x:.1f}"
 
@@ -102,12 +129,14 @@ def lines(geotech: GeotechReview, design: DesignAssessment, checks: list[Directi
           references: list[str]) -> list[str]:
     """The calculation sheet as text lines (blank line between items; upper case, house style)."""
     L: list[str] = ["DESIGN BASIS", ""]
-    L += [f"-SITE CLASSIFICATION: {geotech.site_classification} (AS 2870). {geotech.ys}.",
-          f"-WIND CLASSIFICATION: {design.wind_classification_used or geotech.wind_classification} (AS 4055).",
-          f"-STRUCTURE: {design.storeys} STOREY, {design.external_wall_type}, {design.framing_material} FRAMING, "
-          f"{design.roof_form} ROOF ({design.roof_construction}, {design.roof_pitch}, {design.roof_cladding}). "
-          f"WALL HEIGHT {design.wall_height}.",
-          f"-GOVERNING STANDARD: {design.governing_standard}.",
+    L += [f"-SITE CLASSIFICATION: {_brief(geotech.site_classification, 40)} (AS 2870), {_brief(geotech.ys, 60)}.",
+          f"-WIND CLASSIFICATION: {_brief(design.wind_classification_used or geotech.wind_classification, 40)} "
+          "(AS 4055).",
+          f"-STRUCTURE: {design.storeys} STOREY, {_brief(design.external_wall_type, 50)}, "
+          f"{_brief(design.framing_material, 30)} FRAMING, {_brief(design.roof_form, 40)} ROOF, "
+          f"{_brief(design.roof_construction, 50)}, PITCH {_brief(design.roof_pitch, 25)}, "
+          f"{_brief(design.roof_cladding, 40)}, WALL HEIGHT {_brief(design.wall_height, 30)}.",
+          f"-GOVERNING STANDARD: {_brief(design.governing_standard, 140)}.",
           "-STANDARDS / GUIDES SUPPLIED: " + ("; ".join(references) if references else "NONE - VALUES FROM "
                                              "THE STANDARDS AS KNOWN; CONFIRM AGAINST THE CURRENT EDITIONS") + ".",
           ""]
@@ -144,9 +173,10 @@ def lines(geotech: GeotechReview, design: DesignAssessment, checks: list[Directi
         L.append("")
     if not checks:
         L += ["-NO RACKING FORCES TO CHECK.", ""]
-    if design.calculations:
+    members = [c for c in design.calculations if not _bracing_item(c.topic)]
+    if members:
         L += ["MEMBER AND FOOTING CALCULATIONS", ""]
-        for c in design.calculations:
+        for c in members:
             L += [c.topic, f"-BASIS: {c.basis}", f"-WORKING: {c.working}", f"-RESULT: {c.result}", ""]
     L += ["PRELIMINARY CALCULATIONS FOR THE MARK-UP - TO BE VERIFIED BY THE DESIGN ENGINEER."]
-    return [x.upper() for x in L]
+    return [_plain(x).upper() for x in L]

@@ -523,3 +523,20 @@ def test_calc_sheet_has_no_title_block():
     P._calc_sheet(out, meta, calcs.lines(GeoStub(), _calc_design(), [], []))
     texts = " ".join(a.info["content"] for a in out[0].annots())
     assert "SSK-C1" not in texts and "Job No" not in texts
+
+
+def test_short_spec_keeps_abbreviations():
+    assert short_spec("DIAGONAL 30x0.8 G.I. STRAP BRACING BOTH WAYS. NAILED TO PLATES") == \
+        "DIAGONAL 30x0.8 G.I. STRAP BRACING BOTH WAYS"
+
+
+def test_calc_sheet_drops_claude_bracing_item_and_long_basis():
+    from app import calcs
+    from app.schemas import CalcItem
+    d = _calc_design()
+    d.calculations = [CalcItem(topic="Racking / bracing check", basis="x", working="provided 30.6", result="ok"),
+                      CalcItem(topic="Lintel L3", basis="tables", working="span 2.1 → L3 ≈ ok", result="140x45")]
+    d.external_wall_type = "Brick veneer: 110 brick + cavity + 90 timber stud frame (250 overall). Vapour membrane."
+    text = "\n".join(calcs.lines(GeoStub(), d, [], []))
+    assert "PROVIDED 30.6" not in text and "LINTEL L3" in text
+    assert "SPAN 2.1 -> L3 ~ OK" in text and "VAPOUR" not in text
