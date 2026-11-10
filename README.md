@@ -270,11 +270,18 @@ hold even if Claude slips:
   footing. Footing runs Claude leaves untagged are tagged from their position (perimeter -
   EB / SF, inside - IB, with a warning), and a slab is shown by one diagonal line (S1)
   corner to corner, as the engineers draw it - a cloud drawn round the slab is replaced.
-- **Slab callout and re-entrant bars**: the slab line has an arrow at each end and its callout
-  (e.g. 'S1: 100 THICK N25 SLAB, SL82 MESH TOP, 30 COVER') sits at the middle of the line in a
-  tight circular surround with a white background. At every re-entrant (inside) corner of the
-  slab outline the app draws 3 bars across the corner at 45 degrees (3/N12 x 2000 long, 100
-  apart, first 40 from the corner) and adds the re-entrant bar note.
+- **Slab callout and re-entrant bars**: the slab line has an arrow at each end and the slab tag
+  only (S1, S2 - the schedule gives the detail) at the middle of the line in a tight circle
+  with a white background. At every re-entrant (inside) corner of the slab outline the app
+  draws 3 bars across the corner at 45 degrees (3/N12 x 2000 long, 100 apart, first 40 from
+  the corner) and adds the re-entrant bar note. A porch / paving strip butting into the
+  outline is ignored when finding the corners.
+- **Callouts don't overlap**: callout boxes go in one row along the top, one column down the
+  right and one row along the bottom, each in the order of its anchors, with the leader
+  leaving the box on the face towards the plan. Boxes narrow (and grow taller) to fit a row;
+  neighbours whose leaders would cross swap places, and a callout moves to another band if
+  that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
+  after the callouts, so they keep clear of the boxes and leaders too.
 - **British / Australian English only**: Claude is told to use it, and common American
   spellings on the sheets (centers, galvanized, vapor, color, curb ...) are corrected
   (`app/spelling.py`).

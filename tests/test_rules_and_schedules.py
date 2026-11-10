@@ -314,4 +314,59 @@ def test_reentrant_bars_and_slab_callout():
     mid = (m(els[-1].start) + m(els[-1].end)) * 0.5
     assert ring and ring[0].rect.contains(mid)  # callout ring at the middle of the line
     texts = [a.info["content"] for a in page.annots() if a.type[1] == "FreeText"]
-    assert any(t.startswith("S1: 100 THICK N25 SLAB") for t in texts)
+    assert "S1" in texts  # the ring holds the tag only - the schedule gives the detail
+    assert ring[0].rect.width < 30
+
+
+def test_reentrant_bars_ignore_porch_stub():
+    """A porch edge beam butting into the outline part-way along an edge must not turn an
+    outside corner into a re-entrant one (Schouten St markup 30)."""
+    from app import pdf as P
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    m = P.PlanMap(page, Box(x1=0, y1=0, x2=1, y2=1))
+
+    def seg(x1, y1, x2, y2, tag="EB1"):
+        return Element(kind="member", tag=tag, start=Point(x=x1 / 1190, y=y1 / 842), end=Point(x=x2 / 1190, y=y2 / 842), text="")
+
+    # L-shape: low wing 429-632 x 335-573, high wing 632-838 x 237-573; porch stub at x 616
+    els = [seg(429, 573, 838, 573), seg(838, 573, 838, 237), seg(632, 237, 838, 237), seg(632, 237, 632, 335),
+           seg(429, 335, 632, 335), seg(429, 335, 429, 573), seg(616, 244, 632, 244), seg(616, 244, 616, 335),
+           seg(429, 573, 838, 237, "S1")]
+    s = sheet(els, [ScheduleItem(tag="S1", text="100 THICK N25 SLAB")])
+    assert P._reentrant_bars(page, s, m) == 1
+    bars = [a for a in page.annots() if a.info["subject"] == "Re-entrant Bars"]
+    corner = m(els[3].end)
+    assert all(abs(pymupdf.Point(v) - corner) < 60 for a in bars for v in a.vertices)
+
+
+def test_callouts_do_not_overlap_or_cross():
+    """Callout boxes don't overlap each other and their leaders don't cross."""
+    import random
+
+    from app import pdf as P
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    m = P.PlanMap(page, Box(x1=0, y1=0, x2=1, y2=1))
+    m.placed = pymupdf.Rect(380, 230, 900, 600)
+    random.seed(3)
+    cos = []
+    for i in range(12):
+        x, y = random.uniform(390, 890) / 1190, random.uniform(240, 590) / 842
+        cos.append(Element(kind="callout", tag="", start=Point(x=x, y=y), end=Point(x=x, y=y),
+                           text=f"NOTE {i} " + "SOME LONGER TEXT ABOUT THE FOOTINGS " * random.randint(1, 3)))
+    unplaced = P._draw_callouts(page, cos, m)
+    boxes = [a for a in page.annots() if a.info["subject"] == "Call-out"]
+    assert len(boxes) + len(unplaced) == 12
+    rects = m.boxes  # the text boxes (an annotation's rect also spans its leader)
+    for i, r in enumerate(rects):
+        for q in rects[i + 1:]:
+            assert (r & q).is_empty or (r & q).get_area() < 1
+    legs = [(pymupdf.Point(a.vertices[0]), pymupdf.Point(a.vertices[1])) for a in boxes]
+
+    def side(a, b, c):
+        return (c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)
+
+    for i, (p1, p2) in enumerate(legs):
+        for p3, p4 in legs[i + 1:]:
+            assert not (side(p3, p4, p1) * side(p3, p4, p2) < 0 and side(p1, p2, p3) * side(p1, p2, p4) < 0)

@@ -979,31 +979,27 @@ def _scaled(m: PlanMap, mm: float, fallback: float, lo: float, hi: float) -> flo
     return fallback if not m.mm_pt else min(hi, max(lo, mm * m.mm_pt))
 
 
-SLAB_FS = 6.5
 
 
 def _slab_line(page, e: Element, a: pymupdf.Point, b: pymupdf.Point, colour, m: "PlanMap") -> None:
     """The slab as the engineers mark it: a line across the slab, corner to corner, with an
-    arrow at each end, and the slab callout at the middle of the line inside a tight
-    circular (elliptical) surround with a white background."""
+    arrow at each end, and the slab tag (S1, S2 - the schedule gives the detail) at the
+    middle of the line in a tight circle with a white background."""
     _arrow(page, a, b, colour, 1.25, "Slab", e.text or e.tag, head=4.0)
     m.segments.append((a, b))
     spec = (e.text or m.spec(e.tag) or "CONCRETE SLAB").strip().upper()
-    text = f"{e.tag.strip().upper()}: {spec}" if e.tag.strip() and not spec.startswith(e.tag.strip().upper()) else spec
-    lines = _wrap(text, 105, SLAB_FS)
-    w = max(_text_width(ln, SLAB_FS) for ln in lines) + 3
-    h = len(lines) * SLAB_FS * 1.18 + 2
+    label = e.tag.strip().upper() or "SLAB"  # the schedule gives the detail
+    w, h = _text_width(label, TAG_FS) + 2, TAG_FS * 1.18 + 1
     mid = (a + b) * 0.5
-    # An ellipse round a w x h box touches its corners at sqrt(2) times the half sizes.
-    rx, ry = w / 2 * 1.42 + 1, h / 2 * 1.42 + 1
-    ring = pymupdf.Rect(mid.x - rx, mid.y - ry, mid.x + rx, mid.y + ry)
+    r = max(w, h) / 2 + 1.5  # a circle just clear of the tag
+    ring = pymupdf.Rect(mid.x - r, mid.y - r, mid.x + r, mid.y + r)
     c = page.add_circle_annot(ring)
     c.set_border(width=1.0)
     c.set_colors(stroke=colour, fill=WHITE)
-    _info(c, "Slab Callout", text)
+    _info(c, "Slab Callout", f"{label}: {spec}" if not spec.startswith(label) else spec)
     c.update()
-    _text(page, pymupdf.Rect(mid.x - w / 2, mid.y - h / 2, mid.x + w / 2, mid.y + h / 2), "\n".join(lines),
-          SLAB_FS, colour, "Slab Callout", align=1)
+    _text(page, pymupdf.Rect(mid.x - w / 2, mid.y - h / 2, mid.x + w / 2, mid.y + h / 2), label,
+          TAG_FS, colour, "Slab Callout", align=1)
     m.boxes.append(ring)
 
 
@@ -1021,6 +1017,22 @@ def _reentrant_bars(page, sheet: MarkupSheet, m: "PlanMap") -> int:
             if e.kind == "member" and _prefix(e.tag) in ("SF", "EB") and abs(m(e.end) - m(e.start)) > 1]
     if len(segs) < 4:
         return 0
+    # Keep the closed slab outline only: drop runs with a free end (a porch / paving strip
+    # or a stub that butts into the outline part-way along an edge), repeatedly, as they
+    # throw out the inside / outside test.
+    outline = segs
+    while True:
+        ends = [pt for p, q, _ in outline for pt in (p, q)]
+
+        def joined(pt):
+            return sum(abs(pt - o) <= 6 for o in ends) >= 2  # itself and another run
+
+        kept = [s for s in outline if joined(s[0]) and joined(s[1])]
+        if len(kept) == len(outline):
+            break
+        outline = kept
+    if len(outline) >= 4:
+        segs = outline
 
     def inside(pt):
         n = 0
@@ -1145,42 +1157,94 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
 
 CALLOUT_FS = 6.5
 CALLOUT_W = 150.0
+CALLOUT_MIN_W = 80.0
 
 
-class _Band:
-    def __init__(self, rect: pymupdf.Rect, horizontal: bool) -> None:
-        self.rect, self.horizontal = rect, horizontal
-        self.cursor = rect.x0 if horizontal else rect.y0
-        self.row_y = rect.y0
-        self.row_h = 0.0
+def _callout_attach(a: pymupdf.Point, box: pymupdf.Rect, horizontal: bool) -> pymupdf.Point:
+    """Where a leader leaves its box: the face towards the plan, nearest the anchor."""
+    if horizontal:
+        return pymupdf.Point(min(max(a.x, box.x0 + 4), box.x1 - 4), box.y1 if a.y > box.y1 else box.y0)
+    return pymupdf.Point(box.x0 if a.x < box.x0 else box.x1, min(max(a.y, box.y0 + 3), box.y1 - 3))
 
-    def place(self, anchor: pymupdf.Point, w: float, h: float) -> pymupdf.Rect | None:
-        r = self.rect
-        if self.horizontal:
-            x = max(self.cursor, anchor.x - w / 2)
-            if x + w > r.x1:  # new row
-                self.row_y += self.row_h + 4
-                self.row_h, self.cursor = 0.0, r.x0
-                x = max(self.cursor, min(anchor.x - w / 2, r.x1 - w))
-            if self.row_y + h > r.y1 or x + w > r.x1:
-                return None
-            box = pymupdf.Rect(x, self.row_y, x + w, self.row_y + h)
-            self.cursor, self.row_h = box.x1 + 6, max(self.row_h, h)
-            return box
-        y = max(self.cursor, anchor.y - h / 2)
-        if y + h > r.y1:
+
+def _legs_cross(p1, p2, p3, p4) -> bool:
+    def side(a, b, c):
+        return (c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)
+    return side(p3, p4, p1) * side(p3, p4, p2) < 0 and side(p1, p2, p3) * side(p1, p2, p4) < 0
+
+
+def _callout_line(items: list, rect: pymupdf.Rect, horizontal: bool) -> list | None:
+    """Callouts in ONE row (top / bottom margin) or ONE column (right margin), each box as
+    near its anchor as the line allows and in the order of the anchors, so no leader runs
+    through another box; neighbours whose leaders still cross (a deep anchor beside a
+    shallow one) swap places until none do. Returns [(item, box, lines)] or None if they
+    don't fit."""
+    order = sorted(items, key=lambda t: t[0].x if horizontal else t[0].y)
+    row = None
+    for _ in range(len(order) ** 2 + 1):
+        row = _callout_line_once(order, rect, horizontal)
+        if not row:
+            return row
+        legs = [(it[0], _callout_attach(it[0], box, horizontal)) for it, box, _ in row]
+        swap = next((i for i in range(len(row) - 1) if _legs_cross(*legs[i], *legs[i + 1])), None)
+        if swap is None:
+            return row
+        order = [it for it, _, _ in row]
+        order[swap], order[swap + 1] = order[swap + 1], order[swap]
+    return row
+
+
+def _callout_line_once(items: list, rect: pymupdf.Rect, horizontal: bool) -> list | None:
+    if not items:
+        return []
+    sized = []
+    if horizontal:  # boxes go narrower (and taller) to fit the row
+        room = rect.width - 6 * (len(items) - 1)
+        widths = [t[3] for t in items]
+        cap = max(widths)
+        while cap > CALLOUT_MIN_W and sum(min(w, cap) for w in widths) > room:
+            cap -= 2
+        if sum(min(w, cap) for w in widths) > room:
             return None
-        box = pymupdf.Rect(r.x0, y, r.x0 + w, y + h)
-        self.cursor = box.y1 + 5
-        return box
+        for (a, text, lines, w, h) in items:
+            if w > cap:
+                lines = _wrap(text, cap - 8, CALLOUT_FS)
+                w = min(cap, max(_text_width(ln, CALLOUT_FS) for ln in lines) + 10)
+                h = _text_height(len(lines), CALLOUT_FS)
+            if h > rect.height:
+                return None
+            sized.append((a, lines, w, h))
+    else:
+        sized = [(a, lines, min(w, rect.width), h) for a, text, lines, w, h in items]
+        if sum(t[3] for t in sized) + 5 * (len(sized) - 1) > rect.height:
+            return None
+    lo_edge, hi_edge, gap = (rect.x0, rect.x1, 6) if horizontal else (rect.y0, rect.y1, 5)
+    size = [t[2] if horizontal else t[3] for t in sized]
+    pos = [(t[0].x if horizontal else t[0].y) - sz / 2 for t, sz in zip(sized, size)]
+    for i in range(len(pos)):  # forward: no overlaps, inside the band
+        pos[i] = max(pos[i], lo_edge if i == 0 else pos[i - 1] + size[i - 1] + gap)
+    for i in range(len(pos) - 1, -1, -1):  # backward
+        pos[i] = min(pos[i], (hi_edge if i == len(pos) - 1 else pos[i + 1] - gap) - size[i])
+    if pos[0] < lo_edge - 0.5:
+        return None
+    out = []
+    for item, (a, lines, w, h), p in zip(items, sized, pos):
+        if horizontal:  # on the face of the band nearest the plan
+            y = rect.y1 - h if rect.y1 < a.y else rect.y0
+            box = pymupdf.Rect(p, y, p + w, y + h)
+        else:
+            box = pymupdf.Rect(rect.x0, p, rect.x0 + w, p + h)
+        out.append((item, box, lines))
+    return out
 
 
 def _draw_callouts(page: pymupdf.Page, callouts: list[Element], m: PlanMap, bottom_band=BAND_BOTTOM) -> list[str]:
-    top, right, bottom = _Band(BAND_TOP, True), _Band(BAND_RIGHT, False), _Band(bottom_band, True)
+    """Boxed notes in the margins with arrow leaders: one row along the top, one column down
+    the right and one row along the bottom, each in the order of its anchors, so callouts
+    and their leaders don't overlap one another. What doesn't fit goes to the notes."""
     centre_y = (m.placed.y0 + m.placed.y1) / 2
     right_x = m.placed.x1 - m.placed.width * 0.25
     groups: dict[int, list] = {0: [], 1: [], 2: []}
-    bands = [top, right, bottom]
     for e in callouts:
         a = m(e.start)
         text = (e.text or e.tag).upper()
@@ -1189,27 +1253,75 @@ def _draw_callouts(page: pymupdf.Page, callouts: list[Element], m: PlanMap, bott
         w = min(CALLOUT_W, max(_text_width(ln, CALLOUT_FS) for ln in lines) + 10)
         side = 1 if a.x > right_x else (0 if a.y < centre_y else 2)
         groups[side].append((a, text, lines, w, h))
-    groups[0].sort(key=lambda t: t[0].x)
-    groups[1].sort(key=lambda t: t[0].y)
-    groups[2].sort(key=lambda t: t[0].x)
-    fallback = {0: [1, 2], 1: [0, 2], 2: [1, 0]}
+    bands = {0: (BAND_TOP, True), 1: (BAND_RIGHT, False), 2: (bottom_band, True)}
+
+    def fits(b, items):
+        return _callout_line(items, *bands[b]) is not None
+
     unplaced: list[str] = []
-    for side in (0, 1, 2):
-        for a, text, lines, w, h in groups[side]:
-            box = None
-            for b in [side, *fallback[side]]:
-                box = bands[b].place(a, w, h)
-                if box:
-                    break
-            if box is None:
-                unplaced.append(text)
-                continue
-            if box.x0 <= a.x <= box.x1:
-                attach = pymupdf.Point(min(max(a.x, box.x0 + 4), box.x1 - 4), box.y1 if a.y > box.y1 else box.y0)
+    for b in (0, 2, 1):
+        while not fits(b, groups[b]):
+            # Give up the callout nearest another band: the right-most for a row, the one
+            # nearest the top / bottom for the column.
+            if b == 1:
+                out = max(groups[1], key=lambda t: abs(t[0].y - centre_y))
+                others = [0, 2] if out[0].y < centre_y else [2, 0]
             else:
-                attach = pymupdf.Point(box.x0 if a.x < box.x0 else box.x1, (box.y0 + box.y1) / 2)
+                out = max(groups[b], key=lambda t: t[0].x)
+                others = [1, 2 - b]
+            groups[b].remove(out)
+            dest = next((o for o in others if o != b and fits(o, groups[o] + [out])), None)
+            if dest is None:
+                unplaced.append(out[1])
+            else:
+                groups[dest].append(out)
+
+    def layout():
+        return {b: _callout_line(groups[b], *bands[b]) for b in (0, 1, 2)}
+
+    def crossings(lay):
+        legs = [(it[0], _callout_attach(it[0], box, bands[b][1]), id(it)) for b in lay for it, box, _ in lay[b]]
+        return [(x[2], y[2]) for i, x in enumerate(legs) for y in legs[i + 1:] if _legs_cross(x[0], x[1], y[0], y[1])]
+
+    # Leaders from different bands that cross: move one of the pair into the other's band
+    # where that leaves fewer crossings.
+    lay = layout()
+    for _ in range(3 * len(callouts)):
+        bad = crossings(lay)
+        if not bad:
+            break
+        best = None
+        for ida, idb in bad:
+            ba = next(b for b in groups if any(id(t) == ida for t in groups[b]))
+            bb = next(b for b in groups if any(id(t) == idb for t in groups[b]))
+            if ba == bb:
+                continue
+            for it_id, src, dst in ((ida, ba, bb), (idb, bb, ba)):
+                it = next(t for t in groups[src] if id(t) == it_id)
+                if not fits(dst, groups[dst] + [it]):
+                    continue
+                groups[src].remove(it)
+                groups[dst].append(it)
+                n = len(crossings(layout()))
+                groups[dst].remove(it)
+                groups[src].append(it)
+                if n < len(bad) and (best is None or n < best[0]):
+                    best = (n, it, src, dst)
+        if best is None:
+            break
+        _, it, src, dst = best
+        groups[src].remove(it)
+        groups[dst].append(it)
+        lay = layout()
+    for b in (0, 1, 2):
+        horizontal = bands[b][1]
+        for item, box, lines in lay[b]:
+            a = item[0]
+            attach = _callout_attach(a, box, horizontal)
             _text(page, box, "\n".join(lines), CALLOUT_FS, RED, "Call-out", align=1, border=0.5,
                   fill=(1, 1, 1), callout=[a, attach])
+            m.boxes.append(box)
+            m.segments.append((a, attach))
     return unplaced
 
 
@@ -1751,6 +1863,12 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
             _reentrant_bars(page, sheet, m)
         except Exception as e:
             warnings.append(f"{dwg_no}: re-entrant bars not drawn ({e})")
+    # Callouts first, so the tags keep clear of their boxes and leaders.
+    try:
+        unplaced = _draw_callouts(page, callouts, m, BAND_BOTTOM if meta.title_block else BAND_BOTTOM_NO_TB)
+    except Exception as e:
+        warnings.append(f"{dwg_no}: callouts moved to notes ({e})")
+        unplaced = [(c.text or c.tag).upper() for c in callouts]
     try:
         _place_labels(page, m)
     except Exception as e:
@@ -1760,11 +1878,6 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         warnings.append(f"{dwg_no}: {dropped} mark-up(s) fell outside the plan and were not drawn")
     if not any(e.kind != "callout" for e in sheet.elements):
         warnings.append(f"{dwg_no}: Claude returned no members / piers / bracing for this sheet - re-run it")
-    try:
-        unplaced = _draw_callouts(page, callouts, m, BAND_BOTTOM if meta.title_block else BAND_BOTTOM_NO_TB)
-    except Exception as e:
-        warnings.append(f"{dwg_no}: callouts moved to notes ({e})")
-        unplaced = [(c.text or c.tag).upper() for c in callouts]
     unplaced += [t.upper() for t in off_plan if t]
     notes = list(sheet.notes) + [f"-{t}" for t in unplaced]  # never drop a note
     overflow = _notes(page, sheet.classification, notes)
