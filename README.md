@@ -270,6 +270,11 @@ hold even if Claude slips:
   footing. Footing runs Claude leaves untagged are tagged from their position (perimeter -
   EB / SF, inside - IB, with a warning), and a slab is shown by one diagonal line (S1)
   corner to corner, as the engineers draw it - a cloud drawn round the slab is replaced.
+- **Slab callout and re-entrant bars**: the slab line has an arrow at each end and its callout
+  (e.g. 'S1: 100 THICK N25 SLAB, SL82 MESH TOP, 30 COVER') sits at the middle of the line in a
+  tight circular surround with a white background. At every re-entrant (inside) corner of the
+  slab outline the app draws 3 bars across the corner at 45 degrees (3/N12 x 2000 long, 100
+  apart, first 40 from the corner) and adds the re-entrant bar note.
 - **British / Australian English only**: Claude is told to use it, and common American
   spellings on the sheets (centers, galvanized, vapor, color, curb ...) are corrected
   (`app/spelling.py`).
