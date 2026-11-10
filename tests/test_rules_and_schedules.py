@@ -513,3 +513,13 @@ def test_calc_sheet_page_added():
     assert out.page_count == 1
     texts = " ".join(a.info["content"] for a in out[0].annots())
     assert "CALCULATION SHEET" in texts and "RACKING FORCES" in texts
+
+
+def test_calc_sheet_has_no_title_block():
+    from app import calcs
+    from app import pdf as P
+    out = pymupdf.open()
+    meta = P.SheetMeta("JOB", "J1", "A", "DM", "01/01/2026", title_block=True)
+    P._calc_sheet(out, meta, calcs.lines(GeoStub(), _calc_design(), [], []))
+    texts = " ".join(a.info["content"] for a in out[0].annots())
+    assert "SSK-C1" not in texts and "Job No" not in texts

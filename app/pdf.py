@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import os
 import re
@@ -1941,8 +1942,10 @@ CALC_FS = 7.0
 
 
 def _calc_sheet(out, meta: SheetMeta, lines: list[str]) -> None:
-    """The calculation sheet: text flowed down three columns, continued on further pages."""
-    cols = NOTES_COLS_TB if meta.title_block else NOTES_COLS
+    """The calculation sheet: text flowed down three columns, continued on further pages.
+    No title block on it (whatever the drawing sheets have), so the text uses the full page."""
+    meta = dataclasses.replace(meta, title_block=False)
+    cols = NOTES_COLS
     width = min(c.width for c in cols) - 8
     wrapped: list[str] = []
     for ln in lines:

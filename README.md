@@ -60,6 +60,7 @@ checked before use. It is not for construction.
    Made by). Without it the schedule and callouts use that space.
 
    - a **CALCULATION SHEET** (tick box, on by default; no extra Claude call) at the end:
+     - No title block on this page (even when the drawing sheets have one).
      - *Design basis*: site and wind class, structure, governing standard, the standards
        supplied (or a note that values are from the standards as known - confirm).
      - *How the timber bracing is determined* (AS 1684.2 Section 8): wind class; area of
