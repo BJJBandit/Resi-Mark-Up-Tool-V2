@@ -53,12 +53,20 @@ MAX_REF_UPLOAD = 100 * 1024 * 1024  # references go via the Files API, not inlin
 
 @dataclass
 class Job:
-    status: str = "queued"  # queued | running | done | error
+    status: str = "queued"  # queued | running | waiting (for the engineer's answers) | done | error
     step: str = ""
     error: str | None = None
     project: str = ""
     result: pipeline.JobResult | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
+    questions: list[dict] = field(default_factory=list)  # information step 2 asks for
+    answers: list[dict] | None = None
+    answered: threading.Event = field(default_factory=threading.Event)
+
+
+# How long a review waits for the answers to its information requests before carrying on
+# as if each were answered "No" (proceed with the stated assumptions).
+INFO_WAIT_MINUTES = float(os.environ.get("INFO_WAIT_MINUTES", "30"))
 
 
 JOBS: dict[str, Job] = {}
@@ -89,6 +97,19 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
     def progress(msg: str) -> None:
         job.step = msg
 
+    def ask(questions: list[dict]) -> list[dict]:
+        job.questions, job.answers = questions, None
+        job.answered.clear()
+        job.status = "waiting"
+        got = job.answered.wait(INFO_WAIT_MINUTES * 60)
+        job.status = "running"
+        if not got:
+            job.step = "No answer to the information requests - proceeding with the assumptions"
+        answers = job.answers or []
+        job.questions = []
+        return answers
+
+    inp.ask = ask
     try:
         job.result = pipeline.run(inp, progress)
         job.status = "done"
@@ -136,6 +157,38 @@ def rerun_sheet(job_id: str, kind: str, change: str = Form("")) -> dict:
         raise HTTPException(409, "A sheet is already being re-run - wait for it to finish.")
     job.status, job.step = "running", f"Re-running {SHEET_TITLES[sk]}"
     threading.Thread(target=_rerun_worker, args=(job_id, sk, change.strip()), daemon=True).start()
+    return {"ok": True}
+
+
+@app.post("/jobs/{job_id}/answers")
+async def answer_questions(job_id: str, request: Request) -> dict:
+    """The engineer's answers to the information requests: for each question i,
+    answer_i = yes | no | ignore, with files_i (PDFs) and / or text_i when yes."""
+    job = _job(job_id)
+    if job.status != "waiting" or not job.questions:
+        raise HTTPException(409, "This review isn't waiting for answers.")
+    form = await request.form()
+    answers: list[dict] = []
+    for i, q in enumerate(job.questions):
+        ans = str(form.get(f"answer_{i}", "no")).lower()
+        if ans not in ("yes", "no", "ignore"):
+            raise HTTPException(400, f"Answer for '{q['item']}' must be yes, no or ignore.")
+        files = []
+        if ans == "yes":
+            for f in form.getlist(f"files_{i}"):
+                if not hasattr(f, "read") or not getattr(f, "filename", ""):
+                    continue
+                data = await _read(f, f"'{f.filename}'", MAX_REF_UPLOAD)
+                if data is not None:
+                    files.append((f.filename, data))
+        text = str(form.get(f"text_{i}", "")).strip() if ans == "yes" else ""
+        if ans == "yes" and not files and not text:
+            raise HTTPException(400, f"'{q['item']}': attach the document or type the information, "
+                                     "or answer No / Ignore.")
+        answers.append({"answer": ans, "files": files, "text": text})
+    job.answers = answers
+    job.answered.set()
+    job.step = "Answers received - continuing the review"
     return {"ok": True}
 
 
@@ -339,6 +392,9 @@ def _job(job_id: str) -> Job:
 
 def _status_body(job: Job) -> dict:
     body: dict = {"status": job.status, "step": job.step, "error": job.error, "project": job.project}
+    if job.status == "waiting":
+        body["questions"] = job.questions
+        body["wait_minutes"] = INFO_WAIT_MINUTES
     if job.result:
         body["references"] = job.result.references
         body["reference_pages"] = job.result.reference_pages

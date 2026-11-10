@@ -29,6 +29,20 @@ checked before use. It is not for construction.
      - *Additional notes for the drawings*: one note per line, added word for word (in
        capitals) to the notes column of every sheet, after Claude's own notes. A note Claude
        already wrote isn't repeated, and the firm rules never rewrite these notes.
+   - **More information needed?** If the drawing review finds a standard, project document
+     or piece of information it needs that wasn't supplied (e.g. a table of AS 1684.2, the
+     truss layout with girder positions, a BAL report), the review pauses and the page pops
+     up a question for each one, with the assumption it would otherwise use:
+     - **Yes** - attach the PDF and / or type the information in. Standards are stored with
+       the other stored standards (transcribed once, ticked in later reviews); project
+       documents are used for this review (and its sheet re-runs). The drawing review then
+       runs again with it (one more step-2 call).
+     - **No** - carry on with the stated assumption; it is added to the direction, the
+       assumptions and the warnings.
+     - **Ignore** - carry on without noting it on the sheets (listed in the warnings only).
+     With no answer within `INFO_WAIT_MINUTES` (default 30) the review carries on as if
+     every answer were No. Closing the pop-up leaves the review waiting; the status card has
+     a button to reopen it.
 3. **Mark-up drawings.** Produces one PDF with:
    - one marked-up sheet each for load paths, roof (rafters only, including the deck),
      wall framing / racking / blockwork joints, footings (AS 2870) and floor framing or slab.

@@ -7,11 +7,13 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
 
+import pymupdf
+
 from . import claude, refstore, spelling, stock, usage
 from .pdf import build_markup_pdf, extract_pages, format_ranges, render_pages
 from .refpages import MAX_REF_PAGES, RefDoc, prepare, report
 from .rules import apply_rules, check_geotech
-from .schemas import SHEET_TITLES, DesignAssessment, GeotechReview, MarkupSheet, SheetKind
+from .schemas import SHEET_TITLES, DesignAssessment, GeotechReview, InfoRequest, MarkupSheet, SheetKind
 
 
 @dataclass
@@ -32,7 +34,11 @@ class JobInput:
     sheet_notes: list[str] = field(default_factory=list)
     sheets: list[SheetKind] = field(default_factory=list)  # sheets to produce; empty = all
     combine_foundation: bool = True  # footings + floor framing / slab on one sheet
-    page_labels: list[str] = field(default_factory=list)  # source file + page of each page of arch_pdf  # engineer's notes added to every sheet as written
+    page_labels: list[str] = field(default_factory=list)  # source file + page of each page of arch_pdf
+    # Asks the engineer about the information step 2 says is missing and waits for the
+    # answers: ask([request dicts]) -> [{"answer": "yes"|"no"|"ignore", "files": [(name,
+    # pdf)], "text": str}]. None (no one to ask): every request is treated as "no".
+    ask: Callable[[list[dict]], list[dict]] | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -203,24 +209,29 @@ def _run_all(job: JobInput, progress: Callable[[str], None], log: usage.UsageLog
     if files:
         progress(f"Uploading {len(files)} reference document(s)")
         refs += claude.upload_references(files)
+    extra: dict = {"text_refs": [], "files": []}  # from the engineer's answers to step 2's requests
     try:
-        result = _run(job, pages, refs, progress)
+        result = _run(job, pages, refs, progress, extra)
         result.reference_pages = report(job.references)
         result.base_warnings = ref_warnings + result.base_warnings
         result.compose_warnings()
-        result.ctx = RerunContext(job=job, pages=pages, text_refs=text_refs, files=files, log=log)
+        result.ctx = RerunContext(job=job, pages=pages, text_refs=text_refs + extra["text_refs"],
+                                  files=files + extra["files"], log=log)
         return result
     finally:
         claude.delete_references(refs)
 
 
-def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResult:
+def _run(job: JobInput, pages, refs, progress: Callable[[str], None], extra: dict | None = None) -> JobResult:
     progress("Step 1: reviewing geotechnical report and wind")
     geotech = claude.review_geotech(job.geotech_pdf, job.wind_class, job.site_class, refs, job.notes)
 
     progress("Step 2: reviewing architectural drawings")
     design = claude.assess_design(pages, geotech, job.construction, job.notes, refs)
+    design, info_warnings = _information(job, pages, refs, geotech, design, progress,
+                                         extra if extra is not None else {"text_refs": [], "files": []})
     result = JobResult(geotech=geotech, design=design, references=[r.title for r in refs])
+    result.base_warnings += info_warnings
     # Claude's cross-reference of the plan and elevation views.
     result.base_warnings += [f"Plan vs elevations: {x}" for x in design.opening_crosscheck]
     result.base_warnings += [
@@ -258,6 +269,92 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None]) -> JobResu
     progress("Building mark-up PDF")
     _build(job, result)
     return result
+
+
+def _information(job: JobInput, pages, refs: list, geotech: GeotechReview, design: DesignAssessment,
+                 progress: Callable[[str], None], extra: dict) -> tuple[DesignAssessment, list[str]]:
+    """Ask the engineer about the standards / documents / information step 2 says are missing.
+    Yes: the uploads (standards are kept in the reference store, so they're read once) and any
+    typed information are added and step 2 runs again with them. No: proceed with the stated
+    assumption (recorded in the direction and assumptions). Ignore: proceed, nothing recorded
+    on the sheets."""
+    reqs: list[InfoRequest] = list(design.information_requests)
+    if not reqs:
+        return design, []
+    answers: list[dict] = []
+    if job.ask is not None:
+        progress("Waiting for your answers: more information requested")
+        try:
+            answers = job.ask([r.model_dump() for r in reqs]) or []
+        except Exception as e:  # never lose the review over the question
+            print(f"[info] asking failed: {e!r}", flush=True)
+    warnings, direction, assumed = [], [], []
+    typed = False  # information typed in as an answer
+    std_docs: list[RefDoc] = []
+    other_docs: list[RefDoc] = []
+    for i, r in enumerate(reqs):
+        a = answers[i] if i < len(answers) and answers[i] else {}
+        ans = str(a.get("answer", "no")).lower()
+        files = a.get("files") or []
+        text = str(a.get("text") or "").strip()
+        if ans == "yes" and (files or text):
+            for name, data in files:
+                try:
+                    with pymupdf.open(stream=data, filetype="pdf") as d:
+                        count = d.page_count
+                except Exception:
+                    warnings.append(f"{r.item}: '{name}' could not be opened as a PDF - not used")
+                    continue
+                (std_docs if r.kind == "standard" else other_docs).append(RefDoc(name, data, count))
+            if text:
+                direction.append(f"{r.item}: {text}")
+                typed = True
+            warnings.append(f"More information supplied: {r.item}"
+                            + (f" ({', '.join(n for n, _ in files)})" if files else ""))
+        elif ans == "ignore":
+            warnings.append(f"Information request ignored: {r.item}")
+        else:  # no (or yes with nothing supplied, or no answer)
+            direction.append(f"{r.item} is NOT available - proceed with the assumption: {r.assumption}")
+            assumed.append(f"{r.item} not available - assumed: {r.assumption}")
+            warnings.append(f"Not available, assumed: {r.item} - {r.assumption}")
+    if direction:
+        job.notes = (f"{job.notes}\n" if job.notes else "") + \
+            "Engineer's answers to the information requests:\n" + "\n".join(f"- {d}" for d in direction)
+    new_refs: list = []
+    if std_docs or other_docs:
+        progress("Reading the additional documents")
+        context = f"Needed for: {'; '.join(f'{r.item} ({r.why})' for r in reqs)}"
+        files: list[tuple[str, bytes]] = []
+        texts: list = []
+        if other_docs:
+            got, more = prepare(other_docs, context, claude.select_reference_pages, MAX_REF_PAGES // 2, progress)
+            files += got
+            warnings += more
+        if std_docs:
+            got, more = prepare(std_docs, context, claude.select_reference_pages, MAX_REF_PAGES // 2, progress)
+            warnings += more
+            if refstore.enabled():
+                for d in std_docs:  # kept, so later reviews can tick it instead of uploading it again
+                    try:
+                        refstore.save_pdf(refstore.doc_key(d.data), d.name, d.data, d.page_count)
+                    except OSError as e:
+                        print(f"[refstore] could not store {d.name}: {e}", flush=True)
+                # Its pages are transcribed once and kept as text (read from the store next time).
+                texts, got, more = _stored_references(std_docs, progress)
+                warnings += more
+            files += got
+        uploaded = claude.upload_references(files) if files else []
+        new_refs = texts + uploaded
+        refs.extend(new_refs)
+        extra["text_refs"] += texts
+        extra["files"] += files
+        job.references += std_docs + other_docs
+    if new_refs or typed:
+        progress("Step 2 again: reviewing the drawings with the additional information")
+        design = claude.assess_design(pages, geotech, job.construction, job.notes, refs)
+    design.assumptions = list(design.assumptions) + [a for a in assumed if a not in design.assumptions]
+    design.information_requests = reqs  # what was asked (not asked again)
+    return design, warnings
 
 
 def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, change: str = "") -> None:

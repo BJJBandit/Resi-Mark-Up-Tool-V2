@@ -92,3 +92,68 @@ def test_rebuilding_the_pdf_does_not_change_the_planned_sheets():
         counts.append((len(result.planned[SheetKind.FLOOR].elements), len(result.sheets[SheetKind.FLOOR].elements)))
     assert len(set(counts)) == 1 and counts[0][0] == 1
     assert result.pdf.startswith(b"%PDF")
+
+
+def _requests():
+    from app.schemas import InfoRequest
+    return [InfoRequest(item="Truss layout", kind="document", why="girder positions", assumption="no girders over openings"),
+            InfoRequest(item="BAL report", kind="document", why="deck material", assumption="BAL-12.5"),
+            InfoRequest(item="Ceiling height", kind="information", why="stud height", assumption="2400")]
+
+
+def test_information_answers_yes_no_ignore(monkeypatch):
+    """Yes (typed) re-runs step 2 with it; No records the assumption; Ignore records nothing."""
+    from app import claude
+    from app.schemas import DesignAssessment
+    calls = []
+
+    def again(pages, geotech, construction, notes, refs):
+        calls.append(notes)
+        return DesignAssessment.model_construct(information_requests=_requests()[:1], assumptions=[])
+
+    monkeypatch.setattr(claude, "assess_design", again)
+    job = pipeline.JobInput(project="x", arch_pdf=b"", geotech_pdf=None, wind_class=None, site_class=None,
+                            construction="timber", notes="")
+    asked = []
+    job.ask = lambda qs: asked.append(qs) or [{"answer": "ignore"}, {"answer": "no"},
+                                              {"answer": "yes", "text": "2700 ceilings"}]
+    design = DesignAssessment.model_construct(information_requests=_requests(), assumptions=[])
+    out, warnings = pipeline._information(job, [], [], None, design, lambda _: None, {"text_refs": [], "files": []})
+    assert [q["item"] for q in asked[0]] == ["Truss layout", "BAL report", "Ceiling height"]
+    assert len(calls) == 1 and "2700 ceilings" in calls[0] and "BAL report is NOT available" in calls[0]
+    assert "Truss layout" not in job.notes  # ignored: not on the sheets
+    assert any("BAL-12.5" in a for a in out.assumptions)
+    assert any("ignored: Truss layout" in w for w in warnings)
+    assert [r.item for r in out.information_requests] == ["Truss layout", "BAL report", "Ceiling height"]
+
+
+def test_information_unanswered_means_no(monkeypatch):
+    from app import claude
+    from app.schemas import DesignAssessment
+    monkeypatch.setattr(claude, "assess_design", lambda *a: pytest.fail("step 2 re-run without new information"))
+    job = pipeline.JobInput(project="x", arch_pdf=b"", geotech_pdf=None, wind_class=None, site_class=None,
+                            construction="timber", notes="SLAB ON GROUND")
+    design = DesignAssessment.model_construct(information_requests=_requests(), assumptions=["A"])
+    out, _ = pipeline._information(job, [], [], None, design, lambda _: None, {"text_refs": [], "files": []})
+    assert job.notes.startswith("SLAB ON GROUND") and job.notes.count("NOT available") == 3
+    assert len(out.assumptions) == 4
+
+
+def test_answers_endpoint(client):
+    import app.main as main
+    job = main.Job(status="waiting", questions=[r.model_dump() for r in _requests()])
+    main.JOBS["w1"] = job
+    st = client.get("/jobs/w1").json()
+    assert st["status"] == "waiting" and len(st["questions"]) == 3
+    # Yes with nothing attached or typed is refused
+    r = client.post("/jobs/w1/answers", data={"answer_0": "yes", "answer_1": "no", "answer_2": "ignore"})
+    assert r.status_code == 400
+    doc = pymupdf.open()
+    doc.new_page()
+    pdf = doc.tobytes()
+    r = client.post("/jobs/w1/answers", data={"answer_0": "yes", "answer_1": "no", "answer_2": "ignore"},
+                    files={"files_0": ("trusses.pdf", pdf, "application/pdf")})
+    assert r.status_code == 200 and job.answered.is_set()
+    assert job.answers[0]["files"][0][0] == "trusses.pdf" and job.answers[1]["answer"] == "no"
+    main.JOBS.pop("w1")
+    assert client.post("/jobs/nope/answers", data={}).status_code == 404
