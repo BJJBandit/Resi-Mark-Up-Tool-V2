@@ -46,11 +46,33 @@ def pier_spacing(sheet: MarkupSheet, page: pymupdf.Page, scale: int | None, titl
         if gap > PIER_MAX_MM * 1.15:
             tag = e.tag.strip().upper()
             worst[tag] = max(worst.get(tag, 0.0), gap)
+    out = []
+    # Piers scheduled but (almost) none drawn along a long perimeter footing.
+    footing = [e for e in sheet.elements if e.kind == "member" and _prefix(e.tag) in ("SF", "EB")]
+    run_mm = sum(abs(pymupdf.Point(e.end.x * w, e.end.y * h) - pymupdf.Point(e.start.x * w, e.start.y * h))
+                 for e in footing) / per_mm
+    on_footing = 0
+    for p in piers:
+        for e in footing:
+            a, b = pymupdf.Point(e.start.x * w, e.start.y * h), pymupdf.Point(e.end.x * w, e.end.y * h)
+            d = b - a
+            if abs(d) < 1:
+                continue
+            t = max(0.0, min(1.0, ((p - a).x * d.x + (p - a).y * d.y) / (abs(d) ** 2)))
+            if abs(p - (a + d * t)) <= 6:
+                on_footing += 1
+                break
+    scheduled = any(_prefix(s.tag) == "P" for s in sheet.schedule)
+    expected = run_mm / PIER_MAX_MM
+    if scheduled and footing and expected >= 4 and on_footing < 0.5 * expected:
+        out.append(f"{title}: only {on_footing} pier(s) drawn on {run_mm / 1000:.0f} m of perimeter footing - office "
+                   f"practice is piers at corners, steps and max {PIER_MAX_MM:.0f} centres unless the footing is "
+                   "founded on the bearing stratum (then say so); check")
     if not worst:
-        return []
+        return out
     items = ", ".join(f"{t} (up to {g:.0f} mm)" for t, g in sorted(worst.items()))
-    return [f"{title}: piers drawn further apart than the office {PIER_MAX_MM:.0f} mm spacing along {items} - "
-            "check a pier isn't missing"]
+    return out + [f"{title}: piers drawn further apart than the office {PIER_MAX_MM:.0f} mm spacing along {items} - "
+                  "check a pier isn't missing"]
 
 
 _STEEL_DECK = re.compile(r"STEEL|FLAME.?SHIELD|\bRHS\b|\bPFC\b|\bUB\b|\bC\d{5}\b|PURLIN|ALUMIN", re.I)
