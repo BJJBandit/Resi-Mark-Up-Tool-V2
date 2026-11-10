@@ -76,6 +76,17 @@ class DimCheck(Strict):
     note: str = Field(description="Short explanation; for a mismatch say which drawing is likely wrong if clear.")
 
 
+class InfoRequest(Strict):
+    item: str = Field(description="What is needed, e.g. 'AS 1684.2 Table 8.18 (bracing capacities)', "
+                      "'Truss layout with girder positions', 'BAL report'.")
+    kind: Literal["standard", "document", "information"] = Field(
+        description="standard = a standard / guide / table; document = a project document (truss layout, "
+        "survey, BAL report, engineering for an existing structure ...); information = a fact the engineer "
+        "can type (e.g. ceiling height, roof cladding).")
+    why: str = Field(description="What in the design depends on it.")
+    assumption: str = Field(description="What will be assumed if it is not available.")
+
+
 class DesignAssessment(Strict):
     project_summary: str
     pages: list[PageRole]
@@ -120,6 +131,11 @@ class DesignAssessment(Strict):
         description="Each discrepancy found when cross-referencing the plan and elevation views for "
         "openings (code, size, position, which elevation / wall), one per line. Empty if they agree."
     )
+    information_requests: list[InfoRequest] = Field(
+        default_factory=list,
+        description="Standards, documents or information NOT supplied that would materially change the "
+        "design (max 5, most important first). Empty if everything needed was supplied or a safe office "
+        "assumption covers it.")
 
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,10 @@ services:
       # Finished reviews are saved here so they survive restarts / redeploys.
       - key: JOBS_DIR
         value: /var/data/jobs
+      # Minutes a review waits for answers to its information requests before carrying on
+      # with the assumptions.
+      - key: INFO_WAIT_MINUTES
+        value: "30"
       - key: PYTHON_VERSION
         value: 3.13.1
       # Reasoning depth for each Claude call: low | medium | high | xhigh | max

@@ -455,7 +455,15 @@ def assess_design(
                 "whether it is shown as roofed in both. Read the written dimensions; where a dimension "
                 "is not written, scale it from the drawing (the plan's scale) and say so in the note. "
                 "Record each comparison in dimension_crosscheck with status match / mismatch / not "
-                "shown; include every mismatch."
+                "shown; include every mismatch.\n"
+                "10. List in information_requests any standard, project document or information that was "
+                "NOT supplied and would materially change the design (e.g. a standard / table you need "
+                "but don't have, the truss layout with girder positions, a BAL report, survey levels). "
+                "For each give why it matters and the assumption you will use if it isn't available - "
+                "and use that assumption in this assessment meanwhile. The engineer is asked about each "
+                "before the sheets are drawn, so list only what matters (max 5); don't ask for anything "
+                "already supplied, covered by the office practice, or that the engineer's direction says "
+                "is not available."
             ),
         }
     )

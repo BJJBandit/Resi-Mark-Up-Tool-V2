@@ -63,6 +63,21 @@
   button.secondary { margin: 0 10px 0 0; padding: 7px 12px; background: transparent; color: var(--accent); border: 1px solid var(--accent); font-weight: 600; }
   button.link { margin: 0; padding: 0; background: none; color: var(--err); border: 0; font-weight: 600; cursor: pointer; }
   a.btn { display:inline-block; margin: 8px 12px 0 0; color: var(--accent); font-weight: 600; }
+  dialog.ask { border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(620px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px); background: var(--card); color: var(--ink); }
+  dialog.ask::backdrop { background: rgba(0,0,0,.45); }
+  dialog.ask form { border: 0; padding: 20px; background: transparent; }
+  dialog.ask h3 { margin: 0 0 4px; font-size: 17px; }
+  .askq { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 12px; }
+  .askq .kind { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .askq p { margin: 4px 0; font-size: 14px; }
+  .askopts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .askopts label { display: flex; gap: 6px; align-items: center; margin: 0; padding: 6px 12px; border: 1px solid var(--line);
+    border-radius: 6px; font-weight: 600; cursor: pointer; }
+  .askopts label:has(input:checked) { border-color: var(--accent); color: var(--accent); }
+  .askyes { margin-top: 8px; }
+  .askyes label { margin: 8px 0 4px; font-size: 13px; }
+  .askbtns { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -145,6 +160,19 @@
   </form>
 
   <div class="card" id="status"></div>
+
+  <dialog class="ask" id="ask">
+    <form id="askForm" method="dialog">
+      <h3>More information needed</h3>
+      <p class="muted" style="margin:0">The review found standards or information it needs that weren't supplied.
+        For each: <b>Yes</b> - attach it (standards are stored for later reviews) or type it in; <b>No</b> - carry on
+        with the assumption shown; <b>Ignore</b> - carry on without noting it on the sheets.</p>
+      <div id="askList"></div>
+      <p class="err" id="askErr" hidden></p>
+      <div class="askbtns"><button type="submit" id="askGo">Continue the review</button>
+        <small class="muted" id="askWait"></small></div>
+    </form>
+  </dialog>
 
   <details class="card saved" id="saved" style="display:block">
     <summary><b>Previous reviews</b> <small class="muted">saved on the server - open one to see its results and download the mark-up again</small></summary>
@@ -340,12 +368,68 @@ f.addEventListener('submit', async e => {
   }
 });
 
+// Information requests: the review pauses after step 2 and asks (see /jobs/{id}/answers).
+const ask = document.getElementById('ask'), askForm = document.getElementById('askForm');
+let askedFor = '';
+function showAsk(id, j) {
+  if (askedFor === id) return;  // opened once; the button on the status card reopens it
+  askedFor = id;
+  askForm.dataset.job = id;
+  document.getElementById('askErr').hidden = true;
+  document.getElementById('askWait').textContent =
+    `If there's no answer within ${Math.round(j.wait_minutes || 30)} minutes the review carries on with the assumptions.`;
+  document.getElementById('askList').innerHTML = j.questions.map((q, i) => `
+    <div class="askq">
+      <div class="kind">${esc(q.kind)}</div>
+      <b>${esc(q.item)}</b>
+      <p>${esc(q.why)}</p>
+      <p class="muted">If not available: ${esc(q.assumption)}</p>
+      <div class="askopts">
+        <label><input type="radio" name="answer_${i}" value="yes"> Yes</label>
+        <label><input type="radio" name="answer_${i}" value="no" checked> No</label>
+        <label><input type="radio" name="answer_${i}" value="ignore"> Ignore</label>
+      </div>
+      <div class="askyes" data-yes="${i}" hidden>
+        <label>Upload <small>PDF${q.kind === 'standard' ? ' - stored, so later reviews can tick it' : ''}</small></label>
+        <input type="file" name="files_${i}" accept="application/pdf" multiple>
+        <label>Or type it in <small>optional</small></label>
+        <textarea name="text_${i}" rows="2"></textarea>
+      </div>
+    </div>`).join('');
+  askForm.querySelectorAll('input[type=radio]').forEach(r => r.addEventListener('change', () => {
+    const i = r.name.split('_')[1];
+    askForm.querySelector(`[data-yes="${i}"]`).hidden = askForm.querySelector(`input[name=answer_${i}]:checked`).value !== 'yes';
+  }));
+  if (!ask.open) ask.showModal();
+}
+askForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('askGo'), err = document.getElementById('askErr');
+  btn.disabled = true; err.hidden = true;
+  try {
+    const r = await fetch(`/jobs/${askForm.dataset.job}/answers`, { method: 'POST', body: new FormData(askForm) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || r.statusText);
+    ask.close();
+  } catch (x) {
+    err.textContent = x.message; err.hidden = false;
+  } finally { btn.disabled = false; }
+});
+
 async function poll(id) {
   box.dataset.job = id;
   const r = await fetch(`/jobs/${id}`);
   const j = await r.json();
   if (!r.ok) { box.innerHTML = `<p class="err">${esc(j.detail)}</p>`; go.disabled = false; return; }
   if (j.status === 'error') { box.innerHTML = `<p class="err">Review failed: ${esc(j.error)}</p>`; go.disabled = false; return; }
+  if (j.status === 'waiting' && (j.questions || []).length) {
+    box.innerHTML = `<p>The review is waiting for your answers about the information it needs.</p>
+      <button type="button" class="secondary" id="reopenAsk">Answer the questions</button>`;
+    document.getElementById('reopenAsk').onclick = () => { askedFor = ''; showAsk(id, j); };
+    showAsk(id, j);
+    return setTimeout(() => poll(id), 4000);
+  }
+  if (ask.open && askForm.dataset.job === id) ask.close();  // answered elsewhere / timed out
   if (j.status !== 'done') {
     box.innerHTML = `<p>${esc(j.step || 'Queued')}… <small>(a full review takes several minutes)</small></p>`;
     return setTimeout(() => poll(id), 4000);
