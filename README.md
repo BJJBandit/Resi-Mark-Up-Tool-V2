@@ -187,6 +187,11 @@ material, not a size to copy. Edit the file (one rule per bullet) to change them
 - **Perimeter footing under a slab** (strip footing or edge beam): 450 x min 450, 4/L11TM top and
   bottom - never 3/L11TM bottom only (checked: a warning names any that isn't). Internal beams
   min 400 deep, 3/L11TM bottom. Concrete N25 (checked: anything below N25 is named).
+- **External slabs separate:** porch, paving, patio, alfresco and carport slabs are separate
+  from the building slab, isolated with a 10 Abelflex expansion joint and mastic seal (also
+  round posts / piers through them); porch / paving slabs 100 thick SL82 with saw cuts at max
+  1500 and no edge beam unless a load needs one. The app adds the expansion joint note and
+  warns when an external slab is drawn wrapped in edge beams or scheduled with one.
 - **Carport / garage slabs:** no internal beam up to 8 m long both ways; internal beams only
   where a dimension is over 8 m or a load needs one, with the reason.
 
