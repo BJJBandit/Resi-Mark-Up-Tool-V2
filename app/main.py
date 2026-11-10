@@ -257,6 +257,7 @@ async def create_job(
     made_by: str = Form(""),
     sheets: list[str] = Form([]),
     combine_foundation: bool = Form(True),
+    calc_sheet: bool = Form(False),
 ) -> dict:
     try:
         chosen = [SheetKind(s) for s in sheets]
@@ -374,6 +375,7 @@ async def create_job(
         made_by=made_by.strip().upper(),
         sheets=chosen,
         combine_foundation=combine_foundation,
+        calc_sheet=calc_sheet,
     )
     job_id = uuid.uuid4().hex
     _evict_old_jobs()

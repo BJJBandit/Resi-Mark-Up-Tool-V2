@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
-from . import office_checks
+from . import calcs, office_checks
 from .footprint import Footprint
 from .elevation import cross_check, snap_joint_elevation
 from .elevation import find_openings as find_elevation_openings
@@ -1937,6 +1937,34 @@ def _notes_continuation(out, meta: SheetMeta, notes: list[str]) -> None:
                   "\n".join(chunk), CONT_FS, BLACK, "Notes")
 
 
+CALC_FS = 7.0
+
+
+def _calc_sheet(out, meta: SheetMeta, lines: list[str]) -> None:
+    """The calculation sheet: text flowed down three columns, continued on further pages."""
+    cols = NOTES_COLS_TB if meta.title_block else NOTES_COLS
+    width = min(c.width for c in cols) - 8
+    wrapped: list[str] = []
+    for ln in lines:
+        wrapped += _wrap(ln, width, CALC_FS) if ln else [""]
+    per_line = CALC_FS * 1.25  # a little more than the rendered line height, so nothing is clipped
+    n_page = 0
+    while wrapped:
+        n_page += 1
+        page = _new_sheet(out, meta, "CALCULATION SHEET", f"SSK-C{n_page}")
+        for col in cols:
+            if not wrapped:
+                break
+            n = max(1, int((col.height - 6) / per_line))
+            chunk, wrapped = wrapped[:n], wrapped[n:]
+            while chunk and not chunk[0]:
+                chunk = chunk[1:]
+            if chunk:
+                bottom = min(col.y1, col.y0 + len(chunk) * per_line + 8)
+                _text(page, pymupdf.Rect(col.x0, col.y0, col.x1, bottom), "\n".join(chunk), CALC_FS, BLACK,
+                      "Calculations")
+
+
 def build_markup_pdf(
     arch_pdf: bytes,
     project: str,
@@ -1948,9 +1976,10 @@ def build_markup_pdf(
     rev: str = "A",
     made_by: str = "",
     title_block: bool = False,
+    calc_sheet: bool = True,
 ) -> tuple[bytes, list[str]]:
-    """Mark-up sheets only (the review summary stays in the app / review.json).
-    Returns (pdf bytes, warnings). Never fails because of one bad element."""
+    """Mark-up sheets (the review summary stays in the app / review.json), plus the
+    calculation sheet. Returns (pdf bytes, warnings). Never fails because of one bad element."""
     src = pymupdf.open(stream=arch_pdf, filetype="pdf")
     out = pymupdf.open()
     meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"), title_block,
@@ -1977,4 +2006,17 @@ def build_markup_pdf(
         n += 1
     if overflow:
         _notes_continuation(out, meta, overflow)
+    if calc_sheet:
+        try:
+            walls = sheets.get(SheetKind.WALLS)
+            aspect = 1.414
+            if walls and 0 < walls.source_page_number <= src.page_count:
+                r = src[walls.source_page_number - 1].rect
+                aspect = r.width / r.height
+            checks = calcs.bracing_check(design, walls, aspect)
+            if walls:
+                warnings += calcs.warnings(checks)
+            _calc_sheet(out, meta, calcs.lines(geotech, design, checks if walls else [], references))
+        except Exception as e:
+            warnings.append(f"Calculation sheet not produced: {e}")
     return out.tobytes(garbage=3, deflate=True), warnings

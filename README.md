@@ -59,6 +59,22 @@ checked before use. It is not for construction.
    block bottom-right if you tick **Add title block** (Job No, Dwg No SSK-x, Rev, Date,
    Made by). Without it the schedule and callouts use that space.
 
+   - a **CALCULATION SHEET** (tick box, on by default; no extra Claude call) at the end:
+     - *Design basis*: site and wind class, structure, governing standard, the standards
+       supplied (or a note that values are from the standards as known - confirm).
+     - *How the timber bracing is determined* (AS 1684.2 Section 8): wind class; area of
+       elevation for each wind direction (Cl 8.3.3 / Fig 8.2, from half the wall height up);
+       pressure from Tables 8.1-8.5; racking force = area x pressure; capacity = sum of
+       bracing wall length x Table 8.18 capacity for walls parallel to the wind, at least the
+       racking force each way; distribution / spacing (Cl 8.3.6) and hold-downs.
+     - *Racking forces*: Claude's working for each direction (area parts, pressure and
+       table, force).
+     - *Bracing check*: the app totals the panels actually drawn on the wall framing plan
+       for each direction (type, number, lengths x kN/m) and compares them with the racking
+       force - OK, or NOT ADEQUATE with a warning. Re-running the wall sheet updates it.
+     - *Member and footing calculations*: basis, working and result for the key decisions
+       (roof load widths, lintels / beams, bearers / joists, columns, footing / slab, tie-down).
+
    The review summary (geotech, roof/wall/footing assessment, engineer checks) is shown
    in the app and in `review.json`; it is not added to the PDF.
 

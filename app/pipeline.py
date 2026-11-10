@@ -34,6 +34,7 @@ class JobInput:
     sheet_notes: list[str] = field(default_factory=list)
     sheets: list[SheetKind] = field(default_factory=list)  # sheets to produce; empty = all
     combine_foundation: bool = True  # footings + floor framing / slab on one sheet
+    calc_sheet: bool = True  # add the calculation sheet (racking / bracing check, member working)
     page_labels: list[str] = field(default_factory=list)  # source file + page of each page of arch_pdf
     # Asks the engineer about the information step 2 says is missing and waits for the
     # answers: ask([request dicts]) -> [{"answer": "yes"|"no"|"ignore", "files": [(name,
@@ -402,6 +403,7 @@ def _build(job: JobInput, result: JobResult) -> None:
         rev=job.rev,
         made_by=job.made_by,
         title_block=job.title_block,
+        calc_sheet=job.calc_sheet,
     )
     result.compose_warnings()
 
