@@ -459,3 +459,67 @@ def test_missing_piers_warned():
         [el("pier", "P1", x, y) for x in (100, 400) for y in range(175, 400, 75)]
     many = sheet(eb + piers, sched)
     assert not any("only" in w for w in office_checks.pier_spacing(many, page, 100, "F"))
+
+
+def _calc_design(force_up=10.0, force_across=10.0):
+    from app.schemas import BracingCapacity, DesignAssessment, RackingCase
+
+    def case(walls, f):
+        return RackingCase(wind_direction=f"Wind {walls}", bracing_walls=walls, storey="single", width_m=8,
+                           roof_pitch_deg=22.5, area_working="x", area_m2=f / 0.5, pressure_kpa=0.5,
+                           pressure_ref="T8.2", force_kn=f)
+    return DesignAssessment.model_construct(
+        racking=[case("up the page", force_up), case("across the page", force_across)],
+        bracing_capacities=[BracingCapacity(type="h", description="ply", kn_per_m=6.0, ref="T8.18"),
+                            BracingCapacity(type="d", description="strap", kn_per_m=1.5, ref="T8.18")],
+        calculations=[], racking_summary="", wind_classification_used="N2", storeys=1, external_wall_type="BV",
+        framing_material="timber", roof_form="hip", roof_construction="trusses", roof_pitch="22.5",
+        roof_cladding="sheet", wall_height="2400", governing_standard="AS 1684.2")
+
+
+def test_bracing_check_totals_each_direction():
+    """Panels on the wall plan are totalled per direction (h(b) matched to the 'h' capacity)."""
+    from app import calcs
+
+    def br(tag, x1, y1, x2, y2):
+        return Element(kind="bracing", tag=tag, start=Point(x=x1, y=y1), end=Point(x=x2, y=y2), text="")
+
+    walls = MarkupSheet.model_construct(source_page_number=1, elements=[
+        br("h(b) - 900", 0.2, 0.2, 0.2, 0.25), br("h(b) - 1200", 0.8, 0.2, 0.8, 0.27),  # up the page
+        br("d - 2400", 0.3, 0.5, 0.4, 0.5),  # across the page
+        br("x - 900", 0.3, 0.6, 0.35, 0.6)])  # type with no capacity
+    chk = calcs.bracing_check(_calc_design(force_up=12.0, force_across=10.0), walls, 1.414)
+    up, across = chk
+    assert abs(up.provided_kn - 2.1 * 6.0) < 1e-6 and up.ok
+    assert abs(across.provided_kn - 2.4 * 1.5) < 1e-6 and not across.ok and across.missing == ["x"]
+    w = calcs.warnings(chk)
+    assert any("less than the racking force 10.0 kN" in x for x in w) and any("type(s) x" in x for x in w)
+    text = "\n".join(calcs.lines(GeoStub(), _calc_design(), chk, []))
+    assert "HOW THE TIMBER BRACING IS DETERMINED" in text and "NOT ADEQUATE - ADD BRACING" in text
+
+
+class GeoStub:
+    site_classification = "M"
+    ys = "YS 40 MM"
+    wind_classification = "N2"
+
+
+def test_calc_sheet_page_added():
+    from app import calcs
+    from app import pdf as P
+    out = pymupdf.open()
+    meta = P.SheetMeta("JOB", "", "A", "", "01/01/2026")
+    P._calc_sheet(out, meta, calcs.lines(GeoStub(), _calc_design(), [], ["AS 1684.2"]))
+    assert out.page_count == 1
+    texts = " ".join(a.info["content"] for a in out[0].annots())
+    assert "CALCULATION SHEET" in texts and "RACKING FORCES" in texts
+
+
+def test_calc_sheet_has_no_title_block():
+    from app import calcs
+    from app import pdf as P
+    out = pymupdf.open()
+    meta = P.SheetMeta("JOB", "J1", "A", "DM", "01/01/2026", title_block=True)
+    P._calc_sheet(out, meta, calcs.lines(GeoStub(), _calc_design(), [], []))
+    texts = " ".join(a.info["content"] for a in out[0].annots())
+    assert "SSK-C1" not in texts and "Job No" not in texts

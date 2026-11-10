@@ -76,6 +76,38 @@ class DimCheck(Strict):
     note: str = Field(description="Short explanation; for a mismatch say which drawing is likely wrong if clear.")
 
 
+class RackingCase(Strict):
+    wind_direction: str = Field(description="Which faces the wind acts on, e.g. 'Wind on the long NE / SW faces'.")
+    bracing_walls: Literal["across the page", "up the page"] = Field(
+        description="Direction, on the wall framing plan as drawn, of the walls whose bracing resists this force "
+        "(they run parallel to the wind): 'across the page' = left-right walls, 'up the page' = top-bottom walls.")
+    storey: str = Field(description="e.g. 'single storey', 'lower of two storeys'.")
+    width_m: float = Field(description="Building width W used for the pressure table (m).")
+    roof_pitch_deg: float
+    area_working: str = Field(description="How the area of elevation was worked out, to AS 1684.2 Cl 8.3.3 / "
+                              "Fig 8.2: dimensions and parts, e.g. 'walls 14.1 x 1.2 (half wall height) = 16.9; "
+                              "roof 14.1 x 1.6 = 22.6; gable 0.5 x 8.0 x 1.7 = 6.8'.")
+    area_m2: float
+    pressure_kpa: float = Field(description="Wind pressure on the area of elevation (kPa).")
+    pressure_ref: str = Field(description="Table and inputs, e.g. 'AS 1684.2 Table 8.2: N2, W 8.0 m, pitch 22.5, "
+                              "hip roof'. Say if the table was not supplied (value from memory - confirm).")
+    force_kn: float = Field(description="Racking force = area x pressure (kN).")
+
+
+class BracingCapacity(Strict):
+    type: str = Field(description="Bracing type label as used on the legend and tags, e.g. 'h(b)', 'g', 'd'.")
+    description: str
+    kn_per_m: float = Field(description="Capacity per metre of bracing wall (kN/m).")
+    ref: str = Field(description="e.g. 'AS 1684.2 Table 8.18 (h)'; say if the table was not supplied.")
+
+
+class CalcItem(Strict):
+    topic: str = Field(description="e.g. 'Roof load width - SW wall', 'Lintel L3 - SD2121', 'Bearer B1'.")
+    basis: str = Field(description="Standard, clause / table and the inputs used.")
+    working: str = Field(description="The working: values read from the table / the arithmetic.")
+    result: str
+
+
 class InfoRequest(Strict):
     item: str = Field(description="What is needed, e.g. 'AS 1684.2 Table 8.18 (bracing capacities)', "
                       "'Truss layout with girder positions', 'BAL report'.")
@@ -113,6 +145,11 @@ class DesignAssessment(Strict):
 
     wind_classification_used: str
     racking_summary: str = Field(description="Racking force basis per the relevant standard.")
+    racking: list[RackingCase] = Field(
+        default_factory=list,
+        description="Racking force for each wind direction (and storey) - the bracing calculation.")
+    bracing_capacities: list[BracingCapacity] = Field(
+        default_factory=list, description="Capacity of each bracing type used (AS 1684.2 Table 8.18).")
     bracing_walls: list[BracingWall]
     tie_down: str
     lintels_and_beams: list[str]
@@ -131,6 +168,11 @@ class DesignAssessment(Strict):
         description="Each discrepancy found when cross-referencing the plan and elevation views for "
         "openings (code, size, position, which elevation / wall), one per line. Empty if they agree."
     )
+    calculations: list[CalcItem] = Field(
+        default_factory=list,
+        description="Calculation sheet entries for the key design decisions (max ~12): roof load widths, "
+        "lintels / beams by span and load, bearers / joists / rafters, columns, footing and slab selection, "
+        "tie-down. Each with its basis (standard, clause / table), working and result.")
     information_requests: list[InfoRequest] = Field(
         default_factory=list,
         description="Standards, documents or information NOT supplied that would materially change the "
