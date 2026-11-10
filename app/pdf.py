@@ -759,7 +759,9 @@ def _place_labels(page: pymupdf.Page, m: "PlanMap") -> int:
             target = pymupdf.Point(min(max((best.x0 + best.x1) / 2, geo.x0), geo.x1),
                                    min(max((best.y0 + best.y1) / 2, geo.y0), geo.y1))
         near = pymupdf.Point(min(max(target.x, best.x0), best.x1), min(max(target.y, best.y0), best.y1))
-        if abs(near - target) > 6:
+        # (no leader through a callout ring, pier or column - the tag sits close enough)
+        if abs(near - target) > 6 and not any(_seg_hits_rect(near, target, o + (-0.5, -0.5, 0.5, 0.5))
+                                              for o in m.boxes if not o.contains(target)):
             _line(page, near, target, colour, 0.5, "Tag Leader")
         shown.setdefault(text, []).append(anchor)
     return left_out
@@ -977,6 +979,100 @@ def _scaled(m: PlanMap, mm: float, fallback: float, lo: float, hi: float) -> flo
     return fallback if not m.mm_pt else min(hi, max(lo, mm * m.mm_pt))
 
 
+SLAB_FS = 6.5
+
+
+def _slab_line(page, e: Element, a: pymupdf.Point, b: pymupdf.Point, colour, m: "PlanMap") -> None:
+    """The slab as the engineers mark it: a line across the slab, corner to corner, with an
+    arrow at each end, and the slab callout at the middle of the line inside a tight
+    circular (elliptical) surround with a white background."""
+    _arrow(page, a, b, colour, 1.25, "Slab", e.text or e.tag, head=4.0)
+    m.segments.append((a, b))
+    spec = (e.text or m.spec(e.tag) or "CONCRETE SLAB").strip().upper()
+    text = f"{e.tag.strip().upper()}: {spec}" if e.tag.strip() and not spec.startswith(e.tag.strip().upper()) else spec
+    lines = _wrap(text, 105, SLAB_FS)
+    w = max(_text_width(ln, SLAB_FS) for ln in lines) + 3
+    h = len(lines) * SLAB_FS * 1.18 + 2
+    mid = (a + b) * 0.5
+    # An ellipse round a w x h box touches its corners at sqrt(2) times the half sizes.
+    rx, ry = w / 2 * 1.42 + 1, h / 2 * 1.42 + 1
+    ring = pymupdf.Rect(mid.x - rx, mid.y - ry, mid.x + rx, mid.y + ry)
+    c = page.add_circle_annot(ring)
+    c.set_border(width=1.0)
+    c.set_colors(stroke=colour, fill=WHITE)
+    _info(c, "Slab Callout", text)
+    c.update()
+    _text(page, pymupdf.Rect(mid.x - w / 2, mid.y - h / 2, mid.x + w / 2, mid.y + h / 2), "\n".join(lines),
+          SLAB_FS, colour, "Slab Callout", align=1)
+    m.boxes.append(ring)
+
+
+def _reentrant_bars(page, sheet: MarkupSheet, m: "PlanMap") -> int:
+    """Re-entrant bars at every re-entrant (inside) corner of the slab outline, as the
+    engineers draw them: 3 short parallel bars across the corner at 45 degrees, 2000 long,
+    100 apart, the first 40 from the corner, plus a note. Only on slab sheets. Returns the
+    number of corners marked."""
+    tags = {s.tag.strip().upper(): s.text.upper() for s in sheet.schedule}
+    slab = any(e.kind == "member" and _prefix(e.tag) == "S" for e in sheet.elements) or \
+        any("SLAB" in t for k, t in tags.items() if _prefix(k) == "S")
+    if not slab:
+        return 0
+    segs = [(m(e.start), m(e.end), e) for e in sheet.elements
+            if e.kind == "member" and _prefix(e.tag) in ("SF", "EB") and abs(m(e.end) - m(e.start)) > 1]
+    if len(segs) < 4:
+        return 0
+
+    def inside(pt):
+        n = 0
+        for p, q, _ in segs:
+            if (p.y > pt.y) != (q.y > pt.y) and p.x + (pt.y - p.y) * (q.x - p.x) / (q.y - p.y) > pt.x:
+                n += 1
+        return n % 2 == 1
+
+    def unit(v):
+        return v / abs(v)
+
+    corners = []
+    for i, (p1, q1, e1) in enumerate(segs):
+        for p2, q2, e2 in segs[i + 1:]:
+            if abs(abs((unit(q1 - p1).x * unit(q2 - p2).x + unit(q1 - p1).y * unit(q2 - p2).y)) - 1) < 0.05:
+                continue  # parallel
+            c = _cross(p1, q1, p2, q2)
+            if c is None or min(abs(c - p1), abs(c - q1)) > 6 or min(abs(c - p2), abs(c - q2)) > 6:
+                continue
+            # Look into the four quadrants round the corner: slab in three of them means a
+            # re-entrant (inside) corner; the bars go across it, facing away from the gap.
+            u1, u2 = unit(q1 - p1), unit(q2 - p2)
+            quads = [(s1, s2, inside(c + (u1 * s1 + u2 * s2) * 8)) for s1 in (1, -1) for s2 in (1, -1)]
+            if sum(q[2] for q in quads) != 3:
+                continue
+            s1, s2, _ = next(q for q in quads if not q[2])
+            bis = unit((u1 * s1 + u2 * s2) * -1)
+            if all(abs(c - k[0]) > 10 for k in corners):
+                corners.append((c, bis, e1))
+    if not corners:
+        return 0
+    half_len = _scaled(m, 1000, 28.0, 14.0, 60.0)
+    first = _scaled(m, 40, 1.5, 1.0, 4.0)
+    gap = _scaled(m, 100, 2.5, 1.6, 6.0)
+    for c, bis, e in corners:
+        t = pymupdf.Point(-bis.y, bis.x)
+        footing_half = _footing_width_pt(e, m)
+        for k in range(3):
+            centre = c + bis * (footing_half + first + k * gap)
+            p, q = centre - t * half_len, centre + t * half_len
+            _line(page, p, q, RED, 1.0, "Re-entrant Bars", "3/N12 2000 LONG RE-ENTRANT BARS")
+            m.segments.append((p, q))
+        m.label_requests.append(("line", (c + bis * (footing_half + first) - t * half_len,
+                                          c + bis * (footing_half + first) + t * half_len),
+                                 "3/N12", TAG_FS, RED, "Re-entrant Bars Tag"))
+    note = ("-3/N12 2000 LONG RE-ENTRANT BARS TIED OVER SLAB MESH AT EACH RE-ENTRANT CORNER. "
+            "100 BETWEEN BARS AND FIRST BAR 40 FROM CORNER.")
+    if not any("RE-ENTRANT" in n.upper() for n in sheet.notes):
+        sheet.notes.append(note)
+    return len(corners)
+
+
 def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
     a, b = m(e.start), m(e.end)
     colour = tag_colour(e.tag, e.kind)
@@ -988,6 +1084,8 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
             m.segments.append((p, q))
         if e.tag:
             m.label_requests.append(("line", (a, b), e.tag, TAG_FS, colour, "Member Tag"))
+    elif e.kind == "member" and _prefix(e.tag) == "S" and abs(b - a) > 20:
+        _slab_line(page, e, a, b, colour, m)
     elif e.kind == "member":
         # Slab diagonal (S): a fine line, as the engineers draw it.
         width = 1.25 if _prefix(e.tag) == "S" else 3.25 if _prefix(e.tag) in FOOTING_PREFIXES else 2.75
@@ -1631,8 +1729,11 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     callouts: list[Element] = []
     off_plan: list[str] = []
     skipped = 0
+    slab_tags = {e.tag.strip().upper() for e in sheet.elements if e.kind == "member" and _prefix(e.tag) == "S"}
     for e in sheet.elements:
         on_plan = m.inside(e.start) and m.inside(e.end)
+        if e.kind == "callout" and any(re.match(rf"\s*{re.escape(t)}\b", e.text or "", re.I) for t in slab_tags):
+            continue  # the slab callout sits on the slab line itself
         if e.kind == "callout":
             if on_plan:
                 callouts.append(e)
@@ -1645,6 +1746,11 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
                 skipped += 1
     if skipped:
         warnings.append(f"{dwg_no}: {skipped} plan element(s) could not be drawn")
+    if kind in (SheetKind.FOUNDATION, SheetKind.FOOTINGS, SheetKind.FLOOR):
+        try:
+            _reentrant_bars(page, sheet, m)
+        except Exception as e:
+            warnings.append(f"{dwg_no}: re-entrant bars not drawn ({e})")
     try:
         _place_labels(page, m)
     except Exception as e:

@@ -290,3 +290,28 @@ def test_masonry_lintel_schedule_box_on_wall_sheet():
     P._schedule(page, "LINTEL SCHEDULE:", [ScheduleItem(tag="L1", text="90x35 F17/LVL LINTEL")], "", [], masonry=True)
     text = " ".join(a.info["content"] for a in page.annots() if a.type[1] == "FreeText")
     assert "MASONRY LINTEL SCHEDULE:" in text and "100x75x8 UA" in text and "MIN 150" in text
+
+
+def test_reentrant_bars_and_slab_callout():
+    from app import pdf as P
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    m = P.PlanMap(page, Box(x1=0, y1=0, x2=1, y2=1))
+
+    def seg(x1, y1, x2, y2, tag="EB1"):
+        return Element(kind="member", tag=tag, start=Point(x=x1 / 1190, y=y1 / 842), end=Point(x=x2 / 1190, y=y2 / 842), text="")
+
+    # outline with a notch in the top: two re-entrant corners at (200,150) and (400,150)
+    els = [seg(100, 100, 200, 100), seg(200, 100, 200, 150), seg(200, 150, 400, 150), seg(400, 150, 400, 100),
+           seg(400, 100, 500, 100), seg(500, 100, 500, 400), seg(500, 400, 100, 400), seg(100, 400, 100, 100),
+           seg(100, 400, 500, 100, "S1")]
+    s = sheet(els, [ScheduleItem(tag="S1", text="100 THICK N25 SLAB, SL82 MESH TOP, 30 COVER")])
+    assert P._reentrant_bars(page, s, m) == 2
+    assert any("RE-ENTRANT" in n for n in s.notes)
+    m.specs = {x.tag: x.text for x in s.schedule}
+    P._slab_line(page, els[-1], m(els[-1].start), m(els[-1].end), P.RED, m)
+    ring = [a for a in page.annots() if a.type[1] == "Circle"]
+    mid = (m(els[-1].start) + m(els[-1].end)) * 0.5
+    assert ring and ring[0].rect.contains(mid)  # callout ring at the middle of the line
+    texts = [a.info["content"] for a in page.annots() if a.type[1] == "FreeText"]
+    assert any(t.startswith("S1: 100 THICK N25 SLAB") for t in texts)
