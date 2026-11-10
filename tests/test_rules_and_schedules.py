@@ -551,3 +551,12 @@ def test_units_case_and_no_memory():
     assert "14.1 x 1.2 = 16.9 m²" in out and "450W x 450" in out and "25 MPa" in out and "20-40 mm" in out
     assert "4/M12" in out and "2 M12 RODS" in out and "CLASS M," in out and "0.8 kPa" in out
     assert "3.4 m SPAN" in out and "(kN)" in out and "N25" in out and "L11" in out
+
+
+def test_units_superscripts_and_times():
+    from app.spelling import tidy
+    out = tidy("Z = 45 X 240² / 6 = 432,000 MM³; I = 51.8 X 10⁶ MM⁴; 2.40 m X 1.50 kN/m; 450W X MIN 400; "
+               "AREA OF ELEVATION X PRESSURE; AS 1684.2 CLAUSE 2.6.? ROOF; TYPE X BRACING")
+    assert "45 x 240²" in out and "432,000 mm³" in out and "10⁶ mm⁴" in out and "2.40 m x 1.50" in out
+    assert "450W x MIN" in out and "ELEVATION x PRESSURE" in out and "CLAUSE 2.6 ROOF" in out
+    assert "TYPE X BRACING" in out

@@ -46,13 +46,18 @@ def to_au(text: str) -> str:
 # 450 MM -> 450 mm, 27 KN -> 27 kN, 0.8 KPA -> 0.8 kPa, 36.3 M2 -> 36.3 m². Only after a
 # number, so bolt sizes (M12), concrete grades (N25) and bars (L11, N12) are left alone.
 _UNITS = [("KN/M2", "kN/m²"), ("KN/M²", "kN/m²"), ("KN/M", "kN/m"), ("KNM", "kNm"), ("KN", "kN"),
-          ("KPA", "kPa"), ("MPA", "MPa"), ("MM2", "mm²"), ("MM", "mm"), ("M2", "m²"), ("M²", "m²"),
+          ("KPA", "kPa"), ("MPA", "MPa"), ("MM2", "mm²"), ("MM²", "mm²"), ("MM3", "mm³"), ("MM³", "mm³"),
+          ("MM4", "mm⁴"), ("MM⁴", "mm⁴"), ("MM", "mm"), ("M2", "m²"), ("M²", "m²"),
           ("M3", "m³"), ("M³", "m³"), ("M/S", "m/s"), ("KG", "kg"), ("M", "m")]
 _UNIT_RX = re.compile(
-    r"(?<![A-Za-z0-9.])(\d+(?:\.\d+)?)(\s?)(" + "|".join(re.escape(u) for u, _ in _UNITS) + r")(?![A-Za-z0-9²³/])",
+    r"(?<![A-Za-z0-9.])(\d+(?:\.\d+)?[⁰¹²³⁴⁵⁶⁷⁸⁹]*)(\s?)(" + "|".join(re.escape(u) for u, _ in _UNITS) + r")(?![A-Za-z0-9²³⁴/])",
     re.I)
 _UNIT_MAP = {u.upper(): v for u, v in _UNITS}
 _DIM_X = re.compile(r"(\d)(W?)(\s?)X(\s?)(?=\d)")  # 90X35 -> 90x35, 450W X 450 -> 450W x 450
+# A multiply sign after a number or unit ('2.40 m X 1.50', '4.45 X TAN', '450W X MIN'): x.
+_TIMES = re.compile(r"(?<=[\d²³⁴⁶a-z)])(\s)X(?=\s)|(?<=\dW)(\s)X(?=\s)")
+_UNKNOWN_REF = re.compile(r"(\d)\.\?(?!\w)")  # 'CLAUSE 2.6.?' -> 'CLAUSE 2.6'
+_UNITS_ALONE_TIMES = re.compile(r"\b(ELEVATION|LENGTH|AREA|LOAD) X (?=[A-Z(])")
 
 
 _ALONE = re.compile(r"(?<![A-Za-z0-9])(KN/M2|KN/M|KNM|KN|KPA|MPA)(?![A-Za-z0-9²])")  # never anything else
@@ -63,7 +68,10 @@ def units(text: str) -> str:
         return text
     text = _ALONE.sub(lambda m: _UNIT_MAP[m.group(1)], text)
     text = _UNIT_RX.sub(lambda m: m.group(1) + m.group(2) + _UNIT_MAP.get(m.group(3).upper(), m.group(3)), text)
-    return _DIM_X.sub(lambda m: m.group(1) + m.group(2) + m.group(3) + "x" + m.group(4), text)
+    text = _DIM_X.sub(lambda m: m.group(1) + m.group(2) + m.group(3) + "x" + m.group(4), text)
+    text = _TIMES.sub(lambda m: (m.group(1) or m.group(2)) + "x", text)
+    text = _UNITS_ALONE_TIMES.sub(r"\1 x ", text)
+    return _UNKNOWN_REF.sub(r"\1", text)
 
 
 # Notes never say a value was taken 'from memory' (or that a table wasn't supplied): they

@@ -57,6 +57,8 @@ or site confirmation goes in the concerns / engineer_checks lists.
 - Never write that a value is 'from memory' or that a table / standard was 'not supplied' - in
   notes, callouts, schedules or the calculations. Cite the standard clause / table; where a
   value needs checking because the standard wasn't supplied, write 'ENGINEER TO CONFIRM'.
+- Never write a placeholder such as '?' for a clause / table number you are unsure of: cite the
+  section or table you are sure of (e.g. 'AS 1684.2 Section 2') and add 'ENGINEER TO CONFIRM'.
 - Write everything in British / Australian English (e.g. centres, metres, colour, galvanised,
   fibre, aluminium, kerb, sulphate, vapour, levelling, organisation) - never American spelling.
 """
