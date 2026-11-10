@@ -491,6 +491,9 @@ specification just because it looks typical.
   - Trusses (by the truss manufacturer): one 'span' arrow ALONG the truss span, tagged T,
     showing the assumed truss span direction.
   - Schedule bearers, joists and rafters with their spacing: '... AT <SPACING> CTRS'.
+- EVERY 'member' carries its schedule tag (EB1, SF1, IB1, B1, L1 ...) - never leave a tag empty;
+  draw each footing / beam run as its own tagged member. Clouds are only for items the engineer
+  must check, never to outline a slab or an area.
 - Draw each member once along its real position: 'member' from one end to the other,
   'span' double arrows across (perpendicular to) joists / rafters to show where they repeat,
   'column' at each post, 'pier' at each pier, 'bracing' along each bracing panel tagged
@@ -549,7 +552,7 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "FLOOR on the same plan: suspended floors - bearers B as 'member' (on or beside the "
         "footing / pier lines that carry them), joists J as 'span' arrows (plus a 'member' on a "
         "representative joist), deck ledgers LD, deck bearers and joists, columns C; slab on "
-        "ground - slab extent as a 'cloud', thickenings / set-downs / wet areas. "
+        "ground - draw the slab as ONE 'member' tagged S1 running diagonally from one corner of the slab to the opposite corner (no cloud), thickenings / set-downs / wet areas. "
         "Callouts give each footing's size and reinforcement and the slab thickness, "
         "reinforcement and concrete (or floor framing fixings) as determined for this job. "
         "Keep the combined sheet readable: tag repeated items once and use 'TYPICAL.'. "
@@ -570,7 +573,8 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
     SheetKind.FLOOR: (
         "FLOOR FRAMING PLAN. Suspended floors: bearers B as 'member', joists J as 'span' "
         "arrows (plus a 'member' on a representative joist), deck ledgers LD, deck bearers and "
-        "joists, columns C, piers under bearers. Slab on ground: slab extent as a 'cloud', "
+        "joists, columns C, piers under bearers. Slab on ground: the slab as ONE 'member' tagged S1 "
+        "running diagonally corner to corner of the slab (no cloud), "
         "thickenings / set-downs / wet areas with callouts giving this job's slab thickness, "
         "reinforcement and concrete as determined. Schedule = 'FLOOR FRAMING SCHEDULE:' "
         "(include columns). Classification: 'AS2870 SITE CLASSIFICATION: <class>'."

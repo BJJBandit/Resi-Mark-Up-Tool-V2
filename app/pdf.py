@@ -671,6 +671,82 @@ def _cross(p1, p2, q1, q2):
     return p1 + d1 * t
 
 
+def _footing_house_style(sheet: MarkupSheet, page: pymupdf.Page, title: str) -> list[str]:
+    """Footing sheets as the engineers draw them, whatever Claude returned:
+    - an untagged member (Claude sometimes leaves the footing runs untagged, so they were
+      drawn as plain grey single lines) is tagged from the schedule: on the building's
+      perimeter it is the edge beam / strip footing (EB / SF), inside it the internal beam (IB);
+    - a cloud drawn round the slab (covering a large part of the plan) is replaced by the
+      slab's single diagonal line, tagged S1 (or the schedule's slab tag)."""
+    tags = [s.tag.strip().upper() for s in sheet.schedule]
+    edge = next((t for t in tags if _prefix(t) in ("EB", "SF")), "EB1")
+    internal = next((t for t in tags if _prefix(t) == "IB"), None)
+    specs = {s.tag.strip().upper(): s.text.upper() for s in sheet.schedule}
+    slab = next((t for t in tags if _prefix(t) == "S" and "SLAB" in specs.get(t, "")), "S1")
+    out = []
+    w, h = page.rect.width, page.rect.height
+    untagged = [i for i, e in enumerate(sheet.elements) if e.kind == "member" and not e.tag.strip()]
+    if untagged:
+        segs = [(pymupdf.Point(e.start.x * w, e.start.y * h), pymupdf.Point(e.end.x * w, e.end.y * h))
+                for e in sheet.elements
+                if e.kind == "member" and (not e.tag.strip() or _prefix(e.tag) in ("EB", "SF", "IB"))]
+
+        def ray_hits(p: pymupdf.Point, d: pymupdf.Point) -> bool:
+            for q1, q2 in segs:
+                e_ = q2 - q1
+                den = d.x * e_.y - d.y * e_.x
+                if abs(den) < 1e-9:
+                    continue
+                t = ((q1.x - p.x) * e_.y - (q1.y - p.y) * e_.x) / den
+                s_ = ((q1.x - p.x) * d.y - (q1.y - p.y) * d.x) / den
+                if t > 0 and -0.02 <= s_ <= 1.02:
+                    return True
+            return False
+
+        def open_to_outside(p: pymupdf.Point) -> bool:
+            """A point outside the footing outline can see out past every footing line in at
+            least one direction (a recess is open on one side); inside, every way is blocked."""
+            return any(not ray_hits(p, d) for d in (pymupdf.Point(1, 0), pymupdf.Point(-1, 0),
+                                                       pymupdf.Point(0, 1), pymupdf.Point(0, -1)))
+
+        named = {edge: 0, (internal or "IB1"): 0}
+        for i in untagged:
+            e = sheet.elements[i]
+            a, b = pymupdf.Point(e.start.x * w, e.start.y * h), pymupdf.Point(e.end.x * w, e.end.y * h)
+            if abs(b - a) < 1:
+                continue
+            u = (b - a) / abs(b - a)
+            n = pymupdf.Point(-u.y, u.x)
+            perimeter = False
+            for f in (0.25, 0.5, 0.75):  # a few points along it (a wall can be partly hidden)
+                p = a + (b - a) * f
+                if open_to_outside(p + n * 3) or open_to_outside(p - n * 3):
+                    perimeter = True
+                    break
+            tag = edge if perimeter else (internal or "IB1")
+            sheet.elements[i] = e.model_copy(update={"tag": tag})
+            named[tag] = named.get(tag, 0) + 1
+        done = ", ".join(f"{n} as {t}" for t, n in named.items() if n)
+        if done:
+            out.append(f"{title}: {len(untagged)} untagged footing line(s) were tagged from their position ({done}) - check")
+    r = sheet.plan_region
+    plan_area = max(1e-6, abs((r.x2 - r.x1) * (r.y2 - r.y1)))
+    big = [i for i, e in enumerate(sheet.elements) if e.kind == "cloud"
+           and abs((e.end.x - e.start.x) * (e.end.y - e.start.y)) > 0.2 * plan_area]
+    if big:
+        has_slab_line = any(e.kind == "member" and _prefix(e.tag) == "S" for e in sheet.elements)
+        first = sheet.elements[big[0]]
+        keep = [e for i, e in enumerate(sheet.elements) if i not in big]
+        if not has_slab_line:
+            x0_, x1_ = sorted((first.start.x, first.end.x))
+            y0_, y1_ = sorted((first.start.y, first.end.y))
+            keep.append(first.model_copy(update={"kind": "member", "tag": slab, "text": first.text,
+                                                 "start": Point(x=x0_, y=y1_), "end": Point(x=x1_, y=y0_)}))
+        sheet.elements = keep
+        out.append(f"{title}: slab cloud(s) replaced by the slab's diagonal line ({slab}), as the engineers draw it")
+    return out
+
+
 def _footing_bands(sheet: MarkupSheet, m: PlanMap) -> dict[int, list[tuple]]:
     """The lines for every strip footing / edge beam / internal beam, as the engineers draw
     them: two lines at the footing's width (to scale). Perimeter footings (SF / EB) have a
@@ -708,9 +784,11 @@ def _footing_bands(sheet: MarkupSheet, m: PlanMap) -> dict[int, list[tuple]]:
         info[id(e)] = (e, a, b, half, inward)
 
     out: dict[int, list[tuple]] = {}
+    ib_keys = []
     for key, (e, a, b, half, inward) in info.items():
         if _prefix(e.tag) == "IB":
             out[key] = [(a + inward * half, b + inward * half, True), (a - inward * half, b - inward * half, True)]
+            ib_keys.append(key)
             continue
         lines = []
         for sign, dashed in ((-1, False), (1, True)):  # outside face solid, inside face dashed
@@ -736,6 +814,27 @@ def _footing_bands(sheet: MarkupSheet, m: PlanMap) -> dict[int, list[tuple]]:
                 ends.append(new)
             lines.append((ends[0] or p, ends[1] or q, dashed))
         out[key] = lines
+    # Internal beams stop at the inside face of the perimeter footing (as drawn by the engineers).
+    inner = [l for k, ls in out.items() if k not in ib_keys for l in ls if l[2]]
+    for key in ib_keys:
+        half = info[key][3]
+        trimmed = []
+        for p, q, dashed in out[key]:
+            ends = [p, q]
+            for i, end in enumerate((p, q)):
+                best = None
+                for a2, b2, _ in inner:
+                    x = _cross(p, q, a2, b2)
+                    if x is None:
+                        continue
+                    d2 = b2 - a2
+                    t = ((x - a2).x * d2.x + (x - a2).y * d2.y) / max(1e-6, d2.x ** 2 + d2.y ** 2)
+                    if -0.05 <= t <= 1.05 and abs(x - end) <= 3 * half + 4 and (best is None or abs(x - end) < abs(best - end)):
+                        best = x
+                if best is not None:
+                    ends[i] = best
+            trimmed.append((ends[0], ends[1], dashed))
+        out[key] = trimmed
     return out
 
 def _scaled(m: PlanMap, mm: float, fallback: float, lo: float, hi: float) -> float:
@@ -754,7 +853,8 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
         if e.tag:
             _label(page, _offset_label_point(a, b), e.tag, 11, colour, "Member Tag")
     elif e.kind == "member":
-        width = 3.25 if _prefix(e.tag) in FOOTING_PREFIXES else 2.75
+        # Slab diagonal (S): a fine line, as the engineers draw it.
+        width = 1.25 if _prefix(e.tag) == "S" else 3.25 if _prefix(e.tag) in FOOTING_PREFIXES else 2.75
         _line(page, a, b, colour, width, f"Member {_prefix(e.tag) or ''}".strip(), content)
         if e.tag:
             _label(page, _offset_label_point(a, b), e.tag, 11, colour, "Member Tag")
@@ -1332,6 +1432,11 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     except Exception:
         pass
     m.specs = {s.tag.strip().upper(): s.text for s in sheet.schedule}
+    if kind in (SheetKind.FOUNDATION, SheetKind.FOOTINGS, SheetKind.FLOOR):
+        try:
+            warnings += _footing_house_style(sheet, src[idx], SHEET_TITLES[kind])
+        except Exception as e:
+            warnings.append(f"{dwg_no}: footing tags not checked ({e})")
     if kind == SheetKind.ARTICULATION:
         try:
             plan_page = src[plan_idx] if plan_idx is not None and 0 <= plan_idx < src.page_count else None

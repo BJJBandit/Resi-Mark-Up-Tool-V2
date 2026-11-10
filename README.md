@@ -261,7 +261,10 @@ hold even if Claude slips:
 - **Strip footings are drawn as bands, as the engineers draw them**: two lines at the footing
   width (to scale) - a solid line on the outside face and a dashed line on the inside face
   (worked out from the whole footing outline, so recesses come out right), with every corner
-  closed. Internal beams are two dashed lines.
+  closed. Internal beams are two dashed lines stopping at the inside face of the perimeter
+  footing. Footing runs Claude leaves untagged are tagged from their position (perimeter -
+  EB / SF, inside - IB, with a warning), and a slab is shown by one diagonal line (S1)
+  corner to corner, as the engineers draw it - a cloud drawn round the slab is replaced.
 - **British / Australian English only**: Claude is told to use it, and common American
   spellings on the sheets (centers, galvanized, vapor, color, curb ...) are corrected
   (`app/spelling.py`).
