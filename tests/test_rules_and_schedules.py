@@ -182,3 +182,39 @@ def test_text_boxes_carry_their_font_size_for_editors():
     obj = doc.xref_object(a.xref)
     assert "/DS (font: Helvetica,sans-serif 6.5pt; text-align:center; color:#FF0000)" in obj
     assert "/RC" in obj and "6.5pt" in obj.split("/RC", 1)[1]
+
+
+def test_australian_spelling():
+    from app.spelling import to_au
+    assert to_au("BOLTS AT 600 CENTERS, GALVANIZED, 0.2 MM VAPOR BARRIER") == "BOLTS AT 600 CENTRES, GALVANISED, 0.2 MM VAPOUR BARRIER"
+    assert to_au("Center of gray fiber") == "Centre of grey fibre"
+    assert to_au("PARAMETERS, SIZE, CTRS") == "PARAMETERS, SIZE, CTRS"  # whole words only
+
+
+def test_strip_footings_drawn_as_bands_with_closed_corners():
+    """Solid outer line + dashed inner line, inside found from the outline (recess comes
+    out right), corners closed."""
+    from app import pdf as P
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    m = P.PlanMap(page, Box(x1=0, y1=0, x2=1, y2=1))
+    m.mm_pt = 72 / 25.4 / 100 * m.scale
+
+    def seg(x1, y1, x2, y2):
+        return el("member", "SF1", x1 / 1190, y1 / 842, x2 / 1190, y2 / 842)
+
+    # outline with a recess in the top edge
+    s = sheet([seg(100, 100, 200, 100), seg(200, 100, 200, 150), seg(200, 150, 400, 150), seg(400, 150, 400, 100),
+               seg(400, 100, 500, 100), seg(500, 100, 500, 400), seg(500, 400, 100, 400), seg(100, 400, 100, 100)])
+    bands = P._footing_bands(s, m)
+    assert all(len(v) == 2 for v in bands.values())
+    recess_side = bands[id(s.elements[1])]  # vertical recess wall at x = 200: outside is to the right
+    solid = next(l for l in recess_side if not l[2])
+    dashed = next(l for l in recess_side if l[2])
+    assert solid[0].x > dashed[0].x
+    top_left = bands[id(s.elements[0])]
+    left = bands[id(s.elements[7])]
+    solid_top = next(l for l in top_left if not l[2])
+    solid_left = next(l for l in left if not l[2])
+    corner = min((solid_top[0], solid_top[1]), key=lambda p: p.x)
+    assert min(abs(corner - solid_left[0]), abs(corner - solid_left[1])) < 0.5  # outer corner closes

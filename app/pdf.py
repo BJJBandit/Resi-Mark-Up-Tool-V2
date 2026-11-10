@@ -598,6 +598,7 @@ class PlanMap:
         self.src_page = src_page
         self.mm_pt: float | None = None  # sheet points per real mm (set when the plan scale is known)
         self.specs: dict[str, str] = {}  # schedule text by tag
+        self.bands: dict[int, list[tuple]] = {}  # footing lines by id(element), see _footing_bands
 
     def spec(self, tag: str) -> str:
         return self.specs.get((tag or "").strip().upper(), "")
@@ -652,6 +653,91 @@ def _sizes(text: str) -> tuple[float | None, float | None]:
     return (float(d.group(1)) if d else None), side
 
 
+_WIDTH = re.compile(r"(\d{3,4})\s*(?:MM\s*)?(?:W\b|WIDE)", re.I)
+
+
+def _footing_width_pt(e: Element, m: PlanMap) -> float:
+    m_ = _WIDTH.search(f"{e.text} {m.spec(e.tag)}")
+    return _scaled(m, (float(m_.group(1)) if m_ else 450.0) / 2, 4.0, 2.0, 10.0)
+
+
+def _cross(p1, p2, q1, q2):
+    """Intersection of the infinite lines p1-p2 and q1-q2 (None if parallel)."""
+    d1, d2 = p2 - p1, q2 - q1
+    den = d1.x * d2.y - d1.y * d2.x
+    if abs(den) < 1e-6:
+        return None
+    t = ((q1.x - p1.x) * d2.y - (q1.y - p1.y) * d2.x) / den
+    return p1 + d1 * t
+
+
+def _footing_bands(sheet: MarkupSheet, m: PlanMap) -> dict[int, list[tuple]]:
+    """The lines for every strip footing / edge beam / internal beam, as the engineers draw
+    them: two lines at the footing's width (to scale). Perimeter footings (SF / EB) have a
+    solid line on the outside face and a dashed line on the inside face - which side is
+    inside is found from the whole footing outline, so recesses come out right - and each
+    corner is closed by meeting the neighbouring footing's lines. Internal beams (IB) are
+    two dashed lines. Returns {id(element): [(a, b, dashed), ...]}."""
+    segs = []
+    for e in sheet.elements:
+        if e.kind == "member" and _prefix(e.tag) in ("SF", "EB", "IB"):
+            a, b = m(e.start), m(e.end)
+            if abs(b - a) > 1:
+                segs.append((e, a, b, _footing_width_pt(e, m)))
+    perim = [(a, b) for e, a, b, _ in segs if _prefix(e.tag) in ("SF", "EB")]
+
+    def inside(pt):
+        n = 0
+        for p, q in perim:
+            if (p.y > pt.y) != (q.y > pt.y) and p.x + (pt.y - p.y) * (q.x - p.x) / (q.y - p.y) > pt.x:
+                n += 1
+        return n % 2 == 1
+
+    cx = sum(p.x + q.x for p, q in perim) / (2 * len(perim)) if perim else 0
+    cy = sum(p.y + q.y for p, q in perim) / (2 * len(perim)) if perim else 0
+    info = {}
+    for e, a, b, half in segs:
+        u = (b - a) / abs(b - a)
+        n = pymupdf.Point(-u.y, u.x)
+        mid = (a + b) * 0.5
+        side_in = [inside(mid + n * half * 1.5), inside(mid - n * half * 1.5)]
+        if side_in[0] != side_in[1]:
+            inward = n if side_in[0] else n * -1
+        else:  # open or odd outline: fall back to the outline's middle
+            inward = n if ((pymupdf.Point(cx, cy) - mid).x * n.x + (pymupdf.Point(cx, cy) - mid).y * n.y) >= 0 else n * -1
+        info[id(e)] = (e, a, b, half, inward)
+
+    out: dict[int, list[tuple]] = {}
+    for key, (e, a, b, half, inward) in info.items():
+        if _prefix(e.tag) == "IB":
+            out[key] = [(a + inward * half, b + inward * half, True), (a - inward * half, b - inward * half, True)]
+            continue
+        lines = []
+        for sign, dashed in ((-1, False), (1, True)):  # outside face solid, inside face dashed
+            off = inward * (half * sign)
+            p, q = a + off, b + off
+            ends = []
+            for end in (a, b):
+                new = None
+                for k2, (e2, a2, b2, half2, in2) in info.items():
+                    if k2 == key or _prefix(e2.tag) not in ("SF", "EB"):
+                        continue
+                    # A neighbour is any footing whose line passes close to this end (after
+                    # snapping, corners rarely meet exactly).
+                    d2 = b2 - a2
+                    t = max(0.0, min(1.0, ((end - a2).x * d2.x + (end - a2).y * d2.y) / max(1e-6, d2.x ** 2 + d2.y ** 2)))
+                    if abs(end - (a2 + d2 * t)) > max(6.0, 2.5 * max(half, half2)):
+                        continue
+                    off2 = in2 * (half2 * sign)
+                    x = _cross(p, q, a2 + off2, b2 + off2)
+                    if x is not None:
+                        new = x
+                        break
+                ends.append(new)
+            lines.append((ends[0] or p, ends[1] or q, dashed))
+        out[key] = lines
+    return out
+
 def _scaled(m: PlanMap, mm: float, fallback: float, lo: float, hi: float) -> float:
     """mm on site -> points on the sheet at the plan's scale, kept legible (lo..hi)."""
     return fallback if not m.mm_pt else min(hi, max(lo, mm * m.mm_pt))
@@ -661,7 +747,13 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
     a, b = m(e.start), m(e.end)
     colour = tag_colour(e.tag, e.kind)
     content = e.text or e.tag
-    if e.kind == "member":
+    if e.kind == "member" and id(e) in m.bands:
+        for p, q, dashed in m.bands[id(e)]:
+            _line(page, p, q, colour, 1.0 if dashed else 1.25, f"Member {_prefix(e.tag)}", content,
+                  dashes=[2, 2] if dashed else None)
+        if e.tag:
+            _label(page, _offset_label_point(a, b), e.tag, 11, colour, "Member Tag")
+    elif e.kind == "member":
         width = 3.25 if _prefix(e.tag) in FOOTING_PREFIXES else 2.75
         _line(page, a, b, colour, width, f"Member {_prefix(e.tag) or ''}".strip(), content)
         if e.tag:
@@ -1269,6 +1361,10 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         m.draw_background(page, src)
     except Exception as e:
         warnings.append(f"{dwg_no}: architectural background not shown ({e})")
+    try:
+        m.bands = _footing_bands(sheet, m)
+    except Exception as e:  # fall back to single footing lines
+        warnings.append(f"{dwg_no}: footings drawn as single lines ({e})")
     callouts: list[Element] = []
     off_plan: list[str] = []
     skipped = 0

@@ -255,6 +255,13 @@ hold even if Claude slips:
   set low for beta to control cost; up to 500). When several documents are picked
   automatically the cap is shared between them, and a typed range that goes over it is
   refused with a message.
+- **Strip footings are drawn as bands, as the engineers draw them**: two lines at the footing
+  width (to scale) - a solid line on the outside face and a dashed line on the inside face
+  (worked out from the whole footing outline, so recesses come out right), with every corner
+  closed. Internal beams are two dashed lines.
+- **British / Australian English only**: Claude is told to use it, and common American
+  spellings on the sheets (centers, galvanized, vapor, color, curb ...) are corrected
+  (`app/spelling.py`).
 - **Mark-ups are drawn roughly to scale.** Using the plan scale (printed, or inferred from
   the 90 mm stud walls), piers are drawn at their diameter from the schedule (450 dia by
   default), brick / block piers as a square of their size inside the bored pier, and columns

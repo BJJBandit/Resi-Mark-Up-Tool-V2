@@ -53,6 +53,8 @@ shown, say so and record a reasonable assumption rather than inventing detail.
 - Your output is a preliminary design aid. Anything that needs engineering judgement \
 or site confirmation goes in the concerns / engineer_checks lists.
 - Use metric units (mm, kPa, kN).
+- Write everything in British / Australian English (e.g. centres, metres, colour, galvanised,
+  fibre, aluminium, kerb, sulphate, vapour, levelling, organisation) - never American spelling.
 """
 
 SYSTEM += (
