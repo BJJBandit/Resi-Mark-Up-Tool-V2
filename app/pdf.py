@@ -1085,6 +1085,26 @@ def _reentrant_bars(page, sheet: MarkupSheet, m: "PlanMap") -> int:
     return len(corners)
 
 
+EXTERNAL_SLAB = re.compile(r"PORCH|PAVING|PATIO|ALFRESCO|VERANDAH|TERRACE|CARPORT|ENTRY SLAB|PATH", re.I)
+
+
+def _external_slab_note(sheet: MarkupSheet) -> bool:
+    """Office practice: external slabs (porch, paving, patio, carport ...) are separate from
+    the building slab, isolated with an expansion joint. Adds the note where the sheet has
+    one and no note already covers it. Returns True when it added the note."""
+    texts = [s.text for s in sheet.schedule if _prefix(s.tag) == "S"] + \
+        [e.text for e in sheet.elements if e.kind == "member" and _prefix(e.tag) == "S"]
+    if not any(EXTERNAL_SLAB.search(t or "") for t in texts):
+        return False
+    said = " ".join(sheet.notes + [e.text for e in sheet.elements if e.kind == "callout"]).upper()
+    if "ABELFLEX" in said or "EXPANSION JOINT" in said:
+        return False
+    sheet.notes.append("-EXTERNAL SLABS (PORCH / PAVING / PATIO / CARPORT) ARE SEPARATE FROM THE BUILDING SLAB: "
+                       "ISOLATE FROM BUILDING SLAB / FOOTING AND FROM POSTS / PIERS WITH 10 ABELFLEX EXPANSION "
+                       "JOINT AND MASTIC SEAL. PAVING SLABS SAW CUT OR TOOLED JOINTS AT MAX 1500 CTRS.")
+    return True
+
+
 def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
     a, b = m(e.start), m(e.end)
     colour = tag_colour(e.tag, e.kind)
@@ -1821,6 +1841,7 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         warnings += office_checks.pier_spacing(sheet, src[idx], scale_, SHEET_TITLES[kind])
         warnings += office_checks.schedule_practice(sheet, SHEET_TITLES[kind])
         warnings += office_checks.footing_practice(sheet, SHEET_TITLES[kind])
+        warnings += office_checks.external_slabs(sheet, SHEET_TITLES[kind])
     except Exception:
         pass
     if kind == SheetKind.WALLS:
@@ -1863,6 +1884,7 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
             _reentrant_bars(page, sheet, m)
         except Exception as e:
             warnings.append(f"{dwg_no}: re-entrant bars not drawn ({e})")
+        _external_slab_note(sheet)
     # Callouts first, so the tags keep clear of their boxes and leaders.
     try:
         unplaced = _draw_callouts(page, callouts, m, BAND_BOTTOM if meta.title_block else BAND_BOTTOM_NO_TB)

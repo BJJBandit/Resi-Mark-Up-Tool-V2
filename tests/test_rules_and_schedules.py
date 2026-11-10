@@ -370,3 +370,25 @@ def test_callouts_do_not_overlap_or_cross():
     for i, (p1, p2) in enumerate(legs):
         for p3, p4 in legs[i + 1:]:
             assert not (side(p3, p4, p1) * side(p3, p4, p2) < 0 and side(p1, p2, p3) * side(p1, p2, p4) < 0)
+
+
+def test_external_slabs_separate():
+    """Porch / paving slabs are separate from the house slab: the app adds the expansion
+    joint note and warns when the porch is wrapped in edge beams."""
+    from app import pdf as P
+
+    def seg(x1, y1, x2, y2, tag="EB1", text=""):
+        return Element(kind="member", tag=tag, start=Point(x=x1, y=y1), end=Point(x=x2, y=y2), text=text)
+
+    house = [seg(0.2, 0.4, 0.8, 0.4), seg(0.8, 0.4, 0.8, 0.8), seg(0.8, 0.8, 0.2, 0.8), seg(0.2, 0.8, 0.2, 0.4)]
+    porch = [seg(0.5, 0.3, 0.6, 0.3), seg(0.5, 0.3, 0.5, 0.4), seg(0.6, 0.3, 0.6, 0.4)]
+    sched = [ScheduleItem(tag="S1", text="100 THICK N25 SLAB"), ScheduleItem(tag="S2", text="100 THICK PORCH SLAB, SL82")]
+    s = sheet(house + porch + [seg(0.2, 0.8, 0.8, 0.4, "S1"), seg(0.5, 0.4, 0.6, 0.3, "S2")], sched)
+    assert P._external_slab_note(s)
+    assert any("ABELFLEX" in n for n in s.notes)
+    assert not P._external_slab_note(s)  # once only
+    assert office_checks.external_slabs(s, "F") and "S2" in office_checks.external_slabs(s, "F")[0]
+    s2 = sheet(house + [seg(0.2, 0.8, 0.8, 0.4, "S1"), seg(0.5, 0.4, 0.6, 0.3, "S2")], sched)
+    assert office_checks.external_slabs(s2, "F") == []  # separate porch: no warning
+    s3 = sheet(house + [seg(0.2, 0.8, 0.8, 0.4, "S1")], sched[:1])
+    assert not P._external_slab_note(s3)  # no external slab, no note

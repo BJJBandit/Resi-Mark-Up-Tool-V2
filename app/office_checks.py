@@ -107,3 +107,38 @@ def schedule_practice(sheet: MarkupSheet, title: str) -> list[str]:
         out.append(f"{title}: all {n_bracing} bracing panels are type {kinds.pop()} - office practice is a mix of "
                    "h(b) ply on external walls, d strap on internal walls and g short panels; confirm")
     return out
+
+
+_EXTERNAL = re.compile(r"PORCH|PAVING|PATIO|ALFRESCO|TERRACE|ENTRY SLAB|PATH", re.I)
+
+
+def external_slabs(sheet: MarkupSheet, title: str) -> list[str]:
+    """External slabs (porch / paving / patio) drawn wrapped in edge beams or strip footing,
+    or scheduled with one - office practice is a separate slab, isolated from the building
+    with an expansion joint, no edge beam unless a load needs one. Carports keep theirs."""
+    specs = {s.tag.strip().upper(): s.text.upper() for s in sheet.schedule}
+    flagged = []
+    for s in sheet.schedule:
+        if _prefix(s.tag) == "S" and _EXTERNAL.search(s.text) and re.search(r"EDGE BEAM|MONOLITHIC|\bEB\d", s.text, re.I):
+            flagged.append(s.tag.strip().upper())
+        if _prefix(s.tag) in ("EB", "SF") and _EXTERNAL.search(s.text):
+            flagged.append(s.tag.strip().upper())
+    beams = [e for e in sheet.elements if e.kind == "member" and _prefix(e.tag) in ("EB", "SF")]
+    for e in sheet.elements:
+        tag = e.tag.strip().upper()
+        if e.kind != "member" or _prefix(tag) != "S" or not _EXTERNAL.search(f"{e.text} {specs.get(tag, '')}"):
+            continue
+        x0, x1 = sorted((e.start.x, e.end.x))
+        y0, y1 = sorted((e.start.y, e.end.y))
+        tol = 0.006
+
+        def within(p):
+            return x0 - tol <= p.x <= x1 + tol and y0 - tol <= p.y <= y1 + tol
+
+        # Two or more footing runs round the slab: wrapped (one shared side is the house line).
+        if sum(within(b.start) and within(b.end) for b in beams) >= 2 and tag not in flagged:
+            flagged.append(tag)
+    if not flagged:
+        return []
+    return [f"{title}: external slab drawn or scheduled with an edge beam / footing ({', '.join(flagged)}) - "
+            "office practice is a separate slab isolated from the building with a 10 Abelflex expansion joint; confirm"]
