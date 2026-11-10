@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
 
-from . import claude, refstore, stock, usage
+from . import claude, refstore, spelling, stock, usage
 from .pdf import build_markup_pdf, extract_pages, format_ranges, render_pages
 from .refpages import MAX_REF_PAGES, RefDoc, prepare, report
 from .rules import apply_rules, check_geotech
@@ -275,6 +275,12 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
     sheet.schedule = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.schedule]
     result.sheet_warnings[kind] += stock.check(sheet.schedule, SHEET_TITLES[kind])
     sheet.legend = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.legend]
+    # Australian English on everything written on the sheet (catches American spellings).
+    sheet.notes = [spelling.to_au(n) for n in sheet.notes]
+    sheet.classification = spelling.to_au(sheet.classification)
+    sheet.elements = [e.model_copy(update={"text": spelling.to_au(e.text)}) for e in sheet.elements]
+    sheet.schedule = [s.model_copy(update={"text": spelling.to_au(s.text)}) for s in sheet.schedule]
+    sheet.legend = [s.model_copy(update={"text": spelling.to_au(s.text)}) for s in sheet.legend]
     # The engineer's own notes go on every sheet word for word (after the rules,
     # so they are never rewritten), skipping any Claude already wrote.
     have = {_norm(n) for n in sheet.notes}
