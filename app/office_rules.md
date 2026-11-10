@@ -27,7 +27,9 @@ Edit this file to change them - one rule per bullet.
 
 ## Footings (AS 2870)
 - Strip footings: 450 wide x min 450 deep with 4/L11 TM top and bottom, 50 cover (never narrower than 450).
-- Internal beams: 300 wide x min 450 deep with 3/L11 TM bottom (made 450 wide where AS 2870 gives 300 - firm rule).
+- The perimeter footing under a slab - whether called a strip footing or an edge beam (including a stiffened raft edge beam) - is always 450 wide x min 450 deep with 4/L11 TM TOP AND BOTTOM, never 3/L11 TM bottom only.
+- Concrete: N25 (25 MPa) for all footings, beams, piers and slabs unless the design needs higher.
+- Internal beams: min 400 deep with 3/L11 TM bottom, 50 cover (450 wide - the firm rule makes any 300 wide beam 450).
 - Bored piers: 450 dia at corners, steps and articulation joints and at 3000 centres under strip footings (closer only where the ground or loads need it - say why), 1/N16 central, lapped into the footing; founded as the geotechnical report requires (to rock / the stated bearing stratum).
 - Isolated brick piers under bearers: 230x230 up to 1500 high; 350x350 where higher; each on a 450 dia bored pier; at 3000 centres along each bearer (the bearer is sized to span 3000), plus at bearer ends and joins. Do not add piers closer than the office spacing unless a load needs one - say why.
 - Slab mesh: house slabs, paving / porch slabs and carport / garage slabs are 100 thick (unless the design needs more) with SL82 mesh top, 30 cover - not SL72.

@@ -56,6 +56,27 @@ def pier_spacing(sheet: MarkupSheet, page: pymupdf.Page, scale: int | None, titl
 _STEEL_DECK = re.compile(r"STEEL|FLAME.?SHIELD|\bRHS\b|\bPFC\b|\bUB\b|\bC\d{5}\b|PURLIN|ALUMIN", re.I)
 
 
+def footing_practice(sheet: MarkupSheet, title: str) -> list[str]:
+    """Perimeter footings with less than 4/L11TM top and bottom, and concrete below N25."""
+    out, weak, low = [], [], []
+    for s in sheet.schedule:
+        text, p = s.text.upper(), _prefix(s.tag)
+        if p in ("SF", "EB"):
+            bars = re.search(r"(\d+)\s*/\s*L(\d{2})\s*TM?", text)
+            both = re.search(r"TOP\s*(?:AND|&)\s*BOTTOM|T\s*&\s*B|\bT\s*AND\s*B\b", text)
+            if not bars or int(bars.group(1)) < 4 or int(bars.group(2)) < 11 or not both:
+                weak.append(s.tag)
+        g = re.search(r"\bN(\d{2})\b", text)
+        if g and int(g.group(1)) < 25:
+            low.append(f"{s.tag} (N{g.group(1)})")
+    if weak:
+        out.append(f"{title}: perimeter footing(s) without 4/L11TM top and bottom ({', '.join(weak)}) - office "
+                   "practice is 450 x min 450 with 4/L11TM top and bottom")
+    if low:
+        out.append(f"{title}: concrete below N25 ({', '.join(low)}) - office practice is N25 (25 MPa)")
+    return out
+
+
 def schedule_practice(sheet: MarkupSheet, title: str) -> list[str]:
     """Schedule items that depart from office practice: steel deck framing, lintels that
     aren't single F17 / LVL members, more than one deck joist type, a single bracing type."""

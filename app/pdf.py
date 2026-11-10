@@ -599,6 +599,10 @@ class PlanMap:
         self.mm_pt: float | None = None  # sheet points per real mm (set when the plan scale is known)
         self.specs: dict[str, str] = {}  # schedule text by tag
         self.bands: dict[int, list[tuple]] = {}  # footing lines by id(element), see _footing_bands
+        # Everything drawn on the plan, so tags can be placed clear of it (see _place_labels).
+        self.segments: list[tuple] = []  # (a, b) of every line / arrow drawn
+        self.boxes: list[pymupdf.Rect] = []  # piers, columns, clouds ...
+        self.label_requests: list[tuple] = []  # (shape, geometry, text, fs, colour, subject)
 
     def spec(self, tag: str) -> str:
         return self.specs.get((tag or "").strip().upper(), "")
@@ -628,6 +632,129 @@ class PlanMap:
 # ---------------------------------------------------------------------------
 # Plan elements
 # ---------------------------------------------------------------------------
+
+
+WHITE = (1.0, 1.0, 1.0)
+TAG_FS = float(os.environ.get("MARKUP_TAG_FONT_SIZE", "9"))  # tags on the plan (P1, EB1, L3 ...)
+
+
+def _seg_hits_rect(p: pymupdf.Point, q: pymupdf.Point, r: pymupdf.Rect) -> bool:
+    """Does the segment p-q pass through rect r (Liang-Barsky clip)?"""
+    t0, t1 = 0.0, 1.0
+    dx, dy = q.x - p.x, q.y - p.y
+    for pk, qk in ((-dx, p.x - r.x0), (dx, r.x1 - p.x), (-dy, p.y - r.y0), (dy, r.y1 - p.y)):
+        if abs(pk) < 1e-9:
+            if qk < 0:
+                return False
+            continue
+        t = qk / pk
+        if pk < 0:
+            t0 = max(t0, t)
+        else:
+            t1 = min(t1, t)
+        if t0 > t1:
+            return False
+    return True
+
+
+def _label_rect(text: str, fs: float, centre: pymupdf.Point) -> pymupdf.Rect:
+    """Tight box for a tag: the text's width and line height plus a small margin."""
+    w = _text_width(text, fs) + 3.5
+    h = fs * 1.18 + 1.5
+    return pymupdf.Rect(centre.x - w / 2, centre.y - h / 2, centre.x + w / 2, centre.y + h / 2)
+
+
+def _place_labels(page: pymupdf.Page, m: "PlanMap") -> int:
+    """Draw every tag (P1, EB1, L3 ...) in a tight box with a white background, in the first
+    nearby spot that doesn't overlap another tag, a member line, an arrow, a pier, a column or
+    a cloud. Tags are placed after everything else is drawn so they can see all of it. A tag
+    with no clear spot is left out if the same tag is already shown nearby on the sheet;
+    otherwise it goes where it overlaps least. Returns how many were left out."""
+    placed: list[pymupdf.Rect] = []
+    shown: dict[str, list[pymupdf.Point]] = {}
+    left_out = 0
+    area = m.placed  # the plan's area on the sheet
+
+    def hits(r: pymupdf.Rect) -> int:
+        pad = r + (-0.6, -0.6, 0.6, 0.6)
+        n = sum(1 for o in placed if pad.intersects(o))
+        n += sum(1 for o in m.boxes if pad.intersects(o))
+        n += sum(1 for p, q in m.segments if _seg_hits_rect(p, q, pad))
+        return n
+
+    def candidates(shape, geo, text, fs):
+        w0 = _label_rect(text, fs, pymupdf.Point(0, 0))
+        hw, hh = w0.width / 2, w0.height / 2
+        if shape == "line":
+            a, b = geo
+            d = b - a
+            length = abs(d) or 1.0
+            u = d / length
+            n = pymupdf.Point(-u.y, u.x)
+            if n.y > 0 or (abs(n.y) < 1e-9 and n.x < 0):
+                n = n * -1  # try above / right of the line first
+            ext = abs(n.x) * hw + abs(n.y) * hh
+            for t in (0.5, 0.35, 0.65, 0.2, 0.8, 0.1, 0.9):
+                base = a + d * t
+                for gap in (1.5, 5.0, 10.0, 18.0, 28.0):
+                    for side in (1, -1):
+                        yield base + n * (side * (ext + gap))
+        elif shape == "point":
+            c, r = geo
+            dirs = [(1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1)]
+            for gap in (1.5, 5.0, 10.0, 16.0, 24.0, 34.0):
+                for dx, dy in dirs:
+                    v = pymupdf.Point(dx, dy)
+                    v = v / abs(v)
+                    ext = abs(v.x) * hw + abs(v.y) * hh
+                    yield c + v * (r + gap + ext)
+        else:  # box (cloud): just outside one of its sides
+            r = geo
+            for gap in (2.0, 6.0, 12.0):
+                yield pymupdf.Point(r.x1 + gap + hw, r.y0 + hh)
+                yield pymupdf.Point(r.x0 + hw, r.y0 - gap - hh)
+                yield pymupdf.Point(r.x0 - gap - hw, r.y0 + hh)
+                yield pymupdf.Point(r.x0 + hw, r.y1 + gap + hh)
+
+    for shape, geo, text, fs, colour, subject in m.label_requests:
+        best, best_hits = None, None
+        for c in candidates(shape, geo, text, fs):
+            r = _label_rect(text, fs, c)
+            if not area.contains(r):
+                continue
+            n = hits(r)
+            if n == 0:
+                best, best_hits = r, 0
+                break
+            if best_hits is None or n < best_hits:
+                best, best_hits = r, n
+        if best is None:
+            continue
+        anchor = geo[0] if shape == "point" else ((geo[0] + geo[1]) * 0.5 if shape == "line" else geo.tl)
+        if best_hits and any(abs(anchor - p) < 120 for p in shown.get(text, [])):
+            left_out += 1  # no clear spot, and the same tag is already shown close by
+            continue
+        _text(page, best, text, fs, colour, subject, align=1, fill=WHITE)
+        placed.append(best)
+        # Moved away from what it names: a short leader line back to it.
+        if shape == "line":
+            a_, b_ = geo
+            d_ = b_ - a_
+            t_ = max(0.0, min(1.0, ((best.tl + best.br) * 0.5 - a_).x * d_.x / max(1e-6, d_.x ** 2 + d_.y ** 2)
+                               + ((best.tl + best.br) * 0.5 - a_).y * d_.y / max(1e-6, d_.x ** 2 + d_.y ** 2)))
+            target = a_ + d_ * t_
+        elif shape == "point":
+            c_, r_ = geo
+            v_ = (best.tl + best.br) * 0.5 - c_
+            target = c_ + (v_ / abs(v_)) * r_ if abs(v_) > 1e-6 else c_
+        else:
+            target = pymupdf.Point(min(max((best.x0 + best.x1) / 2, geo.x0), geo.x1),
+                                   min(max((best.y0 + best.y1) / 2, geo.y0), geo.y1))
+        near = pymupdf.Point(min(max(target.x, best.x0), best.x1), min(max(target.y, best.y0), best.y1))
+        if abs(near - target) > 6:
+            _line(page, near, target, colour, 0.5, "Tag Leader")
+        shown.setdefault(text, []).append(anchor)
+    return left_out
 
 
 def _offset_label_point(a: pymupdf.Point, b: pymupdf.Point, dist: float = 4) -> pymupdf.Point:
@@ -850,23 +977,27 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
         for p, q, dashed in m.bands[id(e)]:
             _line(page, p, q, colour, 1.0 if dashed else 1.25, f"Member {_prefix(e.tag)}", content,
                   dashes=[2, 2] if dashed else None)
+            m.segments.append((p, q))
         if e.tag:
-            _label(page, _offset_label_point(a, b), e.tag, 11, colour, "Member Tag")
+            m.label_requests.append(("line", (a, b), e.tag, TAG_FS, colour, "Member Tag"))
     elif e.kind == "member":
         # Slab diagonal (S): a fine line, as the engineers draw it.
         width = 1.25 if _prefix(e.tag) == "S" else 3.25 if _prefix(e.tag) in FOOTING_PREFIXES else 2.75
         _line(page, a, b, colour, width, f"Member {_prefix(e.tag) or ''}".strip(), content)
+        m.segments.append((a, b))
         if e.tag:
-            _label(page, _offset_label_point(a, b), e.tag, 11, colour, "Member Tag")
+            m.label_requests.append(("line", (a, b), e.tag, TAG_FS, colour, "Member Tag"))
     elif e.kind == "span":
         _arrow(page, a, b, colour, 1.0, "Span", content)
+        m.segments.append((a, b))
         if e.tag:
-            _label(page, _offset_label_point(a, b, 6), e.tag, 11, colour, "Member Tag")
+            m.label_requests.append(("line", (a, b), e.tag, TAG_FS, colour, "Member Tag"))
     elif e.kind == "bracing":
         dashed = e.tag.strip().lower().startswith("d")
         _line(page, a, b, TEAL, 1.5, "Bracing", content, dashes=[3, 3] if dashed else None)
+        m.segments.append((a, b))
         if e.tag:
-            _label(page, _offset_label_point(a, b, 3), e.tag, 7, TEAL, "Bracing Tag")
+            m.label_requests.append(("line", (a, b), e.tag, TAG_FS, TEAL, "Bracing Tag"))
     elif e.kind == "pier":
         dia, side = _sizes(f"{e.text} {m.spec(e.tag)}")
         r = _scaled(m, (dia or PIER_DEFAULT_MM) / 2, 6.0, 2.5, 16.0)
@@ -878,23 +1009,28 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
         if side and m.mm_pt:  # brick / block pier on the bored pier, drawn to its size
             h = _scaled(m, side / 2, 2.0, 1.2, 12.0)
             _rect(page, pymupdf.Rect(a.x - h, a.y - h, a.x + h, a.y + h), RED, 0.75, "Pier")
+        m.boxes.append(pymupdf.Rect(a.x - r, a.y - r, a.x + r, a.y + r))
         if e.tag:
-            _label(page, pymupdf.Point(a.x + r + 1, a.y - r + 2), e.tag, 9, RED, "Pier Tag")
+            m.label_requests.append(("point", (a, r), e.tag, TAG_FS, RED, "Pier Tag"))
     elif e.kind == "column":
         _, side = _sizes(f"{e.text} {m.spec(e.tag)}")
         h = _scaled(m, (side or 90.0) / 2, 2.5, 1.5, 8.0)
         _rect(page, pymupdf.Rect(a.x - h, a.y - h, a.x + h, a.y + h), colour, 0.5, "Column", fill=colour)
+        m.boxes.append(pymupdf.Rect(a.x - h, a.y - h, a.x + h, a.y + h))
         if e.tag:
-            _label(page, pymupdf.Point(a.x + h + 1.5, a.y - 3), e.tag, 11, colour, "Column Tag")
+            m.label_requests.append(("point", (a, h), e.tag, TAG_FS, colour, "Column Tag"))
     elif e.kind == "cloud":
         r = pymupdf.Rect(a, b).normalize()
         if r.width < 8 or r.height < 8:
             r = pymupdf.Rect(a.x - 12, a.y - 12, a.x + 12, a.y + 12)
         _rect(page, r, RED, 1.5, "Cloud", clouds=2)
+        # The cloud's scallops sit on its edge: keep tags clear of the edge, not the inside.
+        for p, q in ((r.tl, r.tr), (r.tr, r.br), (r.br, r.bl), (r.bl, r.tl)):
+            m.segments.append((p, q))
         if e.tag or e.text:
-            _label(page, pymupdf.Point(r.x1 + 2, r.y0), e.text or e.tag, 8, RED, "Cloud Tag")
+            m.label_requests.append(("box", r, e.text or e.tag, TAG_FS, RED, "Cloud Tag"))
     elif e.kind == "tag":
-        _label(page, a, e.text or e.tag, 11 if e.tag and not e.text else 8, colour, "Tag")
+        m.label_requests.append(("point", (a, 0.0), e.text or e.tag, TAG_FS, colour, "Tag"))
 
 
 # ---------------------------------------------------------------------------
@@ -1453,6 +1589,7 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         warnings += _spacing_check(sheet, src[idx], scale_, SHEET_TITLES[kind])
         warnings += office_checks.pier_spacing(sheet, src[idx], scale_, SHEET_TITLES[kind])
         warnings += office_checks.schedule_practice(sheet, SHEET_TITLES[kind])
+        warnings += office_checks.footing_practice(sheet, SHEET_TITLES[kind])
     except Exception:
         pass
     if kind == SheetKind.WALLS:
@@ -1487,6 +1624,10 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
                 skipped += 1
     if skipped:
         warnings.append(f"{dwg_no}: {skipped} plan element(s) could not be drawn")
+    try:
+        _place_labels(page, m)
+    except Exception as e:
+        warnings.append(f"{dwg_no}: tags not placed ({e})")
     dropped = sum(1 for e in sheet.elements if e.kind != "callout" and not (m.inside(e.start) and m.inside(e.end)))
     if dropped:
         warnings.append(f"{dwg_no}: {dropped} mark-up(s) fell outside the plan and were not drawn")

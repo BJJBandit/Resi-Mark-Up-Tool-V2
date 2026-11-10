@@ -244,3 +244,31 @@ def test_untagged_footing_lines_and_slab_cloud_follow_house_style():
     assert not any(e.kind == "cloud" for e in s.elements)
     assert any(e.kind == "member" and e.tag == "S1" for e in s.elements)
     assert len(warnings) == 2
+
+
+def test_footing_practice_checks():
+    s = sheet(schedule=[ScheduleItem(tag="EB1", text="450W X MIN 450 DEEP EDGE BEAM WITH 3/L11TM BOTTOM"),
+                        ScheduleItem(tag="SF1", text="450W X 450 DEEP STRIP FOOTING, 4/L11TM TOP AND BOTTOM"),
+                        ScheduleItem(tag="S1", text="100 THICK SLAB, SL82 TOP, N20 CONCRETE")])
+    text = " | ".join(office_checks.footing_practice(s, "T"))
+    assert "(EB1)" in text and "SF1" not in text.split("|")[0]
+    assert "S1 (N20)" in text
+
+
+def test_tags_do_not_overlap_and_use_9pt():
+    from app import pdf as P
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    m = P.PlanMap(page, Box(x1=0, y1=0, x2=1, y2=1))
+    for i in range(12):  # a tight row of piers, all tagged P1
+        c = pymupdf.Point(400 + i * 14, 400)
+        m.boxes.append(pymupdf.Rect(c.x - 5, c.y - 5, c.x + 5, c.y + 5))
+        m.label_requests.append(("point", (c, 5.0), "P1", P.TAG_FS, P.RED, "Pier Tag"))
+    m.segments.append((pymupdf.Point(380, 400), pymupdf.Point(580, 400)))
+    m.label_requests.append(("line", (pymupdf.Point(380, 400), pymupdf.Point(580, 400)), "EB1", P.TAG_FS, P.RED, "Member Tag"))
+    P._place_labels(page, m)
+    tags = [a for a in page.annots() if a.type[1] == "FreeText"]
+    rects = [a.rect for a in tags]
+    assert all(not r.intersects(q) for i, r in enumerate(rects) for q in rects[i + 1:])
+    assert all("/Helv 9 Tf" in doc.xref_object(a.xref) or "/Helv 9.0 Tf" in doc.xref_object(a.xref) for a in tags)
+    assert any(a.info["content"] == "EB1" for a in tags)

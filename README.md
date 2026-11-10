@@ -182,6 +182,9 @@ material, not a size to copy. Edit the file (one rule per bullet) to change them
 - **Masonry lintels** (brick veneer / masonry skin): steel by span - to 900 75x10 FL, 900-1500
   100x75x8 UA, 1500-3300 150x100x10 UA - min 150 bearing, in a masonry lintel schedule.
 - **Slab mesh:** house, paving / porch and carport slabs SL82 top with 30 cover (not SL72).
+- **Perimeter footing under a slab** (strip footing or edge beam): 450 x min 450, 4/L11TM top and
+  bottom - never 3/L11TM bottom only (checked: a warning names any that isn't). Internal beams
+  min 400 deep, 3/L11TM bottom. Concrete N25 (checked: anything below N25 is named).
 - **Carport / garage slabs:** no internal beam up to 8 m long both ways; internal beams only
   where a dimension is over 8 m or a load needs one, with the reason.
 
@@ -268,6 +271,10 @@ hold even if Claude slips:
 - **British / Australian English only**: Claude is told to use it, and common American
   spellings on the sheets (centers, galvanized, vapor, color, curb ...) are corrected
   (`app/spelling.py`).
+- **Tags (P1, EB1, L3 ...)** are 9 pt (`MARKUP_TAG_FONT_SIZE`) in tight boxes with a white
+  background, placed after everything else is drawn in the first nearby spot that overlaps no
+  other tag, member line, arrow, pier, column or cloud. A tag moved away from what it names gets
+  a short leader line; a repeated tag with no clear spot near one already shown is left out.
 - **Mark-ups are drawn roughly to scale.** Using the plan scale (printed, or inferred from
   the 90 mm stud walls), piers are drawn at their diameter from the schedule (450 dia by
   default), brick / block piers as a square of their size inside the bored pier, and columns
