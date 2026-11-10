@@ -353,7 +353,8 @@ def bracing_length_mm(tag: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
-def _find_wall(geo: Geometry, horizontal: bool, a0: float, a1: float, c0: float, across_tol: float = 8.0):
+def _find_wall(geo: Geometry, horizontal: bool, a0: float, a1: float, c0: float, across_tol: float = 8.0,
+               min_cover: float = 0.5):
     """(centre, thickness) of the wall running along [a0, a1] near c0, or None."""
     along = geo.walls[0] if horizontal else geo.walls[1]
     near = [w for w in along if abs(w[0] - c0) <= across_tol and w[2] > a0 and w[1] < a1]
@@ -366,7 +367,7 @@ def _find_wall(geo: Geometry, horizontal: bool, a0: float, a1: float, c0: float,
         score = cover - 0.02 * abs(centre - c0)
         if best is None or score > best[0]:
             best = (score, cover, centre, thick)
-    if best is None or best[1] < 0.5:
+    if best is None or best[1] < min_cover:
         return None
     return best[2], best[3]
 
@@ -437,10 +438,15 @@ def snap_bracing(geo: Geometry, p: pymupdf.Point, q: pymupdf.Point, length_pt: f
     pad = max(0.0, (25 - drawn) / 2)
     # Panels are drawn ~3 pt off the centreline, so allow for that plus Claude's error.
     wall = _find_wall(geo, horizontal, a0 - pad, a1 + pad, c0, across_tol=12.0)
-    if wall is None:
-        return None
-    c, thick = wall
     length = length_pt if length_pt and 0.4 <= length_pt / drawn <= 2.5 else drawn
+    if wall is None:
+        # Drawn across a doorway (e.g. a cavity slider's opening): look along the same wall
+        # line either side and slide it onto the solid wall beside the opening.
+        reach = max(30.0, 2.0 * length)
+        wall = _find_wall(geo, horizontal, a0 - reach, a1 + reach, c0, across_tol=12.0, min_cover=0.3)
+        if wall is None:
+            return None
+    c, thick = wall
     mid = (a0 + a1) / 2
     note = ""
     run = _run(geo, horizontal, c, mid)
