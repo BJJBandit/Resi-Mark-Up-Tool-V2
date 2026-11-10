@@ -523,3 +523,31 @@ def test_calc_sheet_has_no_title_block():
     P._calc_sheet(out, meta, calcs.lines(GeoStub(), _calc_design(), [], []))
     texts = " ".join(a.info["content"] for a in out[0].annots())
     assert "SSK-C1" not in texts and "Job No" not in texts
+
+
+def test_short_spec_keeps_abbreviations():
+    assert short_spec("DIAGONAL 30x0.8 G.I. STRAP BRACING BOTH WAYS. NAILED TO PLATES") == \
+        "DIAGONAL 30x0.8 G.I. STRAP BRACING BOTH WAYS"
+
+
+def test_calc_sheet_drops_claude_bracing_item_and_long_basis():
+    from app import calcs
+    from app.schemas import CalcItem
+    d = _calc_design()
+    d.calculations = [CalcItem(topic="Racking / bracing check", basis="x", working="provided 30.6", result="ok"),
+                      CalcItem(topic="Lintel L3", basis="tables", working="span 2.1 → L3 ≈ ok", result="140x45")]
+    d.external_wall_type = "Brick veneer: 110 brick + cavity + 90 timber stud frame (250 overall). Vapour membrane."
+    text = "\n".join(calcs.lines(GeoStub(), d, [], []))
+    assert "PROVIDED 30.6" not in text and "LINTEL L3" in text
+    assert "SPAN 2.1 -> L3 ~ OK" in text and "VAPOUR" not in text
+
+
+def test_units_case_and_no_memory():
+    from app.spelling import tidy
+    assert tidy("-H(B) 6.00 KN/M (AS 1684.2 TABLE 8.18 (H) - TABLE NOT SUPPLIED, VALUE FROM MEMORY, CONFIRM)") == \
+        "-H(B) 6.00 kN/m (AS 1684.2 TABLE 8.18 (H) - ENGINEER TO CONFIRM)"
+    out = tidy("-WALLS 14.1 X 1.2 = 16.9 M2. 450W X 450 DEEP, 4/L11 TM, N25 (25 MPA), YS 20-40 MM, "
+               "4/M12 CHEMSET, 2 M12 RODS, CLASS M, 0.8 KPA, 3.4 M SPAN, RACKING (KN)")
+    assert "14.1 x 1.2 = 16.9 m²" in out and "450W x 450" in out and "25 MPa" in out and "20-40 mm" in out
+    assert "4/M12" in out and "2 M12 RODS" in out and "CLASS M," in out and "0.8 kPa" in out
+    assert "3.4 m SPAN" in out and "(kN)" in out and "N25" in out and "L11" in out

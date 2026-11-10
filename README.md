@@ -318,6 +318,13 @@ hold even if Claude slips:
   neighbours whose leaders would cross swap places, and a callout moves to another band if
   that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
   after the callouts, so they keep clear of the boxes and leaders too.
+- **Units in their SI case, nothing 'from memory'**: the sheets are upper case, but units keep
+  their case (450 mm, 3.4 m, 36.3 m², 27 kN, 6.0 kN/m, 0.8 kPa, 25 MPa; dimensions 90x35) -
+  Claude is told so and the app corrects any that slip through (only after a number, so M12
+  bolts, N25 concrete and L11 bars are untouched). Notes, callouts, schedules and the
+  calculation sheet never say a value is 'from memory' or a table 'not supplied': they cite
+  the standard and write ENGINEER TO CONFIRM where a value needs checking. Your own sheet
+  notes are added word for word.
 - **British / Australian English only**: Claude is told to use it, and common American
   spellings on the sheets (centers, galvanized, vapor, color, curb ...) are corrected
   (`app/spelling.py`).

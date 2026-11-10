@@ -90,7 +90,7 @@ class RackingCase(Strict):
     area_m2: float
     pressure_kpa: float = Field(description="Wind pressure on the area of elevation (kPa).")
     pressure_ref: str = Field(description="Table and inputs, e.g. 'AS 1684.2 Table 8.2: N2, W 8.0 m, pitch 22.5, "
-                              "hip roof'. Say if the table was not supplied (value from memory - confirm).")
+                              "hip roof'. Where the table was not supplied add 'engineer to confirm' (never 'from memory').")
     force_kn: float = Field(description="Racking force = area x pressure (kN).")
 
 
@@ -98,7 +98,8 @@ class BracingCapacity(Strict):
     type: str = Field(description="Bracing type label as used on the legend and tags, e.g. 'h(b)', 'g', 'd'.")
     description: str
     kn_per_m: float = Field(description="Capacity per metre of bracing wall (kN/m).")
-    ref: str = Field(description="e.g. 'AS 1684.2 Table 8.18 (h)'; say if the table was not supplied.")
+    ref: str = Field(description="e.g. 'AS 1684.2 Table 8.18 (h)'; where the table was not supplied add "
+                     "'engineer to confirm' (never 'from memory').")
 
 
 class CalcItem(Strict):

@@ -97,6 +97,12 @@ _SPACING = re.compile(r"\b(?:AT\s+)?(?:MAX\.?\s+)?\d{3,4}\s*(?:MM\s*)?(?:CTRS|CE
 _REO = re.compile(r"\b\d+\s*/\s*[LN]\d{2}\s*TM?\b(?:\s+(?:TOP\s*(?:AND|&)\s*BOTTOM|TOP|BOTTOM|T&B))?|\bSL\d{2,3}\b(?:\s+TOP)?|\b[LN]\d{2}\s+(?:LIGS|LIGATURES)\b[^,.;]*", re.I)
 
 
+def _abbrev(before: str) -> bool:
+    """The full stop ending 'before' belongs to an abbreviation ('G.I', 'CL', 'NO'), not a sentence."""
+    word = before.split()[-1] if before.split() else ""
+    return "." in word or (word.isalpha() and len(word) <= 2) or word.upper() in ("CL", "NO", "APPROX", "MIN", "MAX")
+
+
 def short_spec(text: str) -> str:
     """Schedule / legend text cut to the member type (size, grade, member, reinforcement)
     and its spacing: everything after the first note break ('. ', ' - ', ' (', '; ') goes,
@@ -107,7 +113,8 @@ def short_spec(text: str) -> str:
         i = t.find(sep)
         # Too early to be the end of the member type ('TYPE (h) ...'), or a short code in
         # brackets that IS part of the type (one or two letters) ('PANEL TYPE (h)', 'TYPE (g)'): keep looking.
-        while i != -1 and (i < 15 or (sep == " (" and re.match(r" \([A-Za-z]{1,2}\)", t[i:]))):
+        while i != -1 and (i < 15 or (sep == " (" and re.match(r" \([A-Za-z]{1,2}\)", t[i:]))
+                           or (sep == ". " and _abbrev(t[:i]))):
             i = t.find(sep, i + 1)
         if 0 < i < cut:
             cut = i
@@ -376,11 +383,12 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
     result.sheet_warnings[kind] += stock.check(sheet.schedule, SHEET_TITLES[kind])
     sheet.legend = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.legend]
     # Australian English on everything written on the sheet (catches American spellings).
-    sheet.notes = [spelling.to_au(n) for n in sheet.notes]
-    sheet.classification = spelling.to_au(sheet.classification)
-    sheet.elements = [e.model_copy(update={"text": spelling.to_au(e.text)}) for e in sheet.elements]
-    sheet.schedule = [s.model_copy(update={"text": spelling.to_au(s.text)}) for s in sheet.schedule]
-    sheet.legend = [s.model_copy(update={"text": spelling.to_au(s.text)}) for s in sheet.legend]
+    # Units in their SI case (450 mm, 27 kN, 0.8 kPa) and no value cited 'from memory'.
+    sheet.notes = [spelling.tidy(n) for n in sheet.notes]
+    sheet.classification = spelling.tidy(sheet.classification)
+    sheet.elements = [e.model_copy(update={"text": spelling.tidy(e.text)}) for e in sheet.elements]
+    sheet.schedule = [s.model_copy(update={"text": spelling.tidy(s.text)}) for s in sheet.schedule]
+    sheet.legend = [s.model_copy(update={"text": spelling.tidy(s.text)}) for s in sheet.legend]
     # The engineer's own notes go on every sheet word for word (after the rules,
     # so they are never rewritten), skipping any Claude already wrote.
     have = {_norm(n) for n in sheet.notes}
