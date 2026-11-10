@@ -417,3 +417,25 @@ def test_window_beside_cavity_line_found():
     gaps = [(new[i][1], new[i + 1][0]) for i in range(len(new) - 1)]
     assert len(old) == 1  # the window reads as solid wall without glazing
     assert any(178 <= a <= 182 and 195 <= b <= 199 for a, b in gaps)
+
+
+def test_bracing_in_doorway_moves_onto_wall():
+    """A bracing panel Claude draws right across a doorway (a cavity slider's opening, so
+    no wall under it at all) slides onto the solid wall beside it (markup 1, 820 CSD)."""
+    from app.snap import Geometry, snap_bracing
+    doc = pymupdf.open()
+    page = doc.new_page(width=600, height=600)
+    sh = page.new_shape()
+    for x in (300, 302.3):  # internal wall faces, doorway between y 220 and 242
+        sh.draw_line((x, 150), (x, 220))
+        sh.draw_line((x, 242), (x, 330))
+    for y in (220, 242):  # jambs
+        sh.draw_line((300, y), (302.3, y))
+    sh.finish(color=(0, 0, 0), width=0.5)
+    sh.commit()
+    geo = Geometry(page)
+    r = snap_bracing(geo, pymupdf.Point(298, 220), pymupdf.Point(298, 242), 25.5)
+    assert r is not None and "moved" in r[2]
+    lo, hi = sorted((r[0].y, r[1].y))
+    assert hi <= 220.5 or lo >= 241.5  # off the doorway
+    assert abs((hi - lo) - 25.5) < 0.5
