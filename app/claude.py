@@ -52,7 +52,11 @@ shown, say so and record a reasonable assumption rather than inventing detail.
 - Quote clause / table / figure references where you rely on them.
 - Your output is a preliminary design aid. Anything that needs engineering judgement \
 or site confirmation goes in the concerns / engineer_checks lists.
-- Use metric units (mm, kPa, kN).
+- Use metric units (mm, m, m², kN, kN/m, kPa, MPa) and always write them in their correct SI case,
+  even in UPPERCASE notes: '450 mm', '27 kN', '0.8 kPa', '36.3 m²', '25 MPa' (dimensions as '90x35').
+- Never write that a value is 'from memory' or that a table / standard was 'not supplied' - in
+  notes, callouts, schedules or the calculations. Cite the standard clause / table; where a
+  value needs checking because the standard wasn't supplied, write 'ENGINEER TO CONFIRM'.
 - Write everything in British / Australian English (e.g. centres, metres, colour, galvanised,
   fibre, aluminium, kerb, sulphate, vapour, levelling, organisation) - never American spelling.
 """
@@ -448,7 +452,8 @@ def assess_design(
                 "width, roof pitch and roof form, and force = area x pressure; state which walls on the plan "
                 "resist it (they run parallel to the wind). Give the Table 8.18 capacity (kN/m) of every "
                 "bracing type you will use, with the same labels as the legend (e.g. h(b), g, d). Use the "
-                "supplied standard's values; if it isn't supplied, say so in the reference.\n"
+                "supplied standard's values; if it isn't supplied, cite the table and add 'engineer to confirm' "
+                "(never 'from memory').\n"
                 "7. Floor framing or slab.\n"
                 "8. Cross-reference the plan views with the elevation views for every window / door: "
                 "match each elevation to its wall, and check each opening's code, size and position "
@@ -529,7 +534,8 @@ specification just because it looks typical.
   spacing (for footings / slabs: size and reinforcement) - no locations, spans, roof load
   widths, fixings, tie-downs, reasons or notes in the schedule; those go in callouts / notes.
 - Notes: UPPERCASE, each starting with '-': the general notes this sheet needs for this job.
-- All text UPPERCASE. Australian spelling and units (mm, kPa, kN)."""
+- All text UPPERCASE except units, which keep their SI case (450 mm, 3.4 m, 27 kN, 6.0 kN/m,
+  0.8 kPa, 36.3 m², 25 MPa). Australian spelling. Never cite a value as 'from memory'."""
 
 SHEET_BRIEFS: dict[SheetKind, str] = {
     SheetKind.LOAD_PATHS: (

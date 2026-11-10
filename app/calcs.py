@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from . import spelling
 from .schemas import DesignAssessment, GeotechReview, MarkupSheet
 from .snap import bracing_length_mm
 
@@ -137,8 +138,8 @@ def lines(geotech: GeotechReview, design: DesignAssessment, checks: list[Directi
           f"{_brief(design.roof_construction, 50)}, PITCH {_brief(design.roof_pitch, 25)}, "
           f"{_brief(design.roof_cladding, 40)}, WALL HEIGHT {_brief(design.wall_height, 30)}.",
           f"-GOVERNING STANDARD: {_brief(design.governing_standard, 140)}.",
-          "-STANDARDS / GUIDES SUPPLIED: " + ("; ".join(references) if references else "NONE - VALUES FROM "
-                                             "THE STANDARDS AS KNOWN; CONFIRM AGAINST THE CURRENT EDITIONS") + ".",
+          "-STANDARDS / GUIDES SUPPLIED: " + ("; ".join(references) if references else "NONE - VALUES TO THE "
+                                             "CURRENT EDITIONS OF THE STANDARDS, ENGINEER TO CONFIRM") + ".",
           ""]
     L += METHOD + [""]
     L += ["RACKING FORCES", ""]
@@ -179,4 +180,4 @@ def lines(geotech: GeotechReview, design: DesignAssessment, checks: list[Directi
         for c in members:
             L += [c.topic, f"-BASIS: {c.basis}", f"-WORKING: {c.working}", f"-RESULT: {c.result}", ""]
     L += ["PRELIMINARY CALCULATIONS FOR THE MARK-UP - TO BE VERIFIED BY THE DESIGN ENGINEER."]
-    return [_plain(x).upper() for x in L]
+    return [spelling.tidy(_plain(x).upper()) for x in L]
