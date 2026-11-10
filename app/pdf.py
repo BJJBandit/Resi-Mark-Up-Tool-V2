@@ -1386,9 +1386,9 @@ def _is_lintel(e: Element) -> bool:
 
 
 def _lintel_from_codes(p: pymupdf.Point, q: pymupdf.Point, coded) -> tuple[pymupdf.Point, pymupdf.Point] | None:
-    """Fallback lintel snap: onto the architect's coded opening (A1812 ...) it sits
-    over - same wall direction, within reach across, overlapping it. Bearing ~10%
-    of the span (max 3 pt) each side."""
+    """Lintel snap: onto the architect's coded opening (A1812 ...) it sits over - same
+    wall direction, within reach across, overlapping it or within about an opening
+    width along (the nearest wins). Bearing ~10% of the span (max 3 pt) each side."""
     horiz = abs(q.x - p.x) >= abs(q.y - p.y)
     lo, hi = sorted((p.x, q.x) if horiz else (p.y, q.y))
     c0 = (p.y + q.y) / 2 if horiz else (p.x + q.x) / 2
@@ -1398,7 +1398,8 @@ def _lintel_from_codes(p: pymupdf.Point, q: pymupdf.Point, coded) -> tuple[pymup
             continue
         width = o.a1 - o.a0
         overlap = min(hi, o.a1) - max(lo, o.a0)
-        if overlap < 0.3 * width:
+        # Overlapping it, or just off it (Claude's placement can be a window-width out).
+        if overlap < 0.3 * width and abs((lo + hi) / 2 - (o.a0 + o.a1) / 2) > width + 6:
             continue
         score = abs((lo + hi) / 2 - (o.a0 + o.a1) / 2) + abs(o.c - c0)
         if best is None or score < best[0]:

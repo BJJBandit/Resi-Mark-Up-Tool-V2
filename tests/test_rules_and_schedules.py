@@ -439,3 +439,23 @@ def test_bracing_in_doorway_moves_onto_wall():
     lo, hi = sorted((r[0].y, r[1].y))
     assert hi <= 220.5 or lo >= 241.5  # off the doorway
     assert abs((hi - lo) - 25.5) < 0.5
+
+
+def test_missing_piers_warned():
+    """Piers scheduled but hardly any drawn along a long perimeter footing (markup 2)."""
+    doc = pymupdf.open()
+    page = doc.new_page(width=1000, height=1000)
+
+    def el(kind, tag, x1, y1, x2=None, y2=None):
+        x2, y2 = (x1, y1) if x2 is None else (x2, y2)
+        return Element(kind=kind, tag=tag, start=Point(x=x1 / 1000, y=y1 / 1000), end=Point(x=x2 / 1000, y=y2 / 1000), text="")
+
+    eb = [el("member", "EB1", 100, 100, 400, 100), el("member", "EB1", 400, 100, 400, 400),
+          el("member", "EB1", 400, 400, 100, 400), el("member", "EB1", 100, 400, 100, 100)]
+    sched = [ScheduleItem(tag="P1", text="450 DIA BORED PIER"), ScheduleItem(tag="EB1", text="450 X 450 EDGE BEAM")]
+    few = sheet(eb + [el("pier", "P1", 100, 100)], sched)
+    assert any("only 1 pier" in w for w in office_checks.pier_spacing(few, page, 100, "F"))
+    piers = [el("pier", "P1", x, y) for x in range(100, 401, 75) for y in (100, 400)] + \
+        [el("pier", "P1", x, y) for x in (100, 400) for y in range(175, 400, 75)]
+    many = sheet(eb + piers, sched)
+    assert not any("only" in w for w in office_checks.pier_spacing(many, page, 100, "F"))
