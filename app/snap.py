@@ -387,9 +387,12 @@ def _run(geo: Geometry, horizontal: bool, c: float, at: float) -> tuple[float, f
     return best[0], best[1]
 
 
-def _solid(geo: Geometry, horizontal: bool, c: float, thick: float, lo: float, hi: float) -> list[tuple[float, float]]:
+def _solid(geo: Geometry, horizontal: bool, c: float, thick: float, lo: float, hi: float,
+           glazing: bool = False) -> list[tuple[float, float]]:
     """Stretches of [lo, hi] that are solid wall: both faces drawn and no window
-    glazing line between them (doors show as gaps in the faces)."""
+    glazing line between them (doors show as gaps in the faces). With glazing=True a
+    cavity line drawn along the wall is dropped on its own, keeping the short glazing
+    lines of a window beside it (else such a window reads as solid wall)."""
     faces = geo.h if horizontal else geo.v
     f1 = [s for s in faces if abs(s.c - (c - thick / 2)) <= 0.8 and s.b > lo and s.a < hi]
     f2 = [s for s in faces if abs(s.c - (c + thick / 2)) <= 0.8 and s.b > lo and s.a < hi]
@@ -398,7 +401,13 @@ def _solid(geo: Geometry, horizontal: bool, c: float, thick: float, lo: float, h
     step = 0.5
     xs = [lo + i * step for i in range(int((hi - lo) / step) + 1)]
     # Cavity / framing lines drawn along the whole wall are construction, not windows.
-    if mid and sum(cov(mid, x) for x in xs) > 0.7 * len(xs):
+    if glazing:
+        groups: dict[float, list] = {}
+        for s in mid:
+            key = next((k for k in groups if abs(k - s.c) <= 0.15), s.c)
+            groups.setdefault(key, []).append(s)
+        mid = [s for g in groups.values() if sum(cov(g, x) for x in xs) <= 0.5 * len(xs) for s in g]
+    elif mid and sum(cov(mid, x) for x in xs) > 0.7 * len(xs):
         mid = []
     out: list[tuple[float, float]] = []
     start = None

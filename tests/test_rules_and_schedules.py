@@ -392,3 +392,28 @@ def test_external_slabs_separate():
     assert office_checks.external_slabs(s2, "F") == []  # separate porch: no warning
     s3 = sheet(house + [seg(0.2, 0.8, 0.8, 0.4, "S1")], sched[:1])
     assert not P._external_slab_note(s3)  # no external slab, no note
+
+
+def test_window_beside_cavity_line_found():
+    """A window in a wall with a cavity line drawn along it (broken only at the window)
+    shows as an opening when its short glazing lines are kept (A1806, Schouten St)."""
+    from app.snap import Geometry, _solid
+    doc = pymupdf.open()
+    page = doc.new_page(width=600, height=400)
+    sh = page.new_shape()
+    for y in (100, 106):  # wall faces, 0-300 continuous except the window frame
+        sh.draw_line((50, y), (350, y))
+    sh.draw_line((50, 102.5), (180, 102.5))  # cavity line, broken at the window
+    sh.draw_line((197, 102.5), (350, 102.5))
+    for y in (101.8, 103.2, 104.4):  # short glazing lines in the window
+        sh.draw_line((180, y), (197, y))
+    for x in (180, 197):  # jambs
+        sh.draw_line((x, 100), (x, 106))
+    sh.finish(color=(0, 0, 0), width=0.5)
+    sh.commit()
+    geo = Geometry(page)
+    old = _solid(geo, True, 103, 6, 50, 350)
+    new = _solid(geo, True, 103, 6, 50, 350, glazing=True)
+    gaps = [(new[i][1], new[i + 1][0]) for i in range(len(new) - 1)]
+    assert len(old) == 1  # the window reads as solid wall without glazing
+    assert any(178 <= a <= 182 and 195 <= b <= 199 for a, b in gaps)

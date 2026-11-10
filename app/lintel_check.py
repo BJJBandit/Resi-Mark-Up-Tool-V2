@@ -91,18 +91,24 @@ def find_openings(page: pymupdf.Page, geo: Geometry, scale: int) -> list[Opening
                       if lo - 5 <= along <= hi + 5 and abs(across - c) <= 25)
         if not near:
             continue
-        found = None
-        for _, c, lo, hi, t in near:  # nearest wall that has an opening of this width here
-            solid = _solid(geo, horizontal, c, t, lo, hi)
-            if sum(e - s for s, e in solid) < 0.4 * (hi - lo):
-                continue
-            gaps = [(solid[i][1], solid[i + 1][0]) for i in range(len(solid) - 1)]
-            gaps = [g for g in gaps if 0.5 * width_pt <= g[1] - g[0] <= 1.6 * width_pt
-                    and abs((g[0] + g[1]) / 2 - along) <= max(20.0, width_pt)]
-            if gaps:
-                g = min(gaps, key=lambda g: abs((g[0] + g[1]) / 2 - along))
-                found = (c, g[0], g[1])
-                break
+        # The opening of this width nearest the label, on any wall beside it (the nearest
+        # line pair can be a window frame or eaves line, whose gaps are wall junctions).
+        best = None
+        for dist, c, lo, hi, t in near:
+            gaps = []
+            # A window beside a cavity line shows only with glazing lines kept; those gaps
+            # must match the coded width closely (a sliding door's fixed panel reads solid).
+            for glazing, (wlo, whi) in ((False, (0.5, 1.6)), (True, (0.85, 1.25))):
+                solid = _solid(geo, horizontal, c, t, lo, hi, glazing)
+                if sum(e - s for s, e in solid) >= 0.4 * (hi - lo):
+                    gaps += [(solid[i][1], solid[i + 1][0], wlo, whi) for i in range(len(solid) - 1)]
+            for g in gaps:
+                off = abs((g[0] + g[1]) / 2 - along)
+                if g[2] * width_pt <= g[1] - g[0] <= g[3] * width_pt and off <= max(20.0, width_pt):
+                    score = off + 0.25 * dist + 1.5 * abs((g[1] - g[0]) - width_pt)
+                    if best is None or score < best[0]:
+                        best = (score, c, g[0], g[1])
+        found = best[1:] if best else None
         if found:
             c, a0, a1 = found
         else:  # fallback: nearest wall, opening centred on the label
