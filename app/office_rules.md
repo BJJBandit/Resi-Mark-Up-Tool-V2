@@ -18,6 +18,7 @@ Edit this file to change them - one rule per bullet.
   - Trusses cantilevering over a recessed wall (eaves overhang / truss cantilever): keep the normal lintel size for the wall (do not upsize for the cantilever) and add the callout 'TRUSS MANUFACTURER TO CONFIRM ABILITY FOR TRUSSES TO CANTILEVER.'
 - Where one member runs continuously over several openings or carries a carport / verandah along a wall, use a continuous lintel / ledger (e.g. 190x45 F17/LVL CONTINUOUS LINTEL/LEDGER) rather than separate short lintels.
 - Jamb studs: min F17 studs to the sides of openings over 1500 wide; 2/90x35 F17 nail-laminated double studs (DS) to the sides of openings over 2000 wide and under girder / concentrated loads. All studs over 2600 high are F17.
+- Masonry lintels (brick veneer / masonry outer skin over every window and door): steel, by clear opening span - up to 900: 75x10 FL; 900 to 1500: 100x75x8 UA; 1500 to 3300: 150x100x10 UA; over 3300: by calculation (engineer check). All masonry lintels bear min 150 into the brickwork each end. Show them in a 'MASONRY LINTEL SCHEDULE' (span / steel size) with that bearing note, in addition to the timber lintels in the frame.
 - Lintel tie-down: typical tie-down type (a) to the sides of lintels - 30x0.8 G.I. strap with 6/30x2.8 dia nails each end of the strap and M10 bolts to floor; double strap tie-down type (b) and M12 bolt to floor framing for lintels spanning 1800 and over.
 
 ## Bracing
@@ -29,6 +30,7 @@ Edit this file to change them - one rule per bullet.
 - Internal beams: 300 wide x min 450 deep with 3/L11 TM bottom (made 450 wide where AS 2870 gives 300 - firm rule).
 - Bored piers: 450 dia at corners, steps and articulation joints and at 3000 centres under strip footings (closer only where the ground or loads need it - say why), 1/N16 central, lapped into the footing; founded as the geotechnical report requires (to rock / the stated bearing stratum).
 - Isolated brick piers under bearers: 230x230 up to 1500 high; 350x350 where higher; each on a 450 dia bored pier; at 3000 centres along each bearer (the bearer is sized to span 3000), plus at bearer ends and joins. Do not add piers closer than the office spacing unless a load needs one - say why.
+- Slab mesh: house slabs, paving / porch slabs and carport / garage slabs are 100 thick (unless the design needs more) with SL82 mesh top, 30 cover - not SL72.
 - Carport / garage slabs: 100 thick reinforced slab with SL82 top and 450 wide x min 450 deep edge beams with 4/L11 TM top and bottom. No internal beam in a slab up to 8 m long in both directions (a single / double carport or garage); add internal beams (450 wide x min 450 deep, 3/L11 TM bottom) only where a slab dimension is over 8 m or a load needs one - and say why.
 
 ## Floor framing

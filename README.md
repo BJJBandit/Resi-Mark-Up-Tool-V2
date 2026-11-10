@@ -179,6 +179,9 @@ material, not a size to copy. Edit the file (one rule per bullet) to change them
 - **Lintel extras:** entry doors / openings up to 1200 L1 90x35; a continuous lintel / ledger
   carrying a carport or verandah L4 190x45; trusses cantilevering over a recessed wall keep the
   normal lintel with "TRUSS MANUFACTURER TO CONFIRM ABILITY FOR TRUSSES TO CANTILEVER".
+- **Masonry lintels** (brick veneer / masonry skin): steel by span - to 900 75x10 FL, 900-1500
+  100x75x8 UA, 1500-3300 150x100x10 UA - min 150 bearing, in a masonry lintel schedule.
+- **Slab mesh:** house, paving / porch and carport slabs SL82 top with 30 cover (not SL72).
 - **Carport / garage slabs:** no internal beam up to 8 m long both ways; internal beams only
   where a dimension is over 8 m or a load needs one, with the reason.
 
