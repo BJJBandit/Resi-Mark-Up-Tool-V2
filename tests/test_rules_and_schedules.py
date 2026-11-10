@@ -272,3 +272,9 @@ def test_tags_do_not_overlap_and_use_9pt():
     assert all(not r.intersects(q) for i, r in enumerate(rects) for q in rects[i + 1:])
     assert all("/Helv 9 Tf" in doc.xref_object(a.xref) or "/Helv 9.0 Tf" in doc.xref_object(a.xref) for a in tags)
     assert any(a.info["content"] == "EB1" for a in tags)
+
+
+def test_short_spec_keeps_bracing_type_codes():
+    assert short_spec("STRUCTURAL PLYWOOD BRACING PANEL TYPE (h) TO AS1684.2 TABLE 8.18 (6.0 KN/M)") == \
+        "STRUCTURAL PLYWOOD BRACING PANEL TYPE (h) TO AS1684.2 TABLE 8.18"
+    assert short_spec("DIAGONAL METAL STRAP BRACING TYPE (d) - TENSIONED") == "DIAGONAL METAL STRAP BRACING TYPE (d)"
