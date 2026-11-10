@@ -272,3 +272,21 @@ def test_tags_do_not_overlap_and_use_9pt():
     assert all(not r.intersects(q) for i, r in enumerate(rects) for q in rects[i + 1:])
     assert all("/Helv 9 Tf" in doc.xref_object(a.xref) or "/Helv 9.0 Tf" in doc.xref_object(a.xref) for a in tags)
     assert any(a.info["content"] == "EB1" for a in tags)
+
+
+def test_short_spec_keeps_bracing_type_codes():
+    assert short_spec("STRUCTURAL PLYWOOD BRACING PANEL TYPE (h) TO AS1684.2 TABLE 8.18 (6.0 KN/M)") == \
+        "STRUCTURAL PLYWOOD BRACING PANEL TYPE (h) TO AS1684.2 TABLE 8.18"
+    assert short_spec("DIAGONAL METAL STRAP BRACING TYPE (d) - TENSIONED") == "DIAGONAL METAL STRAP BRACING TYPE (d)"
+
+
+def test_masonry_lintel_schedule_box_on_wall_sheet():
+    from types import SimpleNamespace
+    from app import pdf as P
+    assert P._is_masonry(SimpleNamespace(external_wall_type="BRICK VENEER", framing_material="TIMBER", governing_standard=""))
+    assert not P._is_masonry(SimpleNamespace(external_wall_type="WEATHERBOARD", framing_material="TIMBER", governing_standard="AS 1684"))
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    P._schedule(page, "LINTEL SCHEDULE:", [ScheduleItem(tag="L1", text="90x35 F17/LVL LINTEL")], "", [], masonry=True)
+    text = " ".join(a.info["content"] for a in page.annots() if a.type[1] == "FreeText")
+    assert "MASONRY LINTEL SCHEDULE:" in text and "100x75x8 UA" in text and "MIN 150" in text

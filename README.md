@@ -180,7 +180,9 @@ material, not a size to copy. Edit the file (one rule per bullet) to change them
   carrying a carport or verandah L4 190x45; trusses cantilevering over a recessed wall keep the
   normal lintel with "TRUSS MANUFACTURER TO CONFIRM ABILITY FOR TRUSSES TO CANTILEVER".
 - **Masonry lintels** (brick veneer / masonry skin): steel by span - to 900 75x10 FL, 900-1500
-  100x75x8 UA, 1500-3300 150x100x10 UA - min 150 bearing, in a masonry lintel schedule.
+  100x75x8 UA, 1500-3300 150x100x10 UA - min 150 bearing. On brick veneer / masonry jobs the
+  wall framing sheet gets a **MASONRY LINTEL SCHEDULE** section in its schedule box (span /
+  steel size and the bearing note).
 - **Slab mesh:** house, paving / porch and carport slabs SL82 top with 30 cover (not SL72).
 - **Perimeter footing under a slab** (strip footing or edge beam): 450 x min 450, 4/L11TM top and
   bottom - never 3/L11TM bottom only (checked: a warning names any that isn't). Internal beams
