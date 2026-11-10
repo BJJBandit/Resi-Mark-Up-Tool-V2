@@ -218,3 +218,29 @@ def test_strip_footings_drawn_as_bands_with_closed_corners():
     solid_left = next(l for l in left if not l[2])
     corner = min((solid_top[0], solid_top[1]), key=lambda p: p.x)
     assert min(abs(corner - solid_left[0]), abs(corner - solid_left[1])) < 0.5  # outer corner closes
+
+
+def test_untagged_footing_lines_and_slab_cloud_follow_house_style():
+    """Untagged runs: perimeter -> EB / SF tag, inside -> IB tag; a big slab cloud becomes S1 diagonal."""
+    from app import pdf as P
+
+    class Page:
+        rect = pymupdf.Rect(0, 0, 1000, 1000)
+
+    def seg(x1, y1, x2, y2, tag=""):
+        return el("member", tag, x1 / 1000, y1 / 1000, x2 / 1000, y2 / 1000)
+
+    s = sheet([seg(100, 100, 200, 100), seg(200, 100, 200, 150), seg(200, 150, 400, 150), seg(400, 150, 400, 100),
+               seg(400, 100, 500, 100), seg(500, 100, 500, 400), seg(500, 400, 100, 400, "EB1"), seg(100, 400, 100, 100),
+               seg(100, 250, 500, 250), seg(300, 150, 300, 400),
+               el("cloud", "", .09, .09, .51, .41)],
+              [ScheduleItem(tag="EB1", text="450W X 450 DEEP EDGE BEAM"), ScheduleItem(tag="IB1", text="450W X 450 DEEP INTERNAL BEAM"),
+               ScheduleItem(tag="S1", text="100 THICK SLAB SL82 TOP")])
+    s.plan_region = Box(x1=0, y1=0, x2=.6, y2=.5)
+    warnings = P._footing_house_style(s, Page, "T")
+    tags = [e.tag for e in s.elements if e.kind == "member"]
+    assert tags[:8] == ["EB1"] * 8          # the whole outline, recess included
+    assert tags[8:10] == ["IB1", "IB1"]     # the two internal runs
+    assert not any(e.kind == "cloud" for e in s.elements)
+    assert any(e.kind == "member" and e.tag == "S1" for e in s.elements)
+    assert len(warnings) == 2
