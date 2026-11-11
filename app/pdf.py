@@ -1072,6 +1072,17 @@ def _reentrant_bars(page, sheet: MarkupSheet, m: "PlanMap") -> int:
     def unit(v):
         return v / abs(v)
 
+    # Only corners of a concrete slab: the footing outline can run round a suspended timber
+    # floor too (strip footings under the brick base), whose corners need no bars. A slab is
+    # drawn as its corner-to-corner line (S1 ...); a point is slab if it is inside the footing
+    # outline AND inside a slab's extent, and a corner is re-entrant only if the SLAB fills
+    # three of the four quadrants round it.
+    slabs = [pymupdf.Rect(m(e.start), m(e.end)).normalize() for e in sheet.elements
+             if e.kind == "member" and _prefix(e.tag) == "S" and abs(m(e.end) - m(e.start)) > 20]
+
+    def slab_at(pt) -> bool:
+        return inside(pt) and any(pymupdf.Rect(r.x0 - 2, r.y0 - 2, r.x1 + 2, r.y1 + 2).contains(pt) for r in slabs)
+
     corners = []
     for i, (p1, q1, e1) in enumerate(segs):
         for p2, q2, e2 in segs[i + 1:]:
@@ -1083,23 +1094,13 @@ def _reentrant_bars(page, sheet: MarkupSheet, m: "PlanMap") -> int:
             # Look into the four quadrants round the corner: slab in three of them means a
             # re-entrant (inside) corner; the bars go across it, facing away from the gap.
             u1, u2 = unit(q1 - p1), unit(q2 - p2)
-            quads = [(s1, s2, inside(c + (u1 * s1 + u2 * s2) * 8)) for s1 in (1, -1) for s2 in (1, -1)]
+            quads = [(s1, s2, slab_at(c + (u1 * s1 + u2 * s2) * 8)) for s1 in (1, -1) for s2 in (1, -1)]
             if sum(q[2] for q in quads) != 3:
                 continue
             s1, s2, _ = next(q for q in quads if not q[2])
             bis = unit((u1 * s1 + u2 * s2) * -1)
             if all(abs(c - k[0]) > 10 for k in corners):
                 corners.append((c, bis, e1))
-    # Only corners of a concrete slab: the footing outline can run round a suspended timber
-    # floor too (strip footings under the brick base), whose corners need no bars. A slab is
-    # drawn as its corner-to-corner line (S1 ...), so a corner must lie within one of those.
-    slabs = [pymupdf.Rect(m(e.start), m(e.end)).normalize() for e in sheet.elements
-             if e.kind == "member" and _prefix(e.tag) == "S" and abs(m(e.end) - m(e.start)) > 20]
-    def in_slab(c, e) -> bool:
-        pad = _footing_width_pt(e, m) + 4
-        return any(pymupdf.Rect(r.x0 - pad, r.y0 - pad, r.x1 + pad, r.y1 + pad).contains(c) for r in slabs)
-
-    corners = [k for k in corners if in_slab(k[0], k[2])]
     if not corners:
         return 0
     half_len = _scaled(m, 1000, 28.0, 14.0, 60.0)

@@ -772,3 +772,40 @@ def test_no_reentrant_bars_on_timber_floor():
     els[-1] = seg(100, 400, 500, 100, "S1")  # slab over the whole outline: the notch corners get bars
     s = sheet(els, [ScheduleItem(tag="S1", text="100 THICK N25 SLAB")])
     assert P._reentrant_bars(page, s, m) >= 1
+
+
+def test_no_reentrant_bars_where_slab_meets_timber_floor():
+    """Markup 33: the garage slab's corner where the house outline steps is re-entrant in the
+    house outline but not in the slab (the other quadrants are timber floor)."""
+    from app import pdf as P
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    m = P.PlanMap(page, Box(x1=0, y1=0, x2=1, y2=1))
+
+    def seg(x1, y1, x2, y2, tag="SF1"):
+        return Element(kind="member", tag=tag, start=Point(x=x1 / 1190, y=y1 / 842), end=Point(x=x2 / 1190, y=y2 / 842), text="")
+
+    # house: top part 200-600 x 100-300; lower wing 100-600 x 300-450 sticks out to the left
+    els = [seg(200, 100, 600, 100), seg(600, 100, 600, 450), seg(600, 450, 100, 450), seg(100, 450, 100, 300),
+           seg(100, 300, 200, 300), seg(200, 300, 200, 100),
+           seg(200, 100, 350, 300, "S1")]  # garage slab: 200-350 x 100-300, its corner (200,300) meets the step
+    s = sheet(els, [ScheduleItem(tag="S1", text="100 THICK N25 SLAB")])
+    assert P._reentrant_bars(page, s, m) == 0
+
+
+def test_engaged_piers_at_bearer_ends_on_base_walls():
+    from app.pipeline import engaged_piers
+
+    def m(tag, x1, y1, x2, y2, kind="member"):
+        return Element(kind=kind, tag=tag, start=Point(x=x1, y=y1), end=Point(x=x2, y=y2), text="")
+
+    els = [m("SF1", 0.2, 0.2, 0.6, 0.2), m("SF1", 0.6, 0.2, 0.6, 0.5), m("SF1", 0.6, 0.5, 0.2, 0.5), m("SF1", 0.2, 0.5, 0.2, 0.2),
+           m("B1", 0.205, 0.3, 0.595, 0.3), m("B1", 0.205, 0.4, 0.595, 0.4),
+           m("P1", 0.2, 0.4, 0.2, 0.4, "pier"),  # existing pier at one bearer end -> re-tagged
+           m("P1", 0.4, 0.3, 0.4, 0.3, "pier")]  # mid-span pier stays P1
+    s = sheet(els, [ScheduleItem(tag="P1", text="450 DIA BORED PIER"), ScheduleItem(tag="B1", text="2/240x45 F7 TP")])
+    w = engaged_piers(s, "F")
+    eps = [e for e in s.elements if e.tag == "EP1"]
+    assert len(eps) == 4 and "3 added, 1 pier(s) re-tagged" in w[0]
+    assert any(e.tag == "P1" for e in s.elements) and any(x.tag == "EP1" for x in s.schedule)
+    assert all(abs(e.start.x - 0.2) < 1e-6 or abs(e.start.x - 0.6) < 1e-6 for e in eps)  # on the wall line
