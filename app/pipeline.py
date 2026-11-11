@@ -365,6 +365,24 @@ def _information(job: JobInput, pages, refs: list, geotech: GeotechReview, desig
     return design, warnings
 
 
+_DRIVEWAY = re.compile(r"\bDRIVE\s?WAYS?\b", re.I)
+_BY_OTHERS = re.compile(r"BY OTHERS|NOT PART OF|EXCLUDED|BY OWNER", re.I)
+
+
+def drop_driveways(sheet: MarkupSheet, title: str) -> list[str]:
+    """Office practice: driveways are ignored. Driveway slab members / schedule items,
+    callouts and notes about a driveway are removed (a note that it is 'by others' stays)."""
+    gone = {s.tag.strip().upper() for s in sheet.schedule if _DRIVEWAY.search(s.text)}
+    before = len(sheet.elements) + len(sheet.schedule) + len(sheet.notes)
+    sheet.schedule = [s for s in sheet.schedule if s.tag.strip().upper() not in gone]
+    sheet.elements = [e for e in sheet.elements
+                      if e.tag.strip().upper() not in gone
+                      and not (e.kind in ("callout", "tag", "cloud") and _DRIVEWAY.search(e.text or ""))]
+    sheet.notes = [n for n in sheet.notes if not _DRIVEWAY.search(n) or _BY_OTHERS.search(n)]
+    removed = before - (len(sheet.elements) + len(sheet.schedule) + len(sheet.notes))
+    return [f"{title}: {removed} driveway item(s) removed (driveways are not marked up)"] if removed else []
+
+
 def ledger_tags(sheet: MarkupSheet, title: str) -> list[str]:
     """Office practice: ledgers are tagged LD, never L (lintels only). A ledger scheduled under
     an L tag ('L5: 140x45 F17/LVL LEDGER') is re-tagged LD with the same number where free
@@ -411,6 +429,7 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
             sheet.elements = [e for e in sheet.elements if e not in dropped]
     result.sheet_warnings[kind] = apply_rules(sheet, SHEET_TITLES[kind])
     result.sheet_warnings[kind] += ledger_tags(sheet, SHEET_TITLES[kind])
+    result.sheet_warnings[kind] += drop_driveways(sheet, SHEET_TITLES[kind])
     # House style: schedules list only the member type and spacing - no notes.
     sheet.schedule = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.schedule]
     result.sheet_warnings[kind] += stock.check(sheet.schedule, SHEET_TITLES[kind])

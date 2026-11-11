@@ -679,3 +679,39 @@ def test_typical_tags_thinned():
     assert P._thin_tags(m) == 6  # every second pier at 2000 ctrs keeps its tag
     kept = [r[2] for r in m.label_requests]
     assert kept.count("P1") == 5 and kept.count("P2") == 2 and kept.count("B1") == 2  # bearers keep every tag
+
+
+def test_driveways_ignored():
+    from app.pipeline import drop_driveways
+    s = sheet([Element(kind="member", tag="S2", start=Point(x=0.1, y=0.1), end=Point(x=0.2, y=0.2), text=""),
+               Element(kind="member", tag="S1", start=Point(x=0.3, y=0.3), end=Point(x=0.4, y=0.4), text=""),
+               Element(kind="callout", tag="", start=Point(x=0.1, y=0.1), end=Point(x=0.1, y=0.1),
+                       text="ISOLATE DRIVEWAY SLAB FROM BUILDING SLAB")],
+              [ScheduleItem(tag="S1", text="100 THICK N25 SLAB"), ScheduleItem(tag="S2", text="100 THICK DRIVEWAY SLAB")])
+    s.notes = ["-DRIVEWAY SLAB 100 THICK SL82.", "-DRIVEWAY AND RETAINING WALLS BY OTHERS.", "-N25 THROUGHOUT."]
+    w = drop_driveways(s, "F")
+    assert [x.tag for x in s.schedule] == ["S1"] and [e.tag for e in s.elements] == ["S1"]
+    assert s.notes == ["-DRIVEWAY AND RETAINING WALLS BY OTHERS.", "-N25 THROUGHOUT."] and w
+
+
+def test_strip_footings_dashed_edge_beams_solid_outside():
+    from app import pdf as P
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    m = P.PlanMap(page, Box(x1=0, y1=0, x2=1, y2=1))
+    m.mm_pt = 0.03
+
+    def seg(tag, x1, y1, x2, y2):
+        return Element(kind="member", tag=tag, start=Point(x=x1 / 1190, y=y1 / 842), end=Point(x=x2 / 1190, y=y2 / 842), text="")
+
+    for tag in ("SF1", "EB1"):
+        els = [seg(tag, 100, 100, 400, 100), seg(tag, 400, 100, 400, 300), seg(tag, 400, 300, 100, 300), seg(tag, 100, 300, 100, 100)]
+        s = sheet(els, [ScheduleItem(tag=tag, text="450W x 450 DEEP")])
+        m.bands = P._footing_bands(s, m)
+        for e in els:
+            P._draw_element(page, e, m)
+    lines = [a for a in page.annots() if a.type[1] == "Line"]
+    sf = [a for a in lines if a.info["subject"] == "Member SF"]
+    eb = [a for a in lines if a.info["subject"] == "Member EB"]
+    assert sf and all(a.border.get("dashes") for a in sf)
+    assert any(not a.border.get("dashes") for a in eb) and any(a.border.get("dashes") for a in eb)
