@@ -2041,7 +2041,13 @@ def build_markup_pdf(
             checks = calcs.bracing_check(design, walls, aspect)
             if walls:
                 warnings += calcs.warnings(checks)
-            _calc_sheet(out, meta, calcs.lines(geotech, design, checks if walls else [], references))
+            mism = calcs.schedule_mismatches(design, sheets)
+            for i, pairs in mism.items():
+                c = design.calculations[i]
+                for tag, text in pairs:
+                    warnings.append(f"Calculation sheet: {c.topic} gives '{c.result[:80]}' but the schedule shows "
+                                    f"'{text}' - resolve before issue")
+            _calc_sheet(out, meta, calcs.lines(geotech, design, checks if walls else [], references, mism))
         except Exception as e:
             warnings.append(f"Calculation sheet not produced: {e}")
     return out.tobytes(garbage=3, deflate=True), warnings

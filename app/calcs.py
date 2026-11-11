@@ -127,7 +127,7 @@ def _f(x: float) -> str:
 
 
 def lines(geotech: GeotechReview, design: DesignAssessment, checks: list[DirectionCheck],
-          references: list[str]) -> list[str]:
+          references: list[str], mismatches: dict[int, list[tuple[str, str]]] | None = None) -> list[str]:
     """The calculation sheet as text lines (blank line between items; upper case, house style)."""
     L: list[str] = ["DESIGN BASIS", ""]
     L += [f"-SITE CLASSIFICATION: {_brief(geotech.site_classification, 40)} (AS 2870), {_brief(geotech.ys, 60)}.",
@@ -174,11 +174,14 @@ def lines(geotech: GeotechReview, design: DesignAssessment, checks: list[Directi
         L.append("")
     if not checks:
         L += ["-NO RACKING FORCES TO CHECK.", ""]
-    members = [c for c in design.calculations if not _bracing_item(c.topic)]
+    members = [(i, c) for i, c in enumerate(design.calculations) if not _bracing_item(c.topic)]
     if members:
         L += ["MEMBER AND FOOTING CALCULATIONS", ""]
-        for c in members:
-            L += [c.topic, f"-BASIS: {c.basis}", f"-WORKING: {c.working}", f"-RESULT: {c.result}", ""]
+        for i, c in members:
+            L += [c.topic, f"-BASIS: {c.basis}", f"-WORKING: {c.working}", f"-RESULT: {c.result}"]
+            for tag, text in (mismatches or {}).get(i, []):
+                L.append(f"-CHECK: THE SCHEDULE SHOWS {text} - DIFFERENT FROM THIS RESULT. ENGINEER TO RESOLVE.")
+            L.append("")
     L += ["PRELIMINARY CALCULATIONS FOR THE MARK-UP - TO BE VERIFIED BY THE DESIGN ENGINEER."]
     return [spelling.tidy(_plain(x).upper()) for x in L]
 
@@ -199,3 +202,32 @@ def racking_notes(design: DesignAssessment, walls: MarkupSheet, aspect: float) -
              f"({'OK' if c.ok and c.panels else 'NOT ADEQUATE - ADD BRACING'})" for c in checks]
     note = spelling.tidy(("-RACKING TO AS 1684.2 SECTION 8: " + "; ".join(parts) + ". REFER CALCULATION SHEET.").upper())
     return kept + [note]
+
+
+_SIZE = re.compile(r"(?:\d/)?\d{2,3}X\d{1,3}(?:\.\d+)?|\d{3}\s?PFC|\d{3}UB\d+(?:\.\d+)?|\d{3}X\d{3}X\d{1,2}")
+
+
+def _sizes(text: str) -> set[str]:
+    return {m.replace(" ", "") for m in _SIZE.findall((text or "").upper())}
+
+
+def schedule_mismatches(design: DesignAssessment, sheets: dict) -> dict[int, list[tuple[str, str]]]:
+    """Member calculations whose result names a different section from the schedule entry of
+    a tag named in their topic (e.g. calc 'RB1 ... 2/290x45' vs schedule 'RB1: 290x35').
+    Returns {index in design.calculations: [(tag, schedule text)]}."""
+    sched: dict[str, str] = {}
+    for sh in sheets.values():
+        for item in getattr(sh, "schedule", []) or []:
+            tag = item.tag.strip().upper()
+            if tag and _sizes(item.text):
+                sched.setdefault(tag, item.text.upper())
+    out: dict[int, list[tuple[str, str]]] = {}
+    for i, c in enumerate(design.calculations):
+        got = _sizes(c.result)
+        if not got:
+            continue
+        for tag, text in sched.items():
+            if re.search(rf"(?<![A-Z0-9]){re.escape(tag)}(?![A-Z0-9])", (c.topic or "").upper()) and \
+                    not (_sizes(text) & got):
+                out.setdefault(i, []).append((tag, text))
+    return out

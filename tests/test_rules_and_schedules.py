@@ -642,3 +642,24 @@ def test_ledgers_retagged_ld():
     assert [e.tag for e in s.elements][:2] == ["LD6", "L1"]
     assert s.elements[2].text == "LD6 LEDGER BOLTED TO EXISTING WALL. R2 TO LD6 WITH HANGERS. L1 OVER DOOR"
     assert "L5 -> LD6" in w[0]
+
+
+def test_calc_vs_schedule_mismatch():
+    """Markup 28: calc says RB1 2/290x45 (or 200 PFC), the roof schedule says 290x35."""
+    from app import calcs
+    from app.schemas import CalcItem
+    d = _calc_design()
+    d.calculations = [
+        CalcItem(topic="Roof beam RB1 - deck recess hip line", basis="x", working="y",
+                 result="2/290x45 F17/LVL roof beam (or 200 PFC) - engineer to confirm"),
+        CalcItem(topic="Bearers B1 and joists J1", basis="x", working="y",
+                 result="J1 140x45 F7 TP at 450; B1 2/240x45 F7 TP"),
+        CalcItem(topic="Column C1", basis="x", working="y", result="89x3.5 SHS continuous")]
+    roof = MarkupSheet.model_construct(schedule=[ScheduleItem(tag="RB1", text="290x35 F17/LVL ROOF BEAM"),
+                                                 ScheduleItem(tag="C1", text="89x3.5 SHS CONTINUOUS COLUMN")])
+    floor = MarkupSheet.model_construct(schedule=[ScheduleItem(tag="B1", text="2/240x45 F7 TP CONTINUOUS BEARER"),
+                                                  ScheduleItem(tag="J1", text="140x45 F7 TP JOIST AT 450 CTRS")])
+    mism = calcs.schedule_mismatches(d, {"roof": roof, "floor": floor})
+    assert list(mism) == [0] and mism[0][0][0] == "RB1"
+    text = "\n".join(calcs.lines(GeoStub(), d, [], [], mism))
+    assert "-CHECK: THE SCHEDULE SHOWS 290x35 F17/LVL ROOF BEAM" in text
