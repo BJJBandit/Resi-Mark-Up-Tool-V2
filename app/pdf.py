@@ -673,6 +673,32 @@ def _label_rect(text: str, fs: float, centre: pymupdf.Point) -> pymupdf.Rect:
     return pymupdf.Rect(centre.x - w / 2, centre.y - h / 2, centre.x + w / 2, centre.y + h / 2)
 
 
+TYPICAL_TAG_MM = float(os.environ.get("TYPICAL_TAG_MM", "3500"))
+_TYPICAL_LINE = ("SF", "EB", "IB")  # footing runs: tagged once per stretch, like piers
+
+
+def _thin_tags(m: "PlanMap") -> int:
+    """House style: piers and footing runs are tagged once per stretch, not every one - a
+    pier / footing tag is dropped where the same tag is already shown within about 3.5 m
+    (the schedule and the 'TYPICAL' callouts cover the rest). Returns how many were dropped."""
+    reach = TYPICAL_TAG_MM * m.mm_pt if m.mm_pt else 90.0
+    kept: dict[str, list[pymupdf.Point]] = {}
+    out, dropped = [], 0
+    for req in m.label_requests:
+        shape, geo, text, fs, colour, subject = req
+        typical = subject == "Pier Tag" or (subject == "Member Tag" and _prefix(text) in _TYPICAL_LINE)
+        if typical:
+            at = geo[0] if shape == "point" else (geo[0] + geo[1]) * 0.5
+            key = text.strip().upper()
+            if any(abs(at - k) < reach for k in kept.get(key, [])):
+                dropped += 1
+                continue
+            kept.setdefault(key, []).append(at)
+        out.append(req)
+    m.label_requests = out
+    return dropped
+
+
 def _place_labels(page: pymupdf.Page, m: "PlanMap") -> int:
     """Draw every tag (P1, EB1, L3 ...) in a tight box with a white background, in the first
     nearby spot that doesn't overlap another tag, a member line, an arrow, a pier, a column or
@@ -1905,6 +1931,7 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         warnings.append(f"{dwg_no}: callouts moved to notes ({e})")
         unplaced = [(c.text or c.tag).upper() for c in callouts]
     try:
+        _thin_tags(m)
         _place_labels(page, m)
     except Exception as e:
         warnings.append(f"{dwg_no}: tags not placed ({e})")

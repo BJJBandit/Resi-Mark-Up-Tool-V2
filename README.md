@@ -328,6 +328,10 @@ hold even if Claude slips:
   neighbours whose leaders would cross swap places, and a callout moves to another band if
   that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
   after the callouts, so they keep clear of the boxes and leaders too.
+- **Typical tags, not every one**: pier tags (P1, P2 ...) and footing run tags (SF, EB, IB)
+  are shown once per stretch - a tag is dropped where the same tag is already shown within
+  about 3.5 m (`TYPICAL_TAG_MM`); the schedule and the 'TYPICAL' callouts cover the rest.
+  Bearers, joists, lintels, columns and bracing keep every tag.
 - **Ledgers are LD, deck bearers keep the deck tag**: ledgers (deck, roof, to an existing
   wall) are tagged LD, never L (lintels only) - a ledger Claude schedules under an L tag is
   re-tagged LD with the same number where free (L5 -> LD5) on the members, schedule, callouts

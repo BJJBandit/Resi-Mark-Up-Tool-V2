@@ -39,6 +39,7 @@ Edit this file to change them - one rule per bullet.
 
 ## Floor framing
 - Timber floor framing is F7 treated pine (TP) unless spans need more: e.g. B1 2/240x45 F7 TP continuous bearer on piers at 3000 centres (or 2/140x45 F17/LVL equivalent), J1 140x45 F7 TP continuous joists at 450 centres.
+- Joists under bathrooms, ensuites, WCs, laundries and any other tiled floor areas are at 350 centres (not 450). Keep the same joist size, but give the wet-area joists their own tag with the spacing in the schedule (e.g. 'J3: 140x45 F7 TP CONTINUOUS JOIST AT 350 CTRS UNDER WET / TILED AREAS'), and draw them over those rooms.
 - Keep member types to a minimum: where the same kind of member (joists, deck joists, bearers, rafters, lintels in one wall) has a shorter span in one area, use the size needed for the longest span everywhere and give it ONE tag (e.g. all deck joists J2, not J2 and J3).
 - Joists span wall to wall: draw the representative joist from external wall / footing to external wall / footing, continuous over the bearers in between (not bearer to bearer). Deck joists run from the house ledger to the outer deck bearer.
 - Tags: ledgers are always tagged LD (LD1, LD2 ...) - deck ledgers, rafter / roof ledgers and ledgers to an existing wall alike - never L, which is for lintels only. Bearers under a deck, ramp or landing (outside the enclosed floor) take the deck bearer tag (e.g. B2 / DB1) along their whole length, including the bearer at the deck's outer edge; the house bearer tag (B1) is only for bearers under the enclosed floor.

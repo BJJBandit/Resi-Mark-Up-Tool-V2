@@ -663,3 +663,19 @@ def test_calc_vs_schedule_mismatch():
     assert list(mism) == [0] and mism[0][0][0] == "RB1"
     text = "\n".join(calcs.lines(GeoStub(), d, [], [], mism))
     assert "-CHECK: THE SCHEDULE SHOWS 290x35 F17/LVL ROOF BEAM" in text
+
+
+def test_typical_tags_thinned():
+    """Piers / footing runs tagged once per ~3.5 m stretch (markup 29 had 54 pier tags)."""
+    from app import pdf as P
+    doc = pymupdf.open()
+    pg = doc.new_page(width=1190, height=842)
+    m = P.PlanMap(pg, Box(x1=0, y1=0, x2=1, y2=1))
+    m.mm_pt = 0.02  # 2000 mm = 40 pt, 3500 mm = 70 pt
+    m.label_requests = [("point", (pymupdf.Point(100 + 40 * i, 100), 5), "P1", 9, P.RED, "Pier Tag") for i in range(10)]
+    m.label_requests += [("point", (pymupdf.Point(100 + 40 * i, 140), 5), "P2", 9, P.RED, "Pier Tag") for i in range(3)]
+    m.label_requests += [("line", (pymupdf.Point(100, 300), pymupdf.Point(400, 300)), "B1", 9, P.BLUE, "Member Tag"),
+                         ("line", (pymupdf.Point(100, 320), pymupdf.Point(400, 320)), "B1", 9, P.BLUE, "Member Tag")]
+    assert P._thin_tags(m) == 6  # every second pier at 2000 ctrs keeps its tag
+    kept = [r[2] for r in m.label_requests]
+    assert kept.count("P1") == 5 and kept.count("P2") == 2 and kept.count("B1") == 2  # bearers keep every tag
