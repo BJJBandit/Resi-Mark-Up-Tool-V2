@@ -2071,6 +2071,9 @@ def build_markup_pdf(
             checks = calcs.bracing_check(design, walls, aspect)
             if walls:
                 warnings += calcs.warnings(checks)
+            for tag, text in calcs.unsized(design, sheets):
+                warnings.append(f"Calculation sheet: {tag} ({text}) has no size and no calculation - size it "
+                                "before issue")
             mism = calcs.schedule_mismatches(design, sheets)
             for i, pairs in mism.items():
                 c = design.calculations[i]

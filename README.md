@@ -328,6 +328,10 @@ hold even if Claude slips:
   neighbours whose leaders would cross swap places, and a callout moves to another band if
   that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
   after the callouts, so they keep clear of the boxes and leaders too.
+- **One tag per member, every member sized**: a deck / verandah roof beam scheduled as VB1 on one
+  sheet and RB1 (same section) on another is re-tagged to the first sheet's tag on all of its
+  members, schedule, callouts and notes, with a warning. A scheduled member with no size (e.g.
+  'STEEL LINTEL BY CALCULATION') and no calculation for its tag gets a warning to size it.
 - **Wet areas on an existing suspended slab**: where the design has a shower / bathroom on an
   existing Bondek / concrete upper floor, the floor (or footing & floor) sheet gets an
   engineer-check note for the set-down or screed the falls need and the slab's capacity -

@@ -665,7 +665,11 @@ def plan_sheet(
                 "members - read the image carefully. Every tag used on the plan must appear in "
                 "the schedule, and every schedule item must appear on the plan. Member sizes must match "
                 "the design assessment's calculations (calculations results) - they go on the calculation "
-                "sheet beside this one. Change a size only with the reason in the notes, and never to a "
+                "sheet beside this one. A member that appears on more than one sheet (deck / verandah roof "
+                "beams VB, columns, ledgers) keeps the same tag on every sheet - use the tags in the design "
+                "assessment's calculations. Every scheduled member has a size: never 'by calculation' - give "
+                "the calculated size, or add it to the calculations. Change a size only with the reason in "
+                "the notes, and never to a "
                 "smaller section than the calculation needs (office 'single member' rules choose between "
                 "adequate sections; they never reduce one)."
             ),

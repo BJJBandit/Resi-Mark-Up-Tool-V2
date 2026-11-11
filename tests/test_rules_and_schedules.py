@@ -731,3 +731,22 @@ def test_wet_area_on_existing_slab_note():
     assert not wet_area_on_slab(d, s2, "F")
     d2 = DesignAssessment.model_construct(floor_description="Suspended timber floor; new ensuite shower.")
     assert not wet_area_on_slab(d2, sheet([]), "F")
+
+
+def test_consistent_tags_and_unsized():
+    """Markup 4: VB1/VB2 on the roof sheet were RB1/RB2 on the wall sheet; L5 'steel lintel by calculation'."""
+    from app import calcs
+    from app.pipeline import consistent_tags
+    from app.schemas import CalcItem, DesignAssessment
+    from app.schemas import SheetKind as SK
+    roof = sheet([Element(kind="member", tag="VB1", start=Point(x=0.1, y=0.1), end=Point(x=0.2, y=0.1), text="")],
+                 [ScheduleItem(tag="VB1", text="2/190x45 F17/LVL VERANDAH"), ScheduleItem(tag="VB2", text="190x45 F17/LVL VERANDAH")])
+    walls = sheet([Element(kind="member", tag="RB1", start=Point(x=0.1, y=0.1), end=Point(x=0.2, y=0.1), text="")],
+                  [ScheduleItem(tag="RB1", text="2/190x45 F17/LVL DECK ROOF BEAM"), ScheduleItem(tag="RB2", text="190x45 F17/LVL ROOF BEAM"),
+                   ScheduleItem(tag="L5", text="STEEL LINTEL BY CALCULATION"), ScheduleItem(tag="L1", text="90x35 F17/LVL LINTEL")])
+    walls.notes = ["-RB1 ON C1 POSTS."]
+    w = consistent_tags({SK.ROOF: roof, SK.WALLS: walls})
+    assert [x.tag for x in walls.schedule][:2] == ["VB1", "VB2"] and walls.elements[0].tag == "VB1"
+    assert walls.notes == ["-VB1 ON C1 POSTS."] and "RB1 -> VB1" in w[0]
+    d = DesignAssessment.model_construct(calculations=[CalcItem(topic="Deck roof beam VB1", basis="", working="", result="")])
+    assert calcs.unsized(d, {SK.WALLS: walls}) == [("L5", "STEEL LINTEL BY CALCULATION")]
