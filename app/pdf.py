@@ -913,8 +913,9 @@ def _footing_house_style(sheet: MarkupSheet, page: pymupdf.Page, title: str) -> 
 
 def _footing_bands(sheet: MarkupSheet, m: PlanMap) -> dict[int, list[tuple]]:
     """The lines for every strip footing / edge beam / internal beam, as the engineers draw
-    them: two lines at the footing's width (to scale). Perimeter footings (SF / EB) have a
-    solid line on the outside face and a dashed line on the inside face - which side is
+    them: two lines at the footing's width (to scale). Edge beams (EB) have a solid line on
+    the outside face and a dashed line on the inside face (strip footings, SF, are drawn with
+    both dashed - see _draw_element) - which side is
     inside is found from the whole footing outline, so recesses come out right - and each
     corner is closed by meeting the neighbouring footing's lines. Internal beams (IB) are
     two dashed lines. Returns {id(element): [(a, b, dashed), ...]}."""
@@ -1137,7 +1138,9 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
     colour = tag_colour(e.tag, e.kind)
     content = e.text or e.tag
     if e.kind == "member" and id(e) in m.bands:
+        all_dashed = _prefix(e.tag) == "SF"  # strip footings: both faces dashed (office practice)
         for p, q, dashed in m.bands[id(e)]:
+            dashed = dashed or all_dashed
             _line(page, p, q, colour, 1.0 if dashed else 1.25, f"Member {_prefix(e.tag)}", content,
                   dashes=[2, 2] if dashed else None)
             m.segments.append((p, q))

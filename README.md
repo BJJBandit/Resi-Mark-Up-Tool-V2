@@ -309,10 +309,10 @@ hold even if Claude slips:
   set low for beta to control cost; up to 500). When several documents are picked
   automatically the cap is shared between them, and a typed range that goes over it is
   refused with a message.
-- **Strip footings are drawn as bands, as the engineers draw them**: two lines at the footing
-  width (to scale) - a solid line on the outside face and a dashed line on the inside face
-  (worked out from the whole footing outline, so recesses come out right), with every corner
-  closed. Internal beams are two dashed lines stopping at the inside face of the perimeter
+- **Footings are drawn as bands, as the engineers draw them**: two lines at the footing
+  width (to scale). Strip footings (SF) have both lines dashed; edge beams (EB) have a solid
+  line on the outside face and a dashed line on the inside face (worked out from the whole
+  footing outline, so recesses come out right), with every corner closed. Internal beams are two dashed lines stopping at the inside face of the perimeter
   footing. Footing runs Claude leaves untagged are tagged from their position (perimeter -
   EB / SF, inside - IB, with a warning), and a slab is shown by one diagonal line (S1)
   corner to corner, as the engineers draw it - a cloud drawn round the slab is replaced.
@@ -328,6 +328,9 @@ hold even if Claude slips:
   neighbours whose leaders would cross swap places, and a callout moves to another band if
   that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
   after the callouts, so they keep clear of the boxes and leaders too.
+- **Driveways are ignored**: not part of the structural mark-up. Driveway slabs, their
+  schedule items, callouts and notes are removed with a warning (a note that the driveway is
+  'by others' stays).
 - **Typical tags, not every one**: pier tags (P1, P2 ...) and footing run tags (SF, EB, IB)
   are shown once per stretch - a tag is dropped where the same tag is already shown within
   about 3.5 m (`TYPICAL_TAG_MM`); the schedule and the 'TYPICAL' callouts cover the rest.
