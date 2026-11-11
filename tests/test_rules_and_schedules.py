@@ -715,3 +715,19 @@ def test_strip_footings_dashed_edge_beams_solid_outside():
     eb = [a for a in lines if a.info["subject"] == "Member EB"]
     assert sf and all(a.border.get("dashes") for a in sf)
     assert any(not a.border.get("dashes") for a in eb) and any(a.border.get("dashes") for a in eb)
+
+
+def test_wet_area_on_existing_slab_note():
+    from app.pipeline import WET_ON_SLAB_NOTE, wet_area_on_slab
+    from app.schemas import DesignAssessment
+    d = DesignAssessment.model_construct(floor_description="Existing Bondek first floor slab retained; bathroom remodel "
+                                         "with hob-free shower falling 1:80 to a waterstop.")
+    s = sheet([])
+    s.notes = ["-N25 THROUGHOUT."]
+    assert wet_area_on_slab(d, s, "F") and s.notes[-1] == WET_ON_SLAB_NOTE
+    assert not wet_area_on_slab(d, s, "F")  # once
+    s2 = sheet([])
+    s2.notes = ["-SHOWER SET-DOWN 40 mm IN SLAB."]
+    assert not wet_area_on_slab(d, s2, "F")
+    d2 = DesignAssessment.model_construct(floor_description="Suspended timber floor; new ensuite shower.")
+    assert not wet_area_on_slab(d2, sheet([]), "F")

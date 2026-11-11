@@ -328,6 +328,12 @@ hold even if Claude slips:
   neighbours whose leaders would cross swap places, and a callout moves to another band if
   that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
   after the callouts, so they keep clear of the boxes and leaders too.
+- **Wet areas on an existing suspended slab**: where the design has a shower / bathroom on an
+  existing Bondek / concrete upper floor, the floor (or footing & floor) sheet gets an
+  engineer-check note for the set-down or screed the falls need and the slab's capacity -
+  unless a note or callout already covers a set-down / screed.
+- **Alterations over more than one floor**: the wall framing sheet marks up the plan with most of
+  the new wall work and labels each item on another floor with its floor (office rule).
 - **Driveways are ignored**: not part of the structural mark-up. Driveway slabs, their
   schedule items, callouts and notes are removed with a warning (a note that the driveway is
   'by others' stays).
