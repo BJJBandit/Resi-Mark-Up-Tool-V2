@@ -1360,6 +1360,9 @@ class SheetMeta:
     date: str
     title_block: bool = False
     masonry: bool = False  # brick veneer / masonry walls: wall sheet gets the masonry lintel schedule
+    # Racking note for the wall sheet from the bracing check (calculation sheet on):
+    # notes(sheet, page aspect) -> the sheet's notes with it. None: leave Claude's notes.
+    racking_notes: object = None
 
 
 # Office masonry lintel schedule (office_rules.md): steel lintels for the outer brick skin.
@@ -1729,9 +1732,17 @@ def _contain(geo: Geometry, sheet: MarkupSheet, lintels: list[int], bracing: lis
     if not fp.ok:
         return [f"{title}: building outline not found in the drawing - check every lintel and bracing "
                 "panel is on a building wall (not a deck, verandah, carport or eaves)"]
+    items = lintels + bracing
+    outside = [i for i in items if not fp.line_inside(*pts(sheet.elements[i]), tol=4)]
+    if items and len(outside) > 0.5 * len(items):
+        # Most of them "outside" means the outline is wrong (e.g. an alteration where the new
+        # work is drawn in lighter line work than the existing house): move nothing.
+        return [f"{title}: building outline unclear on this drawing ({len(outside)} of {len(items)} lintels / "
+                "bracing panels fall outside it), so none were moved or removed - check none is on a deck, "
+                "verandah, carport or eaves"]
     scale = None
     moved, removed, drop = [], [], set()
-    for i in lintels + bracing:
+    for i in items:
         e = sheet.elements[i]
         p, q = pts(e)
         if fp.line_inside(p, q, tol=4):
@@ -1903,6 +1914,12 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     if not any(e.kind != "callout" for e in sheet.elements):
         warnings.append(f"{dwg_no}: Claude returned no members / piers / bracing for this sheet - re-run it")
     unplaced += [t.upper() for t in off_plan if t]
+    if kind == SheetKind.WALLS and meta.racking_notes:
+        try:  # the bracing as finally drawn (after snapping / moves), so it matches the calc sheet
+            r = src[idx].rect
+            sheet.notes = meta.racking_notes(sheet, r.width / r.height)
+        except Exception as e:
+            warnings.append(f"{dwg_no}: racking note not updated ({e})")
     notes = list(sheet.notes) + [f"-{t}" for t in unplaced]  # never drop a note
     overflow = _notes(page, sheet.classification, notes)
     try:
@@ -1987,6 +2004,8 @@ def build_markup_pdf(
     out = pymupdf.open()
     meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"), title_block,
                      masonry=_is_masonry(design))
+    if calc_sheet and getattr(design, "racking", None):
+        meta.racking_notes = lambda sheet, aspect: calcs.racking_notes(design, sheet, aspect)
     overflow: list[str] = []
     warnings: list[str] = []
     n = 1

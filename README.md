@@ -245,6 +245,13 @@ hold even if Claude slips:
   lintel or bracing panel outside it - on a deck, verandah, carport or eaves - is moved onto
   the nearest building wall alongside it (within about 25 pt) and re-snapped there; one with
   no building wall nearby is removed. Both are listed in the warnings. Vector drawings only.
+  If more than half of the lintels and bracing fall outside the outline found, the outline is
+  taken to be wrong (typically an alteration, where the new work is drawn lighter than the
+  existing house) and nothing is moved or removed - a warning says to check them instead.
+- **Racking note on the wall sheet** (with the calculation sheet on): Claude's own racking /
+  bracing totals note is replaced by one from the app's bracing check of the panels as
+  drawn - required and provided kN each way, OK or NOT ADEQUATE, "REFER CALCULATION SHEET" -
+  so the notes and the calculation sheet always agree.
 - **Strip footings are at least 450 mm wide.** Any strip footing width below the minimum
   in the design assessment, schedules, callouts or notes is raised to 450 mm, and each
   change is listed as a warning on the results page. Internal beams, edge beams, piers and

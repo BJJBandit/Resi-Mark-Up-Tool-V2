@@ -107,10 +107,10 @@ def _plain(text: str) -> str:
 def _brief(text: str, n: int = 90) -> str:
     """First clause of a long description, at most about n characters."""
     t = " ".join(str(text or "").split())
-    for sep in (". ", "; ", " (", ", WITH ", " - "):
-        i = t.upper().find(sep)
-        if 0 < i < len(t):
-            t = t[:i]
+    # A clause break - not the dash of a range ('0 - 20 mm') or the point of a number ('2.5').
+    m = re.search(r"(?<!\d)\.\s|;\s|\s\(|,\s+WITH\s|(?<!\d)\s-\s|\s-\s(?!\d)", t, re.I)
+    if m and m.start() > 0:
+        t = t[:m.start()]
     if len(t) > n:
         t = t[:n].rsplit(" ", 1)[0] + " ..."
     return t.rstrip(" .,;")
@@ -181,3 +181,21 @@ def lines(geotech: GeotechReview, design: DesignAssessment, checks: list[Directi
             L += [c.topic, f"-BASIS: {c.basis}", f"-WORKING: {c.working}", f"-RESULT: {c.result}", ""]
     L += ["PRELIMINARY CALCULATIONS FOR THE MARK-UP - TO BE VERIFIED BY THE DESIGN ENGINEER."]
     return [spelling.tidy(_plain(x).upper()) for x in L]
+
+
+_RACKING_NOTE = re.compile(r"RACKING|BRACING", re.I)
+_TOTALS = re.compile(r"PROVIDED|REQUIRED|\d\s*kN\b", re.I)
+
+
+def racking_notes(design: DesignAssessment, walls: MarkupSheet, aspect: float) -> list[str]:
+    """The wall sheet's notes with Claude's racking / bracing totals replaced by one note
+    from the bracing check (the panels as drawn), so the notes and the calculation sheet
+    agree. Other notes are kept as written."""
+    checks = bracing_check(design, walls, aspect)
+    if not checks:
+        return list(walls.notes)
+    kept = [n for n in walls.notes if not (_RACKING_NOTE.search(n) and _TOTALS.search(n))]
+    parts = [f"{c.wind} - {c.required_kn:.1f} kN REQUIRED, {c.provided_kn:.1f} kN PROVIDED "
+             f"({'OK' if c.ok and c.panels else 'NOT ADEQUATE - ADD BRACING'})" for c in checks]
+    note = spelling.tidy(("-RACKING TO AS 1684.2 SECTION 8: " + "; ".join(parts) + ". REFER CALCULATION SHEET.").upper())
+    return kept + [note]
