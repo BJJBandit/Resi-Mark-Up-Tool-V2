@@ -474,8 +474,57 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
     result.sheet_errors.pop(kind, None)
 
 
+_SECTION = re.compile(r"(?:\d/)?\d{2,3}X\d{1,3}(?:\.\d+)?|\d{3}\s?PFC|\d{3}UB\d+(?:\.\d+)?")
+_SAME_MEMBER = {"VB": "ROOFBEAM", "RB": "ROOFBEAM"}  # tag prefixes that name the same kind of member
+
+
+def _retag(sheet: MarkupSheet, renames: dict[str, str]) -> None:
+    rx = re.compile(r"(?<![A-Z0-9])(" + "|".join(map(re.escape, renames)) + r")(?![A-Z0-9])", re.I)
+
+    def sub(text: str) -> str:
+        return rx.sub(lambda m: renames[m.group(1).upper()], text or "")
+
+    sheet.schedule = [s.model_copy(update={"tag": renames.get(s.tag.strip().upper(), s.tag)}) for s in sheet.schedule]
+    sheet.elements = [e.model_copy(update={"tag": renames.get(e.tag.strip().upper(), e.tag), "text": sub(e.text)})
+                      for e in sheet.elements]
+    sheet.notes = [sub(n) for n in sheet.notes]
+
+
+def consistent_tags(sheets: dict[SheetKind, MarkupSheet]) -> list[str]:
+    """One tag per member across the set: a deck / verandah roof beam scheduled as VB1 on one
+    sheet and RB1 (same section) on another takes the tag of the first sheet (roof before
+    walls before footings) everywhere. Returns warnings naming each change."""
+    first: dict[tuple[str, frozenset], str] = {}  # (member kind, sections) -> tag
+    out = []
+    for kind in SheetKind:
+        sheet = sheets.get(kind)
+        if sheet is None:
+            continue
+        renames: dict[str, str] = {}
+        for item in sheet.schedule:
+            tag = item.tag.strip().upper()
+            m = re.match(r"([A-Z]+)\d+$", tag)
+            group = _SAME_MEMBER.get(m.group(1)) if m else None
+            sections = frozenset(_SECTION.findall(item.text.upper()))
+            if not group or not sections:
+                continue
+            key = (group, sections)
+            if key in first and first[key] != tag:
+                renames[tag] = first[key]
+            else:
+                first.setdefault(key, tag)
+        used = {s.tag.strip().upper() for s in sheet.schedule} - set(renames)
+        renames = {a: b for a, b in renames.items() if b not in used}  # never merge two members
+        if renames:
+            _retag(sheet, renames)
+            out.append(f"{SHEET_TITLES[kind]}: tag(s) {', '.join(f'{a} -> {b}' for a, b in renames.items())} "
+                       "to match the other sheets (one tag per member)")
+    return out
+
+
 def _build(job: JobInput, result: JobResult) -> None:
     result.sheets = {k: result.planned[k].model_copy(deep=True) for k in SheetKind if k in result.planned}
+    retagged = consistent_tags(result.sheets)
     result.pdf, result.build_warnings = build_markup_pdf(
         job.arch_pdf,
         job.project,
@@ -489,6 +538,7 @@ def _build(job: JobInput, result: JobResult) -> None:
         title_block=job.title_block,
         calc_sheet=job.calc_sheet,
     )
+    result.build_warnings = retagged + result.build_warnings
     result.compose_warnings()
 
 

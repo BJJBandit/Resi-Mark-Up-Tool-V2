@@ -231,3 +231,22 @@ def schedule_mismatches(design: DesignAssessment, sheets: dict) -> dict[int, lis
                     not (_sizes(text) & got):
                 out.setdefault(i, []).append((tag, text))
     return out
+
+
+_MEMBER_TAG = re.compile(r"^(L|VB|RB|B|DB|R|J|LD|C|BM|SB|TR)\d+$")
+
+
+def unsized(design: DesignAssessment, sheets: dict) -> list[tuple[str, str]]:
+    """Scheduled members with no section size ('L5: STEEL LINTEL BY CALCULATION') and no member
+    calculation naming their tag - they need sizing before issue."""
+    topics = " ".join((c.topic or "") + " " + (c.result or "") for c in design.calculations).upper()
+    out = []
+    for sh in sheets.values():
+        for item in getattr(sh, "schedule", []) or []:
+            tag = item.tag.strip().upper()
+            if not _MEMBER_TAG.match(tag) or _sizes(item.text):
+                continue
+            if re.search(rf"(?<![A-Z0-9]){re.escape(tag)}(?![A-Z0-9])", topics):
+                continue
+            out.append((tag, item.text.upper()))
+    return list(dict.fromkeys(out))
