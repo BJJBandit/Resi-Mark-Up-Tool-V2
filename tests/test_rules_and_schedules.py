@@ -627,3 +627,18 @@ def test_scale_for_paper_size_and_claude_hint():
     assert drawing_scale(doc[0])[0] == 200
     doc.scale_hints = {}
     assert drawing_scale(doc[0])[0] == 100
+
+
+def test_ledgers_retagged_ld():
+    from app.pipeline import ledger_tags
+    s = sheet([Element(kind="member", tag="L5", start=Point(x=0.1, y=0.1), end=Point(x=0.2, y=0.1), text=""),
+               Element(kind="member", tag="L1", start=Point(x=0.3, y=0.1), end=Point(x=0.4, y=0.1), text=""),
+               Element(kind="callout", tag="", start=Point(x=0.1, y=0.1), end=Point(x=0.1, y=0.1),
+                       text="L5 LEDGER BOLTED TO EXISTING WALL. R2 TO L5 WITH HANGERS. L1 OVER DOOR")],
+              [ScheduleItem(tag="L5", text="140x45 F17/LVL LEDGER"), ScheduleItem(tag="L1", text="90x35 F17/LVL LINTEL"),
+               ScheduleItem(tag="LD5", text="190x45 F7 TP DECK LEDGER")])
+    w = ledger_tags(s, "ROOF")
+    assert [x.tag for x in s.schedule] == ["LD6", "L1", "LD5"]  # LD5 taken: next free
+    assert [e.tag for e in s.elements][:2] == ["LD6", "L1"]
+    assert s.elements[2].text == "LD6 LEDGER BOLTED TO EXISTING WALL. R2 TO LD6 WITH HANGERS. L1 OVER DOOR"
+    assert "L5 -> LD6" in w[0]
