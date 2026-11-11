@@ -750,3 +750,25 @@ def test_consistent_tags_and_unsized():
     assert walls.notes == ["-VB1 ON C1 POSTS."] and "RB1 -> VB1" in w[0]
     d = DesignAssessment.model_construct(calculations=[CalcItem(topic="Deck roof beam VB1", basis="", working="", result="")])
     assert calcs.unsized(d, {SK.WALLS: walls}) == [("L5", "STEEL LINTEL BY CALCULATION")]
+
+
+def test_no_reentrant_bars_on_timber_floor():
+    """Markup 32: strip footings round a suspended timber floor + a separate rectangular garage
+    slab - no bars at the timber floor's inside corners."""
+    from app import pdf as P
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    m = P.PlanMap(page, Box(x1=0, y1=0, x2=1, y2=1))
+
+    def seg(x1, y1, x2, y2, tag="SF1"):
+        return Element(kind="member", tag=tag, start=Point(x=x1 / 1190, y=y1 / 842), end=Point(x=x2 / 1190, y=y2 / 842), text="")
+
+    # L-shaped house outline (strip footings): notch at top right -> two re-entrant corners
+    els = [seg(100, 100, 300, 100), seg(300, 100, 300, 150), seg(300, 150, 500, 150), seg(500, 150, 500, 400),
+           seg(500, 400, 100, 400), seg(100, 400, 100, 100),
+           seg(100, 100, 200, 200, "S1")]  # garage slab in the top-left corner only
+    s = sheet(els, [ScheduleItem(tag="S1", text="100 THICK N25 SLAB")])
+    assert P._reentrant_bars(page, s, m) == 0
+    els[-1] = seg(100, 400, 500, 100, "S1")  # slab over the whole outline: the notch corners get bars
+    s = sheet(els, [ScheduleItem(tag="S1", text="100 THICK N25 SLAB")])
+    assert P._reentrant_bars(page, s, m) >= 1
