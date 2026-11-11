@@ -328,6 +328,12 @@ hold even if Claude slips:
   neighbours whose leaders would cross swap places, and a callout moves to another band if
   that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
   after the callouts, so they keep clear of the boxes and leaders too.
+- **Engaged piers at bearer ends**: a bearer ending on a brick base wall (strip footing SF)
+  gets an EP1 engaged pier (350x230 brick bonded into the wall, on a P1 bored pier) at that
+  end - an existing pier there is re-tagged EP1 - and EP1 is added to the schedule.
+- **Re-entrant bars only in a slab**: a corner gets bars only where the slab itself (inside the
+  footing outline and inside an S slab's extent) fills three of the four quadrants round it,
+  never where a slab meets a timber floor or at a timber floor's corners.
 - **One tag per member, every member sized**: a deck / verandah roof beam scheduled as VB1 on one
   sheet and RB1 (same section) on another is re-tagged to the first sheet's tag on all of its
   members, schedule, callouts and notes, with a warning. A scheduled member with no size (e.g.

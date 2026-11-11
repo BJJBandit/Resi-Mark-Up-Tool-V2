@@ -13,7 +13,8 @@ from . import claude, refstore, spelling, stock, usage
 from .pdf import build_markup_pdf, extract_pages, format_ranges, render_pages
 from .refpages import MAX_REF_PAGES, RefDoc, prepare, report
 from .rules import apply_rules, check_geotech
-from .schemas import SHEET_TITLES, DesignAssessment, GeotechReview, InfoRequest, MarkupSheet, SheetKind
+from .schemas import (SHEET_TITLES, DesignAssessment, Element, GeotechReview, InfoRequest, MarkupSheet, Point,
+                      ScheduleItem, SheetKind)
 
 
 @dataclass
@@ -391,6 +392,61 @@ def wet_area_on_slab(design: DesignAssessment, sheet: MarkupSheet, title: str) -
     return [f"{title}: wet area on an existing suspended slab - set-down / screed note added (engineer to confirm)"]
 
 
+EP_TEXT = "350x230 BRICK ENGAGED PIER BONDED INTO BASE WALL, ON P1"
+
+
+def engaged_piers(sheet: MarkupSheet, title: str, aspect: float = 1.414) -> list[str]:
+    """Office practice: a bearer ending on a brick base wall (strip footing SF) bears on an
+    engaged pier bonded into the wall, over a bored pier. Each such bearer end gets an EP1
+    (an existing pier there is re-tagged), and EP1 goes in the schedule. Returns warnings."""
+    walls = [e for e in sheet.elements if e.kind == "member" and re.match(r"SF\d*$", e.tag.strip().upper())]
+    bearers = [e for e in sheet.elements if e.kind == "member" and re.match(r"B\d+$", e.tag.strip().upper())]
+    if not walls or not bearers:
+        return []
+
+    def xy(p):
+        return (p.x * aspect, p.y)
+
+    def foot(pt, a, b):
+        (px, py), (ax, ay), (bx, by) = xy(pt), xy(a), xy(b)
+        dx, dy = bx - ax, by - ay
+        L2 = dx * dx + dy * dy
+        t = 0.0 if L2 < 1e-12 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / L2))
+        fx, fy = ax + dx * t, ay + dy * t
+        return ((px - fx) ** 2 + (py - fy) ** 2) ** 0.5, Point(x=fx / aspect, y=fy)
+
+    def dist(p, q):
+        return (((p.x - q.x) * aspect) ** 2 + (p.y - q.y) ** 2) ** 0.5
+
+    tol = 0.014
+    added = retagged = 0
+    new_els = []
+    for b in bearers:
+        for end in (b.start, b.end):
+            best = min((foot(end, w.start, w.end) for w in walls), key=lambda r: r[0])
+            if best[0] > tol:
+                continue
+            at = best[1]
+            near = [e for e in sheet.elements + new_els if e.kind == "pier" and dist(e.start, at) <= tol]
+            if near:
+                for e in near:
+                    if e.tag.strip().upper() != "EP1":
+                        e.tag = "EP1"
+                        retagged += 1
+                continue
+            new_els.append(Element(kind="pier", tag="EP1", start=at, end=at, text=""))
+            added += 1
+    if not (added or retagged):
+        return []
+    sheet.elements += new_els
+    if not any(s.tag.strip().upper() == "EP1" for s in sheet.schedule):
+        sheet.schedule.append(ScheduleItem(tag="EP1", text=EP_TEXT))
+    still = {e.tag.strip().upper() for e in sheet.elements}
+    sheet.schedule = [s for s in sheet.schedule if s.tag.strip().upper() in still or not re.match(r"P\d+$", s.tag.strip().upper())]
+    return [f"{title}: engaged piers EP1 at {added + retagged} bearer end(s) on the brick base walls "
+            f"({added} added, {retagged} pier(s) re-tagged)"]
+
+
 def drop_driveways(sheet: MarkupSheet, title: str) -> list[str]:
     """Office practice: driveways are ignored. Driveway slab members / schedule items,
     callouts and notes about a driveway are removed (a note that it is 'by others' stays)."""
@@ -454,6 +510,12 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
     result.sheet_warnings[kind] += drop_driveways(sheet, SHEET_TITLES[kind])
     if kind in (SheetKind.FOUNDATION, SheetKind.FLOOR):
         result.sheet_warnings[kind] += wet_area_on_slab(result.design, sheet, SHEET_TITLES[kind])
+        try:
+            pg = next((p for p in pages if getattr(p, "number", None) == sheet.source_page_number), None)
+            aspect = (pg.width / pg.height) if pg is not None and getattr(pg, "width", 0) else 1.414
+        except Exception:
+            aspect = 1.414
+        result.sheet_warnings[kind] += engaged_piers(sheet, SHEET_TITLES[kind], aspect)
     # House style: schedules list only the member type and spacing - no notes.
     sheet.schedule = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.schedule]
     result.sheet_warnings[kind] += stock.check(sheet.schedule, SHEET_TITLES[kind])
