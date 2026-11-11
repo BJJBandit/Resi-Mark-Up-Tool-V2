@@ -325,6 +325,11 @@ hold even if Claude slips:
   neighbours whose leaders would cross swap places, and a callout moves to another band if
   that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
   after the callouts, so they keep clear of the boxes and leaders too.
+- **Ledgers are LD, deck bearers keep the deck tag**: ledgers (deck, roof, to an existing
+  wall) are tagged LD, never L (lintels only) - a ledger Claude schedules under an L tag is
+  re-tagged LD with the same number where free (L5 -> LD5) on the members, schedule, callouts
+  and notes, with a warning. Bearers under a deck / ramp / landing, including the one at the
+  deck's outer edge, take the deck bearer tag (office rule).
 - **Units in their SI case, nothing 'from memory'**: the sheets are upper case, but units keep
   their case (450 mm, 3.4 m, 36.3 m², 27 kN, 6.0 kN/m, 0.8 kPa, 25 MPa; dimensions 90x35) -
   Claude is told so and the app corrects any that slip through (only after a number, so M12

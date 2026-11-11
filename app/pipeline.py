@@ -365,6 +365,38 @@ def _information(job: JobInput, pages, refs: list, geotech: GeotechReview, desig
     return design, warnings
 
 
+def ledger_tags(sheet: MarkupSheet, title: str) -> list[str]:
+    """Office practice: ledgers are tagged LD, never L (lintels only). A ledger scheduled under
+    an L tag ('L5: 140x45 F17/LVL LEDGER') is re-tagged LD with the same number where free
+    (L5 -> LD5), everywhere on the sheet: members, schedule, callouts and notes."""
+    used = {s.tag.strip().upper() for s in sheet.schedule} | {e.tag.strip().upper() for e in sheet.elements}
+    renames: dict[str, str] = {}
+    for item in sheet.schedule:
+        tag = item.tag.strip().upper()
+        m = re.fullmatch(r"L(\d+)", tag)
+        if not m or not re.search(r"\bLEDGER", item.text, re.I) or re.search(r"\bLINTEL", item.text, re.I):
+            continue
+        new, n = f"LD{m.group(1)}", int(m.group(1))
+        while new in used:
+            n += 1
+            new = f"LD{n}"
+        used.add(new)
+        renames[tag] = new
+    if not renames:
+        return []
+    rx = re.compile(r"\b(" + "|".join(map(re.escape, renames)) + r")\b", re.I)
+
+    def sub(text: str) -> str:
+        return rx.sub(lambda m: renames[m.group(1).upper()], text or "")
+
+    sheet.schedule = [s.model_copy(update={"tag": renames.get(s.tag.strip().upper(), s.tag)}) for s in sheet.schedule]
+    sheet.elements = [e.model_copy(update={"tag": renames.get(e.tag.strip().upper(), e.tag), "text": sub(e.text)})
+                      for e in sheet.elements]
+    sheet.notes = [sub(n) for n in sheet.notes]
+    return [f"{title}: ledger tag(s) {', '.join(f'{a} -> {b}' for a, b in renames.items())} "
+            "(ledgers are tagged LD; L is for lintels)"]
+
+
 def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, change: str = "") -> None:
     """Plan one sheet and store it (with its rule warnings) on the result. Raises on failure."""
     direction = job.notes
@@ -378,6 +410,7 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
         if dropped:
             sheet.elements = [e for e in sheet.elements if e not in dropped]
     result.sheet_warnings[kind] = apply_rules(sheet, SHEET_TITLES[kind])
+    result.sheet_warnings[kind] += ledger_tags(sheet, SHEET_TITLES[kind])
     # House style: schedules list only the member type and spacing - no notes.
     sheet.schedule = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.schedule]
     result.sheet_warnings[kind] += stock.check(sheet.schedule, SHEET_TITLES[kind])
