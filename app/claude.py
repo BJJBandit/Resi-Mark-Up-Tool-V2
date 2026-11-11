@@ -660,7 +660,11 @@ def plan_sheet(
                 "drawing. Give every element's coordinates normalised to that WHOLE page image "
                 "(0,0 = top-left, 1,1 = bottom-right) and put them on the actual drawn walls / "
                 "members - read the image carefully. Every tag used on the plan must appear in "
-                "the schedule, and every schedule item must appear on the plan."
+                "the schedule, and every schedule item must appear on the plan. Member sizes must match "
+                "the design assessment's calculations (calculations results) - they go on the calculation "
+                "sheet beside this one. Change a size only with the reason in the notes, and never to a "
+                "smaller section than the calculation needs (office 'single member' rules choose between "
+                "adequate sections; they never reduce one)."
             ),
         }
     )

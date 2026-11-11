@@ -75,6 +75,9 @@ checked before use. It is not for construction.
        force - OK, or NOT ADEQUATE with a warning. Re-running the wall sheet updates it.
      - *Member and footing calculations*: basis, working and result for the key decisions
        (roof load widths, lintels / beams, bearers / joists, columns, footing / slab, tie-down).
+       Each result is compared with the schedules by tag: where the section differs (e.g. calc
+       RB1 2/290x45, schedule RB1 290x35) a CHECK line is added under it and a warning given.
+       The sheets are told to use the calculation sizes and never reduce one.
 
    The review summary (geotech, roof/wall/footing assessment, engineer checks) is shown
    in the app and in `review.json`; it is not added to the PDF.
