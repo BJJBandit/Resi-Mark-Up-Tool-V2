@@ -2001,6 +2001,9 @@ def build_markup_pdf(
     """Mark-up sheets (the review summary stays in the app / review.json), plus the
     calculation sheet. Returns (pdf bytes, warnings). Never fails because of one bad element."""
     src = pymupdf.open(stream=arch_pdf, filetype="pdf")
+    # The scale Claude read off each page (CAD text is often line work the app can't read).
+    src.scale_hints = {p.page_number - 1: p.scale for p in (getattr(design, "pages", None) or [])
+                       if getattr(p, "scale", "")}
     out = pymupdf.open()
     meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"), title_block,
                      masonry=_is_masonry(design))

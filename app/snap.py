@@ -319,17 +319,43 @@ import re  # noqa: E402
 STANDARD_SCALES = {20, 25, 50, 75, 100, 125, 150, 200, 250, 500}
 
 
+PAPER_LONG_MM = {"A0": 1189, "A1": 841, "A2": 594, "A3": 420, "A4": 297}
+_SCALE_RX = re.compile(r"\b1\s*:\s*(\d{2,4})\b(?:\s*(?:@|AT)\s*(A[0-4])\b)?", re.I)
+
+
+def scale_for_page(text: str, page: pymupdf.Page) -> list[int]:
+    """Scales printed in text ('1:100', '1:100 @ A1'), each as it applies to THIS page: a scale
+    stated for other paper is converted (1:100 @ A1 printed on A3 is 1:200 on the page)."""
+    long_mm = max(page.rect.width, page.rect.height) * 25.4 / 72
+    out = []
+    for m in _SCALE_RX.finditer(text or ""):
+        base = int(m.group(1))
+        if base not in STANDARD_SCALES:
+            continue
+        paper = PAPER_LONG_MM.get((m.group(2) or "").upper())
+        if paper and abs(paper / long_mm - 1) > 0.1:
+            base = int(round(base * paper / long_mm))
+        out.append(base)
+    return out
+
+
 def drawing_scale(page: pymupdf.Page, geo: Geometry | None = None) -> tuple[int | None, str]:
-    """Plan scale: printed on the sheet ('1:100'), else elsewhere in the set, else
+    """Plan scale on this page: printed on the sheet ('1:100', '1:100 @ A1' adjusted to the
+    page's paper size), else as read off the sheet by Claude (page.parent.scale_hints - CAD
+    text is often line work the app can't read), else printed elsewhere in the set, else
     inferred from the wall thickness (most walls on a house plan are 90 mm studs).
     Returns (scale, how) or (None, reason)."""
-    def printed(text: str) -> list[int]:
-        return [int(m) for m in re.findall(r"\b1\s*:\s*(\d{2,3})\b", text) if int(m) in STANDARD_SCALES]
-
-    found = printed(page.get_text("text"))
-    if found:
+    text = page.get_text("text")
+    found = scale_for_page(text, page)
+    hint = (getattr(page.parent, "scale_hints", None) or {}).get(page.number) or ""
+    hinted = scale_for_page(hint, page)
+    with_paper = lambda t: _SCALE_RX.search(t or "") is not None and any(m.group(2) for m in _SCALE_RX.finditer(t))  # noqa: E731
+    # A plain '1:100' on the sheet loses to Claude's reading that names the paper ('1:100 @ A1').
+    if found and not (hinted and with_paper(hint) and not with_paper(text)):
         return max(set(found), key=found.count), "printed on the sheet"
-    found = [x for pg in page.parent for x in printed(pg.get_text("text"))]
+    if hinted:
+        return hinted[0], f"read from the sheet ({hint})"
+    found = [x for pg in page.parent for x in scale_for_page(pg.get_text("text"), page)]
     if found:
         return max(set(found), key=found.count), "printed in the drawing set"
     if geo is not None:
