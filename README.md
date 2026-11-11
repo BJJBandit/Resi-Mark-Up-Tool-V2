@@ -339,8 +339,11 @@ hold even if Claude slips:
   background, placed after everything else is drawn in the first nearby spot that overlaps no
   other tag, member line, arrow, pier, column or cloud. A tag moved away from what it names gets
   a short leader line; a repeated tag with no clear spot near one already shown is left out.
-- **Mark-ups are drawn roughly to scale.** Using the plan scale (printed, or inferred from
-  the 90 mm stud walls), piers are drawn at their diameter from the schedule (450 dia by
+- **Mark-ups are drawn roughly to scale.** The plan scale is taken, in this order, from:
+  the scale printed on the sheet (a scale for other paper is converted - '1:100 @ A1' on an
+  A3 page is 1:200); the scale Claude reads off the page in the drawing review (CAD text is
+  often line work the app can't read); a scale printed elsewhere in the set; or, last,
+  inferred from the 90 mm stud walls. Using it, piers are drawn at their diameter from the schedule (450 dia by
   default), brick / block piers as a square of their size inside the bored pier, and columns
   at their section size (e.g. 89 SHS) - kept just large enough to see. Bracing panels are
   drawn at their tagged length and lintels / beams / footings / joists are snapped to the

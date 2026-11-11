@@ -610,3 +610,20 @@ def test_brief_keeps_ranges():
     from app.calcs import _brief
     assert _brief("0 - 20 mm (reactivity equivalent to class S)") == "0 - 20 mm"
     assert _brief("clad timber frame - weatherboard") == "clad timber frame"
+
+
+def test_scale_for_paper_size_and_claude_hint():
+    """1:100 @ A1 printed on an A3 page is 1:200 on the page; Claude's reading is used when the
+    sheet's text can't be read (markup 26: piers drawn twice their size at a guessed 1:100)."""
+    from app.snap import drawing_scale, scale_for_page
+    doc = pymupdf.open()
+    a3 = doc.new_page(width=1190.55, height=841.89)
+    assert scale_for_page("SCALE 1:100 @ A1", a3) == [200]
+    assert scale_for_page("1:100 @ A3", a3) == [100] and scale_for_page("1:50", a3) == [50]
+    assert drawing_scale(a3) == (None, "scale not found")
+    doc.scale_hints = {0: "1:100 @ A1"}
+    assert drawing_scale(doc[0])[0] == 200
+    a3.insert_text((50, 50), "SCALE 1:100")  # plain on the sheet: the reading with the paper wins
+    assert drawing_scale(doc[0])[0] == 200
+    doc.scale_hints = {}
+    assert drawing_scale(doc[0])[0] == 100

@@ -53,6 +53,9 @@ class PageRole(Strict):
     page_number: int = Field(description="1-based page number in the architectural set.")
     title: str
     kind: str = Field(description="site plan, floor plan, roof plan, elevation, section, detail, notes or other.")
+    scale: str = Field(default="", description="The scale printed for this drawing (title block or under the "
+                       "view), with the paper size when given, e.g. '1:100 @ A1', '1:200 @ A3', '1:100'; "
+                       "'not shown' if none.")
 
 
 class LoadPathStep(Strict):
