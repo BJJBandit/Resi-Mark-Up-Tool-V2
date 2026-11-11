@@ -560,3 +560,53 @@ def test_units_superscripts_and_times():
     assert "45 x 240²" in out and "432,000 mm³" in out and "10⁶ mm⁴" in out and "2.40 m x 1.50" in out
     assert "450W x MIN" in out and "ELEVATION x PRESSURE" in out and "CLAUSE 2.6 ROOF" in out
     assert "TYPE X BRACING" in out
+
+
+def test_containment_backs_off_when_outline_wrong(monkeypatch):
+    """Alterations (markup 25): the outline found is only the existing house, so most new-work
+    lintels / bracing look 'outside' - nothing is moved or removed, a warning instead."""
+    from app import pdf as P
+
+    class FakeFP:
+        ok = True
+
+        def __init__(self, geo):
+            pass
+
+        def line_inside(self, p, q, tol=0):
+            return p.x > 500  # only the 'existing house' on the right is inside
+
+        def move_inside(self, p, q):
+            raise AssertionError("must not move anything")
+
+    monkeypatch.setattr(P, "Footprint", FakeFP)
+    els = [Element(kind="bracing", tag="h(b) - 900", start=Point(x=0.1 * i, y=0.5), end=Point(x=0.1 * i, y=0.55), text="")
+           for i in range(1, 5)] + [Element(kind="member", tag="L1", start=Point(x=0.9, y=0.2), end=Point(x=0.95, y=0.2), text="")]
+    s = sheet(els)
+
+    def pts(e):
+        return pymupdf.Point(e.start.x * 1000, e.start.y * 1000), pymupdf.Point(e.end.x * 1000, e.end.y * 1000)
+
+    w = P._contain(None, s, [4], [0, 1, 2, 3], pts, lambda i, r: None, "WALLS", None)
+    assert len(s.elements) == 5 and "outline unclear" in w[0]
+
+
+def test_wall_racking_note_matches_the_check():
+    from app import calcs
+
+    def br(tag, x1, y1, x2, y2):
+        return Element(kind="bracing", tag=tag, start=Point(x=x1, y=y1), end=Point(x=x2, y=y2), text="")
+
+    walls = MarkupSheet.model_construct(source_page_number=1, notes=[
+        "-RACKING: WIND ON NORTH 11.9 KN, BRACING PROVIDED UP THE PAGE 19.3 KN.", "-ALL FRAMING TO AS 1684.2."],
+        elements=[br("h(b) - 900", 0.2, 0.2, 0.2, 0.25), br("d - 2400", 0.3, 0.5, 0.4, 0.5)])
+    notes = calcs.racking_notes(_calc_design(force_up=11.9, force_across=2.0), walls, 1.414)
+    assert "-ALL FRAMING TO AS 1684.2." in notes and not any("19.3" in n for n in notes)
+    assert "11.9 kN REQUIRED, 5.4 kN PROVIDED (NOT ADEQUATE - ADD BRACING)" in notes[-1]
+    assert "REFER CALCULATION SHEET" in notes[-1]
+
+
+def test_brief_keeps_ranges():
+    from app.calcs import _brief
+    assert _brief("0 - 20 mm (reactivity equivalent to class S)") == "0 - 20 mm"
+    assert _brief("clad timber frame - weatherboard") == "clad timber frame"
