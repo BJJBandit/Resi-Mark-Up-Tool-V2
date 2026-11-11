@@ -369,6 +369,28 @@ _DRIVEWAY = re.compile(r"\bDRIVE\s?WAYS?\b", re.I)
 _BY_OTHERS = re.compile(r"BY OTHERS|NOT PART OF|EXCLUDED|BY OWNER", re.I)
 
 
+_SHOWER = re.compile(r"SHOWER|WET AREA|BATHROOM|ENSUITE", re.I)
+_ON_SLAB = re.compile(r"BONDEK|SUSPENDED (?:CONCRETE )?SLAB|EXISTING (?:CONCRETE |FIRST FLOOR )?SLAB|"
+                      r"FIRST FLOOR SLAB|UPPER FLOOR SLAB", re.I)
+_FALLS_COVERED = re.compile(r"SET[- ]?DOWN|SCREED", re.I)
+WET_ON_SLAB_NOTE = ("-WET AREAS / HOB-FREE SHOWER ON THE EXISTING SUSPENDED SLAB: PROVIDE A SET-DOWN OR TOPPING "
+                    "SCREED FOR THE FALLS TO THE WATERSTOP. CONFIRM THE EXISTING SLAB THICKNESS, ITS CAPACITY FOR "
+                    "THE ADDED SCREED AND TILE LOAD, AND ANY CUT FOR A SET-DOWN - ENGINEER TO CONFIRM.")
+
+
+def wet_area_on_slab(design: DesignAssessment, sheet: MarkupSheet, title: str) -> list[str]:
+    """Office practice: a shower / wet area on an existing suspended slab needs a set-down or
+    screed for its falls - add the engineer check note if the sheet doesn't cover it."""
+    text = design.model_dump_json()
+    if not (_SHOWER.search(text) and _ON_SLAB.search(text)):
+        return []
+    if any(_FALLS_COVERED.search(n) for n in sheet.notes) or \
+            any(_FALLS_COVERED.search(e.text or "") for e in sheet.elements if e.kind == "callout"):
+        return []
+    sheet.notes.append(WET_ON_SLAB_NOTE)
+    return [f"{title}: wet area on an existing suspended slab - set-down / screed note added (engineer to confirm)"]
+
+
 def drop_driveways(sheet: MarkupSheet, title: str) -> list[str]:
     """Office practice: driveways are ignored. Driveway slab members / schedule items,
     callouts and notes about a driveway are removed (a note that it is 'by others' stays)."""
@@ -430,6 +452,8 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
     result.sheet_warnings[kind] = apply_rules(sheet, SHEET_TITLES[kind])
     result.sheet_warnings[kind] += ledger_tags(sheet, SHEET_TITLES[kind])
     result.sheet_warnings[kind] += drop_driveways(sheet, SHEET_TITLES[kind])
+    if kind in (SheetKind.FOUNDATION, SheetKind.FLOOR):
+        result.sheet_warnings[kind] += wet_area_on_slab(result.design, sheet, SHEET_TITLES[kind])
     # House style: schedules list only the member type and spacing - no notes.
     sheet.schedule = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.schedule]
     result.sheet_warnings[kind] += stock.check(sheet.schedule, SHEET_TITLES[kind])
