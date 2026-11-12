@@ -78,6 +78,8 @@
   .askyes { margin-top: 8px; }
   .askyes label { margin: 8px 0 4px; font-size: 13px; }
   .askbtns { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .gobar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .gobar button.secondary { margin: 20px 0 0; padding: 10px 18px; }
 </style>
 </head>
 <body>
@@ -158,7 +160,8 @@
     <label>Additional notes for the drawings <small>optional - one per line, added word for word (in capitals) to the notes on every sheet</small></label>
     <textarea name="sheet_notes" rows="4" placeholder="e.g.&#10;ALL TIMBER TO BE H2 TREATED MINIMUM.&#10;BUILDER TO CONFIRM ALL DIMENSIONS ON SITE."></textarea>
 
-    <button id="go" type="submit">Run review</button>
+    <div class="gobar"><button id="go" type="submit">Run review</button>
+      <button id="pauseBtn" type="button" class="secondary" hidden title="Pause the running review at its next step to change the direction, notes, sheets or material">Pause review</button></div>
   </form>
 
   <div class="card" id="status"></div>
@@ -461,10 +464,26 @@ function showPaused(id, j) {
   });
 }
 
+// Pause button next to "Run review": shown while a review runs.
+const pauseBtn = document.getElementById('pauseBtn');
+function showPauseBtn(id, j) {
+  pauseBtn.hidden = false;
+  pauseBtn.dataset.job = id;
+  pauseBtn.disabled = !j.pausable;
+  pauseBtn.textContent = j.pausable ? 'Pause review' : 'Pausing at the next step…';
+}
+pauseBtn.addEventListener('click', async () => {
+  pauseBtn.disabled = true;
+  pauseBtn.textContent = 'Pausing at the next step…';
+  const r = await fetch(`/jobs/${pauseBtn.dataset.job}/pause`, { method: 'POST' });
+  if (!r.ok) { pauseBtn.disabled = false; pauseBtn.textContent = 'Pause review'; alert((await r.json()).detail || 'Could not pause'); }
+});
+
 async function poll(id) {
   box.dataset.job = id;
   const r = await fetch(`/jobs/${id}`);
   const j = await r.json();
+  if (!r.ok || !['queued', 'running'].includes(j.status)) pauseBtn.hidden = true;
   if (!r.ok) { box.innerHTML = `<p class="err">${esc(j.detail)}</p>`; go.disabled = false; return; }
   if (j.status === 'error') { box.innerHTML = `<p class="err">Review failed: ${esc(j.error)}</p>`; go.disabled = false; return; }
   if (j.status === 'waiting' && (j.questions || []).length) {
@@ -481,15 +500,8 @@ async function poll(id) {
   }
   box.dataset.pausedFor = '';
   if (j.status !== 'done') {
-    box.innerHTML = `<p>${esc(j.step || 'Queued')}… <small>(a full review takes several minutes)</small></p>
-      ${j.pausable ? `<button type="button" class="secondary" id="pauseBtn">Pause</button>
-      <small class="muted">pauses at the next step so you can change the direction, notes, sheets or material</small>` : ''}`;
-    const pb = document.getElementById('pauseBtn');
-    if (pb) pb.onclick = async () => {
-      pb.disabled = true;
-      const r = await fetch(`/jobs/${id}/pause`, { method: 'POST' });
-      if (!r.ok) { pb.disabled = false; alert((await r.json()).detail || 'Could not pause'); }
-    };
+    box.innerHTML = `<p>${esc(j.step || 'Queued')}… <small>(a full review takes several minutes)</small></p>`;
+    showPauseBtn(id, j);
     return setTimeout(() => poll(id), 4000);
   }
   const s = j.summary, errs = Object.entries(j.sheet_errors || {});
