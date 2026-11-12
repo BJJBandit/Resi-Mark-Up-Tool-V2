@@ -859,3 +859,29 @@ def test_arete_title_block_layout():
     assert "SSK-1" in tb and "J1" in tb and "WALL FRAMING PLAN" in tb and "PRELIMINARY" in tb
     assert "ARETE ENGINEERING PTY LTD" in page.get_text()
     assert P.NOTES == notes_before  # layout restored
+
+
+def test_tighten_region_and_client():
+    from app import pdf as P
+
+    def m(tag, x1, y1, x2, y2, kind="member"):
+        return Element(kind=kind, tag=tag, start=Point(x=x1, y=y1), end=Point(x=x2, y=y2), text="")
+
+    s = MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0.1, y1=0.1, x2=0.9, y2=0.9),
+                                    elements=[m("B1", 0.3, 0.4, 0.6, 0.4), m("B1", 0.3, 0.55, 0.6, 0.55),
+                                              m("P1", 0.3, 0.4, 0.3, 0.4, "pier"),
+                                              m("", 0.85, 0.85, 0.85, 0.85, "callout")])
+    assert P._tighten_region(s)
+    r = s.plan_region
+    assert 0.25 < r.x1 < 0.3 and 0.6 < r.x2 < 0.65 and 0.35 < r.y1 < 0.4 and 0.55 < r.y2 < 0.6
+    assert not P._tighten_region(s)  # already tight
+    # client goes in the title block
+    src = pymupdf.open()
+    src.new_page(width=1190.55, height=841.89)
+    sh = MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1), elements=[],
+                                     schedule=[], legend=[], notes=[], classification="", schedule_title="",
+                                     legend_title="")
+    out, _ = P.build_markup_pdf(src.tobytes(), "1 TEST ST", None, None, {K.WALLS: sh}, calc_sheet=False,
+                                arete_title_block=True, client="J & K SMITH")
+    tb = [a.info["content"] for a in pymupdf.open(stream=out)[0].annots() if a.info.get("subject") == "Title Block"]
+    assert "J & K SMITH" in tb

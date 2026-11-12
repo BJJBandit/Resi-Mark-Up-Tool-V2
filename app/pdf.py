@@ -539,6 +539,33 @@ def _fit_region(sheet: MarkupSheet, margin: float = 0.02) -> int:
     return len({id(e) for e in sheet.elements for p in (e.start, e.end) if any(p is q for q in out)})
 
 
+def _tighten_region(sheet: MarkupSheet, margin: float = 0.06, min_pad: float = 0.025) -> bool:
+    """Crop sheet.plan_region to the mark-up itself (every member, pier, bracing panel, tag
+    on the plan) plus a margin, so the plan fills the drawing area instead of carrying the
+    dimension strings and blank paper round it. Never grows it. Returns True if cropped."""
+    r = sheet.plan_region
+    x1, x2 = sorted((r.x1, r.x2))
+    y1, y2 = sorted((r.y1, r.y2))
+    if x2 - x1 < 0.1 or y2 - y1 < 0.1:
+        return False
+    pts = [p for e in sheet.elements if e.kind != "callout" for p in (e.start, e.end)
+           if x1 <= p.x <= x2 and y1 <= p.y <= y2]
+    if len(pts) < 3:
+        return False
+    bx1, bx2 = min(p.x for p in pts), max(p.x for p in pts)
+    by1, by2 = min(p.y for p in pts), max(p.y for p in pts)
+    px, py = max(min_pad, (bx2 - bx1) * margin), max(min_pad, (by2 - by1) * margin)
+    nx1, nx2 = max(x1, bx1 - px), min(x2, bx2 + px)
+    ny1, ny2 = max(y1, by1 - py), min(y2, by2 + py)
+    for lo, hi, a, b in ((nx1, nx2, x1, x2), (ny1, ny2, y1, y2)):
+        if hi - lo < 0.1:  # PlanMap needs at least 10 % of the page each way
+            return False
+    if (nx2 - nx1) * (ny2 - ny1) > 0.92 * (x2 - x1) * (y2 - y1):
+        return False  # already tight
+    sheet.plan_region = r.model_copy(update={"x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2})
+    return True
+
+
 class PlanMap:
     """Maps normalised source-image coordinates onto the sheet."""
 
@@ -1353,6 +1380,7 @@ class SheetMeta:
     date: str
     masonry: bool = False  # brick veneer / masonry walls: wall sheet gets the masonry lintel schedule
     arete: bool = False  # sheets on the office Arete A3 title block (app/assets/title_block_a3.pdf)
+    client: str = ""
     # Racking note for the wall sheet from the bracing check (calculation sheet on):
     # notes(sheet, page aspect) -> the sheet's notes with it. None: leave Claude's notes.
     racking_notes: object = None
@@ -1381,7 +1409,7 @@ def _arete_title_block(page: pymupdf.Page, meta: "SheetMeta", title: str, dwg_no
         fields = {w.field_name: pymupdf.Rect(w.rect) for w in tpl[0].widgets()}
     values = {
         "PROJECT NUMBER": meta.job_no, "PROJECT TITLE": (meta.project or "").upper(), "ADDRESS": "",
-        "CLIENT": "", "DRAWING TITLE 1": title, "DRAWING TITLE 2": "",
+        "CLIENT": meta.client, "DRAWING TITLE 1": title, "DRAWING TITLE 2": "",
         "SHEET NUMBER": dwg_no, "SHEET REVISION": meta.rev, "SHEET DATE": meta.date,
         "DRAWING STATUS": "PRELIMINARY", "DESIGNED BY": meta.made_by, "DRAWN BY": meta.made_by,
         "APPROVED BY": "", "CHECKED BY": "",
@@ -1888,6 +1916,8 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     if grown:
         warnings.append(f"{dwg_no}: {grown} mark-up(s) were placed outside the plan area Claude chose, so the "
                         "plan area was enlarged to show them - check they are on the right drawing")
+    if kind != SheetKind.ARTICULATION:  # elevation sheets keep every elevation in view
+        _tighten_region(sheet)
     m = PlanMap(src[idx], sheet.plan_region)
     try:  # draw piers / columns roughly to scale
         scale, _ = drawing_scale(src[idx], Geometry(src[idx]))
@@ -2104,6 +2134,7 @@ def _build_markup_pdf(
     made_by: str = "",
     calc_sheet: bool = True,
     arete_title_block: bool = False,
+    client: str = "",
 ) -> tuple[bytes, list[str]]:
     """Mark-up sheets (the review summary stays in the app / review.json), plus the
     calculation sheet. Returns (pdf bytes, warnings). Never fails because of one bad element."""
@@ -2113,7 +2144,7 @@ def _build_markup_pdf(
                        if getattr(p, "scale", "")}
     out = pymupdf.open()
     meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"),
-                     masonry=_is_masonry(design), arete=arete_title_block and ARETE_TB.exists())
+                     masonry=_is_masonry(design), arete=arete_title_block and ARETE_TB.exists(), client=client)
     if calc_sheet and getattr(design, "racking", None):
         meta.racking_notes = lambda sheet, aspect: calcs.racking_notes(design, sheet, aspect)
     overflow: list[str] = []
