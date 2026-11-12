@@ -95,10 +95,14 @@
 
     <label class="check"><input type="checkbox" name="arete_title_block" value="true" id="tb"> Add title block to sheets
       <small>the office Arete A3 title block - sheets drawn inside it, filled with the project, job no, sheet, rev, date and initials</small></label>
-    <div class="row3" id="tbFields" hidden>
+    <div id="tbFields" hidden>
+    <label>Client <small>for the title block</small></label>
+    <input type="text" name="client" placeholder="e.g. J &amp; K Smith">
+    <div class="row3">
       <div><label>Job No</label><input type="text" name="job_no"></div>
       <div><label>Rev</label><input type="text" name="rev" value="A"></div>
       <div><label>Made by</label><input type="text" name="made_by" placeholder="Initials"></div>
+    </div>
     </div>
 
     <label>Architectural drawings (PDF) * <small>one or more sets (e.g. plans, elevations, revised sheets) &middot; up to 60 pages in total</small></label>

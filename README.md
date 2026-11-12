@@ -92,7 +92,7 @@ checked before use. It is not for construction.
    inside the office title block (`app/assets/title_block_a3.pdf`) - border, logo and company
    details - with its fields filled as editable text: project title and job no, drawing title
    and no (SSK-x), revision, date, status PRELIMINARY, designed / drawn by (initials) and the
-   first issue row. The mark-up fits inside the border above the title strip. This is the only
+   first issue row, and the client (Client box on the form). The mark-up fits inside the border above the title strip. This is the only
    title block; the calculation sheet stays without one.
 
    The review summary (geotech, roof/wall/footing assessment, engineer checks) is shown
@@ -388,6 +388,10 @@ hold even if Claude slips:
   background, placed after everything else is drawn in the first nearby spot that overlaps no
   other tag, member line, arrow, pier, column or cloud. A tag moved away from what it names gets
   a short leader line; a repeated tag with no clear spot near one already shown is left out.
+- **Plan cropped to the mark-up**: the plan area is cropped to the members, piers, bracing and
+  tags drawn on it plus a small margin (never larger than the area Claude chose), so the plan
+  fills the drawing area instead of carrying the dimension strings round it. Elevation
+  (articulation) sheets keep every elevation in view.
 - **Mark-ups are drawn roughly to scale.** The plan scale is taken, in this order, from:
   the scale printed on the sheet (a scale for other paper is converted - '1:100 @ A1' on an
   A3 page is 1:200); the scale Claude reads off the page in the drawing review (CAD text is

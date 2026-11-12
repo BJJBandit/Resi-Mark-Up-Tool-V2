@@ -344,6 +344,7 @@ async def create_job(
     combine_foundation: bool = Form(True),
     calc_sheet: bool = Form(False),
     arete_title_block: bool = Form(False),
+    client: str = Form(""),
 ) -> dict:
     try:
         chosen = [SheetKind(s) for s in sheets]
@@ -462,6 +463,7 @@ async def create_job(
         combine_foundation=combine_foundation,
         calc_sheet=calc_sheet,
         arete_title_block=arete_title_block or title_block,  # the Arete A3 template is the title block
+        client=client.strip().upper(),
     )
     job_id = uuid.uuid4().hex
     _evict_old_jobs()
