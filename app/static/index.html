@@ -93,9 +93,8 @@
     <label>Project / site address</label>
     <input type="text" name="project" placeholder="e.g. 12 Smith Street, Suburb">
 
-    <label class="check"><input type="checkbox" name="arete_title_block" value="true" id="atb"> Use the Arete A3 title block
-      <small>sheets drawn inside the office title block, filled with the project, job no, sheet, rev, date and initials</small></label>
-    <label class="check"><input type="checkbox" name="title_block" value="true" id="tb"> Add title block to sheets <small>optional</small></label>
+    <label class="check"><input type="checkbox" name="arete_title_block" value="true" id="tb"> Add title block to sheets
+      <small>the office Arete A3 title block - sheets drawn inside it, filled with the project, job no, sheet, rev, date and initials</small></label>
     <div class="row3" id="tbFields" hidden>
       <div><label>Job No</label><input type="text" name="job_no"></div>
       <div><label>Rev</label><input type="text" name="rev" value="A"></div>
@@ -250,10 +249,7 @@ document.querySelector('.sheetpick').addEventListener('change', e => {
   if (v === 'footings' || v === 'floor') box('foundation').checked = false;
 });
 const tb = document.getElementById('tb'), tbFields = document.getElementById('tbFields');
-const atb = document.getElementById('atb');
-const tbShow = () => { tbFields.hidden = !(tb.checked || atb.checked); };
-tb.addEventListener('change', () => { if (tb.checked) atb.checked = false; tbShow(); });
-atb.addEventListener('change', () => { if (atb.checked) tb.checked = false; tbShow(); });
+tb.addEventListener('change', () => { tbFields.hidden = !tb.checked; });
 // Document lists (drawings, geotech, standards): each "Add" appends rather than
 // replacing; every file can be removed and has its own "Pages to review".
 const mb = n => (n / 1048576).toFixed(1);

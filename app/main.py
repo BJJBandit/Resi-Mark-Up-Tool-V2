@@ -453,7 +453,7 @@ async def create_job(
         notes=notes.strip(),
         sheet_notes=[n.strip() for n in sheet_notes.splitlines() if n.strip()],
         references=refs,
-        title_block=title_block,
+        title_block=False,
         pages=[],  # arch holds only the selected pages
         page_labels=labels,
         job_no=job_no.strip(),
@@ -462,7 +462,7 @@ async def create_job(
         sheets=chosen,
         combine_foundation=combine_foundation,
         calc_sheet=calc_sheet,
-        arete_title_block=arete_title_block,
+        arete_title_block=arete_title_block or title_block,  # the Arete A3 template is the title block
     )
     job_id = uuid.uuid4().hex
     _evict_old_jobs()

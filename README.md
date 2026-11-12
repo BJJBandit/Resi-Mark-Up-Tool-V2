@@ -89,13 +89,12 @@ checked before use. It is not for construction.
        RB1 2/290x45, schedule RB1 290x35) a CHECK line is added under it and a warning given.
        The sheets are told to use the calculation sizes and never reduce one.
 
-   **Use the Arete A3 title block** (tick box, top of the form): every drawing sheet is laid out
+   **Add title block to sheets** (tick box, top of the form): every drawing sheet is laid out
    inside the office title block (`app/assets/title_block_a3.pdf`) - border, logo and company
    details - with its fields filled as editable text: project title and job no, drawing title
    and no (SSK-x), revision, date, status PRELIMINARY, designed / drawn by (initials) and the
-   first issue row. The mark-up fits inside the border above the title strip. It replaces the
-   simple title block option (ticking one unticks the other); the calculation sheet stays
-   without a title block.
+   first issue row. The mark-up fits inside the border above the title strip. This is the only
+   title block (the old drawn box is no longer used); the calculation sheet stays without one.
 
    The review summary (geotech, roof/wall/footing assessment, engineer checks) is shown
    in the app and in `review.json`; it is not added to the PDF.
