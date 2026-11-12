@@ -41,6 +41,9 @@ class JobInput:
     # answers: ask([request dicts]) -> [{"answer": "yes"|"no"|"ignore", "files": [(name,
     # pdf)], "text": str}]. None (no one to ask): every request is treated as "no".
     ask: Callable[[list[dict]], list[dict]] | None = field(default=None, repr=False)
+    # Pause point: checkpoint(stage) -> None to carry on, or the engineer's changes made while
+    # paused: {"notes", "sheet_notes", "construction", "sheets"} (any subset).
+    checkpoint: Callable[[str], dict | None] | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -231,14 +234,60 @@ def _run_all(job: JobInput, progress: Callable[[str], None], log: usage.UsageLog
         claude.delete_references(refs)
 
 
+def _apply_changes(job: JobInput, changes: dict | None) -> set[str]:
+    """Apply the changes made while paused; returns which settings changed."""
+    if not changes:
+        return set()
+    changed = set()
+    if "notes" in changes and changes["notes"].strip() != job.notes.strip():
+        job.notes = changes["notes"].strip()
+        changed.add("notes")
+    if "sheet_notes" in changes:
+        new = [n.strip() for n in changes["sheet_notes"] if n.strip()]
+        if new != job.sheet_notes:
+            job.sheet_notes = new
+            changed.add("sheet_notes")
+    if changes.get("construction") and changes["construction"].strip() != job.construction:
+        job.construction = changes["construction"].strip()
+        changed.add("construction")
+    if "sheets" in changes:
+        new_sheets = [SheetKind(k) for k in changes["sheets"]]
+        if new_sheets != job.sheets:
+            job.sheets, job.combine_foundation = new_sheets, False
+            changed.add("sheets")
+    return changed
+
+
+def _pause(job: JobInput, stage: str, progress: Callable[[str], None]) -> set[str]:
+    if job.checkpoint is None:
+        return set()
+    try:
+        changes = job.checkpoint(stage)
+    except Exception as e:  # never lose the review over a pause
+        print(f"[pause] {e!r}", flush=True)
+        return set()
+    changed = _apply_changes(job, changes)
+    if changed:
+        progress(f"Continuing with the changes ({', '.join(sorted(changed))})")
+    return changed
+
+
 def _run(job: JobInput, pages, refs, progress: Callable[[str], None], extra: dict | None = None) -> JobResult:
     progress("Step 1: reviewing geotechnical report and wind")
     geotech = claude.review_geotech(job.geotech_pdf, job.wind_class, job.site_class, refs, job.notes)
+    _pause(job, "after step 1 (geotechnical review)", progress)
 
-    progress("Step 2: reviewing architectural drawings")
-    design = claude.assess_design(pages, geotech, job.construction, job.notes, refs)
-    design, info_warnings = _information(job, pages, refs, geotech, design, progress,
-                                         extra if extra is not None else {"text_refs": [], "files": []})
+    extra = extra if extra is not None else {"text_refs": [], "files": []}
+
+    def assess() -> tuple:
+        progress("Step 2: reviewing architectural drawings")
+        d = claude.assess_design(pages, geotech, job.construction, job.notes, refs)
+        return _information(job, pages, refs, geotech, d, progress, extra)
+
+    design, info_warnings = assess()
+    # Changing the material / standard or the direction after the drawing review means redoing it.
+    while _pause(job, "after step 2 (drawing review)", progress) & {"construction", "notes"}:
+        design, info_warnings = assess()
     result = JobResult(geotech=geotech, design=design, references=[r.title for r in refs])
     result.base_warnings += info_warnings
     # Claude's cross-reference of the plan and elevation views.
@@ -261,20 +310,45 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None], extra: dic
                 print(f"[sheet] {SHEET_TITLES[kind]} attempt {attempt} failed: {e!r}", flush=True)
                 result.sheet_errors[kind] = str(e) or type(e).__name__
 
-    kinds = [k for k in _wanted(job) if k != SheetKind.ARTICULATION or _masonry(design)]
-    if not kinds:  # only the articulation sheet was ticked, and this isn't a masonry job
-        result.base_warnings.append("Only the articulation joint sheet was selected, but the walls aren't "
-                                    "masonry, so no sheets were produced.")
-        progress("Building mark-up PDF")
-        _build(job, result)
-        return result
-    progress(f"Step 3: marking up sheets (1 of {len(kinds)})")
-    make(kinds[0])  # first call warms the prompt cache for the rest
-    progress("Step 3: marking up remaining sheets")
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        for f in [usage.submit(pool, make, k) for k in kinds[1:]]:
-            f.result()
+    def todo() -> list[SheetKind]:
+        return [k for k in _wanted(job) if (k != SheetKind.ARTICULATION or _masonry(design))
+                and k not in result.planned]
 
+    def drop_unwanted() -> None:  # sheets unticked while paused
+        wanted = set(_wanted(job))
+        for k in list(result.planned):
+            if k not in wanted:
+                result.planned.pop(k, None)
+                result.sheet_warnings.pop(k, None)
+        for k in list(result.sheet_errors):
+            if k not in wanted:
+                result.sheet_errors.pop(k)
+
+    first = True
+    while True:
+        kinds = todo()
+        if kinds:
+            if first:
+                progress(f"Step 3: marking up sheets (1 of {len(kinds)})")
+                make(kinds[0])  # first call warms the prompt cache for the rest
+                kinds = kinds[1:]
+                first = False
+                if "sheets" in _pause(job, "after the first sheet", progress):
+                    drop_unwanted()
+                kinds = todo()
+            if kinds:
+                progress("Step 3: marking up remaining sheets" if result.planned else "Step 3: marking up sheets")
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    for f in [usage.submit(pool, make, k) for k in kinds]:
+                        f.result()
+        changed = _pause(job, "before the PDF is built", progress)
+        if "sheets" in changed:
+            drop_unwanted()
+        if not ("sheets" in changed and todo()):
+            break
+    if not result.planned and not result.sheet_errors:
+        result.base_warnings.append("No sheets were produced (only the articulation joint sheet was selected and "
+                                    "the walls aren't masonry, or no sheets were selected).")
     progress("Building mark-up PDF")
     _build(job, result)
     return result
@@ -527,10 +601,6 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
     sheet.elements = [e.model_copy(update={"text": spelling.tidy(e.text)}) for e in sheet.elements]
     sheet.schedule = [s.model_copy(update={"text": spelling.tidy(s.text)}) for s in sheet.schedule]
     sheet.legend = [s.model_copy(update={"text": spelling.tidy(s.text)}) for s in sheet.legend]
-    # The engineer's own notes go on every sheet word for word (after the rules,
-    # so they are never rewritten), skipping any Claude already wrote.
-    have = {_norm(n) for n in sheet.notes}
-    sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
     result.planned[kind] = sheet
     result.sheets[kind] = sheet
     result.sheet_errors.pop(kind, None)
@@ -586,6 +656,12 @@ def consistent_tags(sheets: dict[SheetKind, MarkupSheet]) -> list[str]:
 
 def _build(job: JobInput, result: JobResult) -> None:
     result.sheets = {k: result.planned[k].model_copy(deep=True) for k in SheetKind if k in result.planned}
+    # The engineer's own notes go on every sheet word for word (after the rules, so they are
+    # never rewritten), skipping any Claude already wrote. Added here, at build time, so notes
+    # changed while the review was paused reach every sheet.
+    for sheet in result.sheets.values():
+        have = {_norm(n) for n in sheet.notes}
+        sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
     retagged = consistent_tags(result.sheets)
     result.pdf, result.build_warnings = build_markup_pdf(
         job.arch_pdf,
