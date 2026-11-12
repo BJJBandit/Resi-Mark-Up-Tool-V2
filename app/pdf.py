@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
+from pathlib import Path
 import dataclasses
+import threading
 import datetime as dt
 import os
 import re
@@ -1400,6 +1403,7 @@ class SheetMeta:
     date: str
     title_block: bool = False
     masonry: bool = False  # brick veneer / masonry walls: wall sheet gets the masonry lintel schedule
+    arete: bool = False  # sheets on the office Arete A3 title block (app/assets/title_block_a3.pdf)
     # Racking note for the wall sheet from the bracing check (calculation sheet on):
     # notes(sheet, page aspect) -> the sheet's notes with it. None: leave Claude's notes.
     racking_notes: object = None
@@ -1417,10 +1421,38 @@ def _is_masonry(design) -> bool:
     return re.search(r"brick|masonry|block|veneer|AS ?3700|AS ?4773", text, re.I) is not None
 
 
+ARETE_TB = Path(__file__).parent / "assets" / "title_block_a3.pdf"
+
+
+def _arete_title_block(page: pymupdf.Page, meta: "SheetMeta", title: str, dwg_no: str) -> None:
+    """The office Arete A3 title block under the sheet (border, logo, company details), its
+    fields written in as editable text boxes at the template's field positions."""
+    with pymupdf.open(ARETE_TB) as tpl:
+        page.show_pdf_page(page.rect, tpl, 0, overlay=False)
+        fields = {w.field_name: pymupdf.Rect(w.rect) for w in tpl[0].widgets()}
+    values = {
+        "PROJECT NUMBER": meta.job_no, "PROJECT TITLE": (meta.project or "").upper(), "ADDRESS": "",
+        "CLIENT": "", "DRAWING TITLE 1": title, "DRAWING TITLE 2": "",
+        "SHEET NUMBER": dwg_no, "SHEET REVISION": meta.rev, "SHEET DATE": meta.date,
+        "DRAWING STATUS": "PRELIMINARY", "DESIGNED BY": meta.made_by, "DRAWN BY": meta.made_by,
+        "APPROVED BY": "", "CHECKED BY": "",
+        "ISSUE REVISION - 1": meta.rev, "ISSUE DESCRIPTION - 1": "PRELIMINARY MARK-UP", "ISSUE DATE - 1": meta.date,
+    }
+    for name, value in values.items():
+        r = fields.get(name)
+        if r is None or not value:
+            continue
+        fs = 9 if r.height >= 12 else 7
+        _text(page, r + (0, -1, 40 if name.startswith("DRAWING TITLE") else 0, 1), str(value).upper(), fs, BLACK,
+              "Title Block")
+
+
 def _new_sheet(out: pymupdf.Document, meta: SheetMeta, title: str, dwg_no: str) -> pymupdf.Page:
     page = out.new_page(width=A3.width, height=A3.height)
+    if meta.arete and ARETE_TB.exists():
+        _arete_title_block(page, meta, title, dwg_no)
     _title(page, meta.project, title)
-    if meta.title_block:
+    if meta.title_block and not meta.arete:
         _title_block(page, meta.project, title, dwg_no, meta.job_no, meta.rev, meta.made_by, meta.date)
     return page
 
@@ -1989,7 +2021,7 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         _external_slab_note(sheet)
     # Callouts first, so the tags keep clear of their boxes and leaders.
     try:
-        unplaced = _draw_callouts(page, callouts, m, BAND_BOTTOM if meta.title_block else BAND_BOTTOM_NO_TB)
+        unplaced = _draw_callouts(page, callouts, m, BAND_BOTTOM if (meta.title_block and not meta.arete) else BAND_BOTTOM_NO_TB)
     except Exception as e:
         warnings.append(f"{dwg_no}: callouts moved to notes ({e})")
         unplaced = [(c.text or c.tag).upper() for c in callouts]
@@ -2014,7 +2046,7 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     overflow = _notes(page, sheet.classification, notes)
     try:
         _schedule(page, sheet.schedule_title, sheet.schedule, sheet.legend_title, sheet.legend,
-                  SCHEDULE if meta.title_block else SCHEDULE_NO_TB,
+                  SCHEDULE if (meta.title_block and not meta.arete) else SCHEDULE_NO_TB,
                   masonry=meta.masonry and kind == SheetKind.WALLS)
     except Exception as e:
         warnings.append(f"{dwg_no}: schedule not drawn ({e})")
@@ -2022,13 +2054,47 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
 
 
 NOTES_COLS = [pymupdf.Rect(15, 95, 395, 832), pymupdf.Rect(405, 95, 785, 832), pymupdf.Rect(795, 95, 1180, 832)]
+CALC_COLS = list(NOTES_COLS)  # the calculation sheet never has a title block
+
+# Sheet layout on the office Arete A3 title block: everything inside its border
+# (x 28-1162, y 28-716), above the title strip along the bottom.
+_ARETE_LAYOUT = {
+    "TITLE": pymupdf.Rect(38, 34, 760, 104),
+    "NOTES": pymupdf.Rect(38, 190, 335, 708),
+    "PLAN": pymupdf.Rect(345, 150, 905, 560),
+    "BAND_TOP": pymupdf.Rect(345, 106, 1154, 146),
+    "BAND_RIGHT": pymupdf.Rect(912, 150, 1154, 455),
+    "BAND_BOTTOM": pymupdf.Rect(345, 566, 905, 708),
+    "BAND_BOTTOM_NO_TB": pymupdf.Rect(345, 566, 905, 708),
+    "SCHEDULE": pymupdf.Rect(915, 460, 1154, 708),
+    "SCHEDULE_NO_TB": pymupdf.Rect(915, 460, 1154, 708),
+    "NOTES_COLS": [pymupdf.Rect(38, 110, 395, 708), pymupdf.Rect(405, 110, 785, 708), pymupdf.Rect(795, 110, 1154, 708)],
+}
+_LAYOUT_LOCK = threading.RLock()
+
+
+@contextlib.contextmanager
+def _layout(arete: bool):
+    """Build with the Arete title block layout (module regions swapped for the build; builds
+    are serialised so two builds never see each other's layout)."""
+    with _LAYOUT_LOCK:
+        if not arete:
+            yield
+            return
+        g = globals()
+        saved = {k: g[k] for k in _ARETE_LAYOUT}
+        g.update(_ARETE_LAYOUT)
+        try:
+            yield
+        finally:
+            g.update(saved)
 NOTES_COLS_TB = [pymupdf.Rect(15, 95, 395, 832), pymupdf.Rect(405, 95, 785, 676), pymupdf.Rect(795, 95, 1180, 676)]
 CONT_FS = 7.5
 
 
 def _notes_continuation(out, meta: SheetMeta, notes: list[str]) -> None:
     """Only used when a sheet's notes do not fit its notes column - nothing is dropped."""
-    cols = NOTES_COLS_TB if meta.title_block else NOTES_COLS
+    cols = NOTES_COLS_TB if (meta.title_block and not meta.arete) else NOTES_COLS
     width = min(c.width for c in cols) - 8
     lines = _wrap("NOTES:\n\n" + "\n\n".join(f"-{n}" for n in notes), width, CONT_FS)
     per_line = CONT_FS * 1.18
@@ -2051,8 +2117,8 @@ CALC_FS = 7.0
 def _calc_sheet(out, meta: SheetMeta, lines: list[str]) -> None:
     """The calculation sheet: text flowed down three columns, continued on further pages.
     No title block on it (whatever the drawing sheets have), so the text uses the full page."""
-    meta = dataclasses.replace(meta, title_block=False)
-    cols = NOTES_COLS
+    meta = dataclasses.replace(meta, title_block=False, arete=False)
+    cols = CALC_COLS
     width = min(c.width for c in cols) - 8
     wrapped: list[str] = []
     for ln in lines:
@@ -2075,7 +2141,14 @@ def _calc_sheet(out, meta: SheetMeta, lines: list[str]) -> None:
                       "Calculations")
 
 
-def build_markup_pdf(
+def build_markup_pdf(*args, arete_title_block: bool = False, **kwargs) -> tuple[bytes, list[str]]:
+    """See _build_markup_pdf. With arete_title_block every drawing sheet is laid out on the
+    office Arete A3 title block (the calculation sheet stays without one)."""
+    with _layout(arete_title_block):
+        return _build_markup_pdf(*args, arete_title_block=arete_title_block, **kwargs)
+
+
+def _build_markup_pdf(
     arch_pdf: bytes,
     project: str,
     geotech: GeotechReview,
@@ -2087,6 +2160,7 @@ def build_markup_pdf(
     made_by: str = "",
     title_block: bool = False,
     calc_sheet: bool = True,
+    arete_title_block: bool = False,
 ) -> tuple[bytes, list[str]]:
     """Mark-up sheets (the review summary stays in the app / review.json), plus the
     calculation sheet. Returns (pdf bytes, warnings). Never fails because of one bad element."""
@@ -2096,7 +2170,7 @@ def build_markup_pdf(
                        if getattr(p, "scale", "")}
     out = pymupdf.open()
     meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"), title_block,
-                     masonry=_is_masonry(design))
+                     masonry=_is_masonry(design), arete=arete_title_block and ARETE_TB.exists())
     if calc_sheet and getattr(design, "racking", None):
         meta.racking_notes = lambda sheet, aspect: calcs.racking_notes(design, sheet, aspect)
     overflow: list[str] = []
