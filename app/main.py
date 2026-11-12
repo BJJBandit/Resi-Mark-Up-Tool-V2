@@ -335,7 +335,7 @@ async def create_job(
     reference_pages: list[str] = Form([]),
     stored_refs: list[str] = Form([]),  # keys of standards kept from earlier reviews
     stored_ref_pages: list[str] = Form([]),
-    title_block: bool = Form(False),
+    title_block: bool = Form(False),  # older form pages: same as arete_title_block
     drawing_pages: str = Form(""),
     job_no: str = Form(""),
     rev: str = Form("A"),
@@ -453,7 +453,6 @@ async def create_job(
         notes=notes.strip(),
         sheet_notes=[n.strip() for n in sheet_notes.splitlines() if n.strip()],
         references=refs,
-        title_block=False,
         pages=[],  # arch holds only the selected pages
         page_labels=labels,
         job_no=job_no.strip(),

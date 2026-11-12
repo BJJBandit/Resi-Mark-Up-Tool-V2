@@ -258,14 +258,9 @@ NOTES = pymupdf.Rect(15, 190, 335, 832)
 PLAN = pymupdf.Rect(345, 150, 905, 600)
 BAND_TOP = pymupdf.Rect(345, 84, 1180, 146)
 BAND_RIGHT = pymupdf.Rect(912, 150, 1180, 455)
-BAND_BOTTOM = pymupdf.Rect(345, 606, 728, 832)
-BAND_BOTTOM_NO_TB = pymupdf.Rect(345, 606, 905, 832)
-SCHEDULE = pymupdf.Rect(915, 460, 1180, 676)
-SCHEDULE_NO_TB = pymupdf.Rect(915, 460, 1180, 832)
-TITLE_BLOCK = pymupdf.Rect(735, 682, 1182, 834)
+BAND_BOTTOM = pymupdf.Rect(345, 606, 905, 832)
+SCHEDULE = pymupdf.Rect(915, 460, 1180, 832)
 
-COMPANY = os.environ.get("TITLE_BLOCK_COMPANY", "ARETE")
-COMPANY_SUB = os.environ.get("TITLE_BLOCK_COMPANY_SUB", "ENGINEERING")
 AUTHOR = os.environ.get("MARKUP_AUTHOR", "Resi Mark-Up Tool")
 
 RED = (1.0, 0.0, 0.0)
@@ -278,7 +273,6 @@ ORANGE = (1.0, 0.5, 0.0)
 TEAL = (0.0, 0.25, 0.25)
 BLACK = (0.0, 0.0, 0.0)
 GREY = (0.2, 0.2, 0.2)
-BRAND = (0.2, 0.2, 0.95)
 
 # Tag prefix -> colour, matching the engineer's schedules.
 TAG_COLOURS = {
@@ -473,50 +467,6 @@ def _notes(page, classification: str, notes: list[str]) -> list[str]:
         lines = _wrap("NOTES:\n\n" + "\n\n".join(kept), NOTES.width - 8, fs)
         _text(page, pymupdf.Rect(NOTES.x0, y, NOTES.x1, y + _text_height(len(lines), fs)), "\n".join(lines), fs, BLACK, "Notes")
     return notes[len(kept):]
-
-
-def _title_block(page, project: str, dwg_title: str, dwg_no: str, job_no: str, rev: str, made_by: str, date: str) -> None:
-    tb = TITLE_BLOCK
-    split_y, logo_x = tb.y0 + 92, tb.x0 + 160
-    _rect(page, tb, BLACK, 1.5, "Title Block")
-    _line(page, (tb.x0, split_y), (tb.x1, split_y), BLACK, 1, "Title Block")
-    _line(page, (logo_x, tb.y0), (logo_x, split_y), BLACK, 1, "Title Block")
-    rows = [tb.y0, tb.y0 + 30, tb.y0 + 61, split_y]
-    for y in rows[1:3]:
-        _line(page, (logo_x, y), (tb.x1, y), BLACK, 0.75, "Title Block")
-    lab_x = logo_x + 68
-    _line(page, (lab_x, tb.y0), (lab_x, split_y), BLACK, 0.75, "Title Block")
-    mid_y = split_y + (tb.y1 - split_y) / 2
-    _line(page, (tb.x0, mid_y), (tb.x1, mid_y), BLACK, 0.75, "Title Block")
-    _line(page, (tb.x0 + 95, split_y), (tb.x0 + 95, tb.y1), BLACK, 0.75, "Title Block")
-
-    # Company
-    _text(page, pymupdf.Rect(tb.x0 + 6, tb.y0 + 18, logo_x - 4, tb.y0 + 52), COMPANY, 26, BRAND, "Title Block", align=1)
-    _text(page, pymupdf.Rect(tb.x0 + 6, tb.y0 + 52, logo_x - 4, tb.y0 + 70), COMPANY_SUB, 9, BRAND, "Title Block", align=1)
-
-    def cell(x0, y0, x1, y1, text, fs=10.5):
-        _text(page, pymupdf.Rect(x0 + 3, y0 + 4, x1 - 2, y1 - 1), text, fs, BLACK, "Title Block")
-
-    cell(logo_x, rows[0], lab_x, rows[1], "Job No", 11)
-    cell(lab_x, rows[0], tb.x1, rows[1], job_no or " ")
-    cell(logo_x, rows[1], lab_x, rows[2], "Dwg No", 11)
-    rev_x = tb.x1 - 70
-    _line(page, (rev_x, rows[1]), (rev_x, rows[2]), BLACK, 0.75, "Title Block")
-    _line(page, (rev_x + 38, rows[1]), (rev_x + 38, rows[2]), BLACK, 0.75, "Title Block")
-    cell(lab_x, rows[1], rev_x, rows[2], dwg_no)
-    cell(rev_x, rows[1], rev_x + 38, rows[2], "REV", 9)
-    cell(rev_x + 38, rows[1], tb.x1, rows[2], rev or "A")
-    cell(logo_x, rows[2], lab_x, rows[3], "Date", 11)
-    mb_x = tb.x1 - 110
-    _line(page, (mb_x, rows[2]), (mb_x, rows[3]), BLACK, 0.75, "Title Block")
-    _line(page, (mb_x + 60, rows[2]), (mb_x + 60, rows[3]), BLACK, 0.75, "Title Block")
-    cell(lab_x, rows[2], mb_x, rows[3], date)
-    cell(mb_x, rows[2], mb_x + 60, rows[3], "Made by", 9)
-    cell(mb_x + 60, rows[2], tb.x1, rows[3], made_by or " ")
-    cell(tb.x0, split_y, tb.x0 + 95, mid_y, "Job Title", 11)
-    cell(tb.x0 + 95, split_y, tb.x1, mid_y, (project or " ").upper())
-    cell(tb.x0, mid_y, tb.x0 + 95, tb.y1, "Dwg Title", 11)
-    cell(tb.x0 + 95, mid_y, tb.x1, tb.y1, dwg_title)
 
 
 def _schedule(page, title: str, items: list[ScheduleItem], legend_title: str, legend: list[ScheduleItem], box=SCHEDULE,
@@ -1401,7 +1351,6 @@ class SheetMeta:
     rev: str
     made_by: str
     date: str
-    title_block: bool = False
     masonry: bool = False  # brick veneer / masonry walls: wall sheet gets the masonry lintel schedule
     arete: bool = False  # sheets on the office Arete A3 title block (app/assets/title_block_a3.pdf)
     # Racking note for the wall sheet from the bracing check (calculation sheet on):
@@ -1452,8 +1401,6 @@ def _new_sheet(out: pymupdf.Document, meta: SheetMeta, title: str, dwg_no: str) 
     if meta.arete and ARETE_TB.exists():
         _arete_title_block(page, meta, title, dwg_no)
     _title(page, meta.project, title)
-    if meta.title_block and not meta.arete:
-        _title_block(page, meta.project, title, dwg_no, meta.job_no, meta.rev, meta.made_by, meta.date)
     return page
 
 
@@ -2021,7 +1968,7 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         _external_slab_note(sheet)
     # Callouts first, so the tags keep clear of their boxes and leaders.
     try:
-        unplaced = _draw_callouts(page, callouts, m, BAND_BOTTOM if (meta.title_block and not meta.arete) else BAND_BOTTOM_NO_TB)
+        unplaced = _draw_callouts(page, callouts, m, BAND_BOTTOM)
     except Exception as e:
         warnings.append(f"{dwg_no}: callouts moved to notes ({e})")
         unplaced = [(c.text or c.tag).upper() for c in callouts]
@@ -2046,7 +1993,7 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
     overflow = _notes(page, sheet.classification, notes)
     try:
         _schedule(page, sheet.schedule_title, sheet.schedule, sheet.legend_title, sheet.legend,
-                  SCHEDULE if (meta.title_block and not meta.arete) else SCHEDULE_NO_TB,
+                  SCHEDULE,
                   masonry=meta.masonry and kind == SheetKind.WALLS)
     except Exception as e:
         warnings.append(f"{dwg_no}: schedule not drawn ({e})")
@@ -2065,9 +2012,7 @@ _ARETE_LAYOUT = {
     "BAND_TOP": pymupdf.Rect(345, 106, 1154, 146),
     "BAND_RIGHT": pymupdf.Rect(912, 150, 1154, 455),
     "BAND_BOTTOM": pymupdf.Rect(345, 566, 905, 708),
-    "BAND_BOTTOM_NO_TB": pymupdf.Rect(345, 566, 905, 708),
     "SCHEDULE": pymupdf.Rect(915, 460, 1154, 708),
-    "SCHEDULE_NO_TB": pymupdf.Rect(915, 460, 1154, 708),
     "NOTES_COLS": [pymupdf.Rect(38, 110, 395, 708), pymupdf.Rect(405, 110, 785, 708), pymupdf.Rect(795, 110, 1154, 708)],
 }
 _LAYOUT_LOCK = threading.RLock()
@@ -2088,13 +2033,12 @@ def _layout(arete: bool):
             yield
         finally:
             g.update(saved)
-NOTES_COLS_TB = [pymupdf.Rect(15, 95, 395, 832), pymupdf.Rect(405, 95, 785, 676), pymupdf.Rect(795, 95, 1180, 676)]
 CONT_FS = 7.5
 
 
 def _notes_continuation(out, meta: SheetMeta, notes: list[str]) -> None:
     """Only used when a sheet's notes do not fit its notes column - nothing is dropped."""
-    cols = NOTES_COLS_TB if (meta.title_block and not meta.arete) else NOTES_COLS
+    cols = NOTES_COLS
     width = min(c.width for c in cols) - 8
     lines = _wrap("NOTES:\n\n" + "\n\n".join(f"-{n}" for n in notes), width, CONT_FS)
     per_line = CONT_FS * 1.18
@@ -2117,7 +2061,7 @@ CALC_FS = 7.0
 def _calc_sheet(out, meta: SheetMeta, lines: list[str]) -> None:
     """The calculation sheet: text flowed down three columns, continued on further pages.
     No title block on it (whatever the drawing sheets have), so the text uses the full page."""
-    meta = dataclasses.replace(meta, title_block=False, arete=False)
+    meta = dataclasses.replace(meta, arete=False)
     cols = CALC_COLS
     width = min(c.width for c in cols) - 8
     wrapped: list[str] = []
@@ -2158,7 +2102,6 @@ def _build_markup_pdf(
     job_no: str = "",
     rev: str = "A",
     made_by: str = "",
-    title_block: bool = False,
     calc_sheet: bool = True,
     arete_title_block: bool = False,
 ) -> tuple[bytes, list[str]]:
@@ -2169,7 +2112,7 @@ def _build_markup_pdf(
     src.scale_hints = {p.page_number - 1: p.scale for p in (getattr(design, "pages", None) or [])
                        if getattr(p, "scale", "")}
     out = pymupdf.open()
-    meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"), title_block,
+    meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"),
                      masonry=_is_masonry(design), arete=arete_title_block and ARETE_TB.exists())
     if calc_sheet and getattr(design, "racking", None):
         meta.racking_notes = lambda sheet, aspect: calcs.racking_notes(design, sheet, aspect)

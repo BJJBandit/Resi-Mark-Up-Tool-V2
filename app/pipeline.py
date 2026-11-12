@@ -33,7 +33,6 @@ class JobInput:
     notes: str
     references: list[RefDoc] = field(default_factory=list)  # pages=None -> chosen from the contents
     job_no: str = ""
-    title_block: bool = False
     pages: list[int] = field(default_factory=list)  # selected drawing pages (1-based); empty = all
     rev: str = "A"
     made_by: str = ""
@@ -706,7 +705,6 @@ def _build(job: JobInput, result: JobResult) -> None:
         job_no=job.job_no,
         rev=job.rev,
         made_by=job.made_by,
-        title_block=job.title_block,
         calc_sheet=job.calc_sheet,
         arete_title_block=job.arete_title_block,
     )
