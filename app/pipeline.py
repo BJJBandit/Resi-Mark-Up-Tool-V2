@@ -472,6 +472,21 @@ def wet_area_on_slab(design: DesignAssessment, sheet: MarkupSheet, title: str) -
 
 
 EP_TEXT = "350x230 BRICK ENGAGED PIER BONDED INTO BASE WALL, ON P1"
+BEARER_PLATE_NOTE = ("BEARERS BEAR ON 190 BLOCKWORK / SLAB EDGE VIA 90x45 F7 TP WALL PLATE, M12 CHEMSET ANCHORS AT "
+                     "MAX 900 CTRS. TYPICAL.")
+_PIER_CTRS = re.compile(r"\s*(?:AT|@)\s*(?:MAX\.?\s*)?\d{3,4}\s*(?:mm\s*)?(?:MAX\.?\s*)?PIER\s+(?:CTRS|CENTRES)", re.I)
+
+
+def bearer_spacing(sheet: MarkupSheet, title: str) -> list[str]:
+    """Bearer schedule items give the bearer spacing, not the pier spacing ('AT 3000 PIER CTRS'
+    is cut - the piers' spacing belongs with the piers)."""
+    out = []
+    for i, item in enumerate(sheet.schedule):
+        if re.match(r"(B|DB)\d+$", item.tag.strip().upper()) and _PIER_CTRS.search(item.text):
+            sheet.schedule[i] = item.model_copy(update={"text": _PIER_CTRS.sub("", item.text).strip()})
+            out.append(item.tag.strip().upper())
+    return [f"{title}: pier spacing removed from bearer schedule item(s) {', '.join(out)} - give the bearer "
+            "spacing"] if out else []
 
 
 def engaged_piers(sheet: MarkupSheet, title: str, aspect: float = 1.414) -> list[str]:
@@ -515,8 +530,19 @@ def engaged_piers(sheet: MarkupSheet, title: str, aspect: float = 1.414) -> list
                 continue
             new_els.append(Element(kind="pier", tag="EP1", start=at, end=at, text=""))
             added += 1
+    # Bearer ends on a blockwork / slab-edge wall (EB) bear on a bolted wall plate - say so once.
+    edge = [e for e in sheet.elements if e.kind == "member" and re.match(r"EB\d*$", e.tag.strip().upper())]
+    plated = False
+    if edge and not any(e.kind == "callout" and re.search(r"WALL PLATE", e.text or "", re.I) for e in sheet.elements):
+        for b in bearers:
+            for end in (b.start, b.end):
+                d, at = min((foot(end, w.start, w.end) for w in edge), key=lambda r: r[0])
+                if d <= tol and not plated:
+                    new_els.append(Element(kind="callout", tag="", start=at, end=at, text=BEARER_PLATE_NOTE))
+                    plated = True
     if not (added or retagged):
-        return []
+        sheet.elements += new_els
+        return [f"{title}: wall plate callout added where a bearer bears on blockwork"] if plated else []
     sheet.elements += new_els
     if not any(s.tag.strip().upper() == "EP1" for s in sheet.schedule):
         sheet.schedule.append(ScheduleItem(tag="EP1", text=EP_TEXT))
@@ -595,6 +621,7 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
         except Exception:
             aspect = 1.414
         result.sheet_warnings[kind] += engaged_piers(sheet, SHEET_TITLES[kind], aspect)
+        result.sheet_warnings[kind] += bearer_spacing(sheet, SHEET_TITLES[kind])
     # House style: schedules list only the member type and spacing - no notes.
     sheet.schedule = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.schedule]
     result.sheet_warnings[kind] += stock.check(sheet.schedule, SHEET_TITLES[kind])

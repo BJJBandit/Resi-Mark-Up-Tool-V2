@@ -341,6 +341,10 @@ hold even if Claude slips:
   gets an EP1 engaged pier (350x230 brick bonded into the wall, on a P1 bored pier) at that
   end - an existing pier there is re-tagged EP1 - and EP1 is added to the schedule. After the
   drawing snaps bearers and piers, each EP1 is put back on its bearer's final end, on the wall.
+- **Bearers on blockwork, bearer spacing**: where a bearer ends on blockwork / a slab edge (EB)
+  the sheet gets one callout for the bolted wall plate (90x45 F7 TP, M12 chemset at max 900).
+  Pier spacing written into a bearer schedule item ('AT 3000 PIER CTRS') is removed, with a
+  warning - the schedule gives the bearer spacing.
 - **Re-entrant bars only in a slab**: a corner gets bars only where the slab itself (inside the
   footing outline and inside an S slab's extent) fills three of the four quadrants round it,
   never where a slab meets a timber floor or at a timber floor's corners.
