@@ -335,7 +335,7 @@ async def create_job(
     reference_pages: list[str] = Form([]),
     stored_refs: list[str] = Form([]),  # keys of standards kept from earlier reviews
     stored_ref_pages: list[str] = Form([]),
-    title_block: bool = Form(False),
+    title_block: bool = Form(False),  # older form pages: same as arete_title_block
     drawing_pages: str = Form(""),
     job_no: str = Form(""),
     rev: str = Form("A"),
@@ -453,7 +453,6 @@ async def create_job(
         notes=notes.strip(),
         sheet_notes=[n.strip() for n in sheet_notes.splitlines() if n.strip()],
         references=refs,
-        title_block=title_block,
         pages=[],  # arch holds only the selected pages
         page_labels=labels,
         job_no=job_no.strip(),
@@ -462,7 +461,7 @@ async def create_job(
         sheets=chosen,
         combine_foundation=combine_foundation,
         calc_sheet=calc_sheet,
-        arete_title_block=arete_title_block,
+        arete_title_block=arete_title_block or title_block,  # the Arete A3 template is the title block
     )
     job_id = uuid.uuid4().hex
     _evict_old_jobs()

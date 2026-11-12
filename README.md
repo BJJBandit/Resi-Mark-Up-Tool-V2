@@ -65,9 +65,8 @@ checked before use. It is not for construction.
    classification and notes down the left, the architectural plan faded in the middle
    with colour-coded member lines and tags (B, J, L, VB, R, C, DS, EB ...), piers,
    columns, bracing panels (`h(b) - 900`, `g - 600`, dashed `d - 2400`), boxed red
-   callouts with arrow leaders, the schedule / bracing legend on the right and the title
-   block bottom-right if you tick **Add title block** (Job No, Dwg No SSK-x, Rev, Date,
-   Made by). Without it the schedule and callouts use that space.
+   callouts with arrow leaders and the schedule / bracing legend on the right - on the
+   office Arete A3 title block if you tick **Add title block to sheets** (below).
 
    - a **CALCULATION SHEET** (tick box, on by default; no extra Claude call) at the end:
      - No title block on this page (even when the drawing sheets have one).
@@ -89,13 +88,12 @@ checked before use. It is not for construction.
        RB1 2/290x45, schedule RB1 290x35) a CHECK line is added under it and a warning given.
        The sheets are told to use the calculation sizes and never reduce one.
 
-   **Use the Arete A3 title block** (tick box, top of the form): every drawing sheet is laid out
+   **Add title block to sheets** (tick box, top of the form): every drawing sheet is laid out
    inside the office title block (`app/assets/title_block_a3.pdf`) - border, logo and company
    details - with its fields filled as editable text: project title and job no, drawing title
    and no (SSK-x), revision, date, status PRELIMINARY, designed / drawn by (initials) and the
-   first issue row. The mark-up fits inside the border above the title strip. It replaces the
-   simple title block option (ticking one unticks the other); the calculation sheet stays
-   without a title block.
+   first issue row. The mark-up fits inside the border above the title strip. This is the only
+   title block; the calculation sheet stays without one.
 
    The review summary (geotech, roof/wall/footing assessment, engineer checks) is shown
    in the app and in `review.json`; it is not added to the PDF.
@@ -142,8 +140,6 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 | `LINTEL_MAX_SPAN_DEPTH` | `20` | Lintel check: flag a lintel whose clear span exceeds this many times its depth |
 | `BEAM_WIDTH_FROM_MM` / `BEAM_WIDTH_TO_MM` | `300` / `450` | Edge / internal beam width rule |
 | `MIN_STRIP_FOOTING_WIDTH_MM` | `450` | Firm minimum strip footing width (see Design rules) |
-| `TITLE_BLOCK_COMPANY` | `ARETE` | Company name in the title block |
-| `TITLE_BLOCK_COMPANY_SUB` | `ENGINEERING` | Second line under the company name |
 | `MARKUP_AUTHOR` | `Resi Mark-Up Tool` | Author shown on every annotation in Bluebeam's markup list |
 
 ## Cost

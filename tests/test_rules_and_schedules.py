@@ -519,7 +519,7 @@ def test_calc_sheet_has_no_title_block():
     from app import calcs
     from app import pdf as P
     out = pymupdf.open()
-    meta = P.SheetMeta("JOB", "J1", "A", "DM", "01/01/2026", title_block=True)
+    meta = P.SheetMeta("JOB", "J1", "A", "DM", "01/01/2026", arete=True)
     P._calc_sheet(out, meta, calcs.lines(GeoStub(), _calc_design(), [], []))
     texts = " ".join(a.info["content"] for a in out[0].annots())
     assert "SSK-C1" not in texts and "Job No" not in texts
