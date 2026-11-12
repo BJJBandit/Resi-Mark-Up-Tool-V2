@@ -825,3 +825,18 @@ def test_engaged_piers_follow_snapped_bearers():
     eps = [e for e in s.elements if e.tag == "EP1"]
     assert all(abs(e.start.y * 1000 - 300) < 1e-6 for e in eps)
     assert sorted(round(e.start.x * 1000) for e in eps) == [100, 600]
+
+
+def test_bearer_plate_and_spacing():
+    from app.pipeline import BEARER_PLATE_NOTE, bearer_spacing, engaged_piers
+
+    def m(tag, x1, y1, x2, y2, kind="member"):
+        return Element(kind=kind, tag=tag, start=Point(x=x1, y=y1), end=Point(x=x2, y=y2), text="")
+
+    els = [m("EB1", 0.2, 0.2, 0.2, 0.5), m("SF1", 0.6, 0.2, 0.6, 0.5), m("B1", 0.205, 0.3, 0.595, 0.3)]
+    s = sheet(els, [ScheduleItem(tag="B1", text="2/240x45 F7 TP CONTINUOUS BEARER AT 3000 PIER CTRS")])
+    engaged_piers(s, "F")
+    plates = [e for e in s.elements if e.kind == "callout" and e.text == BEARER_PLATE_NOTE]
+    assert len(plates) == 1 and abs(plates[0].start.x - 0.2) < 1e-6  # on the block wall end
+    assert sum(e.tag == "EP1" for e in s.elements) == 1  # only the brick base wall end
+    assert bearer_spacing(s, "F") and s.schedule[0].text == "2/240x45 F7 TP CONTINUOUS BEARER"
