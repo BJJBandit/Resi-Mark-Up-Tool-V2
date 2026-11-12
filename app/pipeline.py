@@ -17,6 +17,11 @@ from .schemas import (SHEET_TITLES, DesignAssessment, Element, GeotechReview, In
                       ScheduleItem, SheetKind)
 
 
+class ReviewStopped(BaseException):
+    """The engineer stopped the review. A BaseException, so the 'never lose the review over a
+    side step' handlers (except Exception) don't swallow it; the runner catches it."""
+
+
 @dataclass
 class JobInput:
     project: str

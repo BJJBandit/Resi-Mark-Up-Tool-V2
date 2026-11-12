@@ -217,3 +217,39 @@ def test_pause_and_resume_endpoints(client):
     assert r.status_code == 200 and job.resumed.is_set()
     assert job.changes["sheets"] == [K.WALLS.value, K.ROOF.value] and job.changes["sheet_notes"] == ["A.", "B."]
     main.JOBS.pop("p1")
+
+
+def test_stop_review(client, monkeypatch):
+    """Stop releases a pause / wait and the runner ends as 'stopped' (nothing saved)."""
+    import threading
+    import time
+
+    import app.main as main
+    started = threading.Event()
+
+    def fake_run(inp, progress):
+        progress("Step 1")
+        started.set()
+        inp.checkpoint("after step 1")  # paused here
+        progress("Step 2")
+        raise AssertionError("should have stopped")
+
+    monkeypatch.setattr(pipeline, "run", fake_run)
+    job = main.Job()
+    main.JOBS["s1"] = job
+    job.pause_requested = True
+    inp = pipeline.JobInput(project="x", arch_pdf=b"", geotech_pdf=None, wind_class=None, site_class=None,
+                            construction="t", notes="")
+    t = threading.Thread(target=main._worker, args=("s1", inp), daemon=True)
+    t.start()
+    started.wait(2)
+    for _ in range(50):
+        if job.status == "paused":
+            break
+        time.sleep(0.02)
+    assert client.get("/jobs/s1").json()["stoppable"]
+    assert client.post("/jobs/s1/stop").status_code == 200
+    t.join(2)
+    assert job.status == "stopped" and job.result is None
+    assert client.post("/jobs/s1/stop").status_code == 409
+    main.JOBS.pop("s1")

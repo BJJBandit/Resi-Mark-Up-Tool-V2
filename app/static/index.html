@@ -80,6 +80,7 @@
   .askbtns { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .gobar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .gobar button.secondary { margin: 20px 0 0; padding: 10px 18px; }
+  button.danger { margin: 20px 0 0; padding: 10px 18px; background: transparent; color: var(--err); border: 1px solid var(--err); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -161,7 +162,8 @@
     <textarea name="sheet_notes" rows="4" placeholder="e.g.&#10;ALL TIMBER TO BE H2 TREATED MINIMUM.&#10;BUILDER TO CONFIRM ALL DIMENSIONS ON SITE."></textarea>
 
     <div class="gobar"><button id="go" type="submit">Run review</button>
-      <button id="pauseBtn" type="button" class="secondary" hidden title="Pause the running review at its next step to change the direction, notes, sheets or material">Pause review</button></div>
+      <button id="pauseBtn" type="button" class="secondary" hidden title="Pause the running review at its next step to change the direction, notes, sheets or material">Pause review</button>
+      <button id="stopBtn" type="button" class="danger" hidden title="Cancel the running review completely">Stop review</button></div>
   </form>
 
   <div class="card" id="status"></div>
@@ -472,6 +474,17 @@ function showPauseBtn(id, j) {
   pauseBtn.disabled = !j.pausable;
   pauseBtn.textContent = j.pausable ? 'Pause review' : 'Pausing at the next step…';
 }
+const stopBtn = document.getElementById('stopBtn');
+stopBtn.addEventListener('click', async () => {
+  if (!confirm('Stop this review completely? It ends at its next step and nothing is saved.')) return;
+  stopBtn.disabled = true;
+  const r = await fetch(`/jobs/${stopBtn.dataset.job}/stop`, { method: 'POST' });
+  stopBtn.disabled = false;
+  if (!r.ok) { alert((await r.json()).detail || 'Could not stop'); return; }
+  stopBtn.hidden = true; pauseBtn.hidden = true;
+  box.dataset.pausedFor = '';
+  box.innerHTML = '<p>Stopping… <small>(at the next step - a Claude call already under way finishes first)</small></p>';
+});
 pauseBtn.addEventListener('click', async () => {
   pauseBtn.disabled = true;
   pauseBtn.textContent = 'Pausing at the next step…';
@@ -484,6 +497,15 @@ async function poll(id) {
   const r = await fetch(`/jobs/${id}`);
   const j = await r.json();
   if (!r.ok || !['queued', 'running'].includes(j.status)) pauseBtn.hidden = true;
+  stopBtn.hidden = !(r.ok && j.stoppable);
+  stopBtn.dataset.job = id;
+  if (r.ok && j.status === 'stopped') {
+    if (ask.open) ask.close();
+    box.dataset.pausedFor = '';
+    box.innerHTML = '<p class="err">Review stopped. Nothing was saved - change the form and run it again when ready.</p>';
+    go.disabled = false;
+    return;
+  }
   if (!r.ok) { box.innerHTML = `<p class="err">${esc(j.detail)}</p>`; go.disabled = false; return; }
   if (j.status === 'error') { box.innerHTML = `<p class="err">Review failed: ${esc(j.error)}</p>`; go.disabled = false; return; }
   if (j.status === 'waiting' && (j.questions || []).length) {
