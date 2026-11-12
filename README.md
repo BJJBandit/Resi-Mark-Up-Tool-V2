@@ -310,9 +310,8 @@ hold even if Claude slips:
   automatically the cap is shared between them, and a typed range that goes over it is
   refused with a message.
 - **Footings are drawn as bands, as the engineers draw them**: two lines at the footing
-  width (to scale). Strip footings (SF) have both lines dashed; edge beams (EB) have a solid
-  line on the outside face and a dashed line on the inside face (worked out from the whole
-  footing outline, so recesses come out right), with every corner closed. Internal beams are two dashed lines stopping at the inside face of the perimeter
+  width (to scale), both dashed - strip footings (SF) and edge beams (EB) alike - placed from
+  the whole footing outline (so recesses come out right), with every corner closed. Internal beams are two dashed lines stopping at the inside face of the perimeter
   footing. Footing runs Claude leaves untagged are tagged from their position (perimeter -
   EB / SF, inside - IB, with a warning), and a slab is shown by one diagonal line (S1)
   corner to corner, as the engineers draw it - a cloud drawn round the slab is replaced.
@@ -330,7 +329,8 @@ hold even if Claude slips:
   after the callouts, so they keep clear of the boxes and leaders too.
 - **Engaged piers at bearer ends**: a bearer ending on a brick base wall (strip footing SF)
   gets an EP1 engaged pier (350x230 brick bonded into the wall, on a P1 bored pier) at that
-  end - an existing pier there is re-tagged EP1 - and EP1 is added to the schedule.
+  end - an existing pier there is re-tagged EP1 - and EP1 is added to the schedule. After the
+  drawing snaps bearers and piers, each EP1 is put back on its bearer's final end, on the wall.
 - **Re-entrant bars only in a slab**: a corner gets bars only where the slab itself (inside the
   footing outline and inside an S slab's extent) fills three of the four quadrants round it,
   never where a slab meets a timber floor or at a timber floor's corners.

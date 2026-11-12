@@ -1149,7 +1149,7 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
     colour = tag_colour(e.tag, e.kind)
     content = e.text or e.tag
     if e.kind == "member" and id(e) in m.bands:
-        all_dashed = _prefix(e.tag) == "SF"  # strip footings: both faces dashed (office practice)
+        all_dashed = _prefix(e.tag) in ("SF", "EB")  # perimeter footings: both faces dashed (office practice)
         for p, q, dashed in m.bands[id(e)]:
             dashed = dashed or all_dashed
             _line(page, p, q, colour, 1.0 if dashed else 1.25, f"Member {_prefix(e.tag)}", content,
@@ -1454,6 +1454,51 @@ def _lintel_from_codes(p: pymupdf.Point, q: pymupdf.Point, coded) -> tuple[pymup
     bear = min(3.0, 0.1 * (o.a1 - o.a0))
     s, e = o.a0 - bear, o.a1 + bear
     return (pymupdf.Point(s, o.c), pymupdf.Point(e, o.c)) if horiz else (pymupdf.Point(o.c, s), pymupdf.Point(o.c, e))
+
+
+def _align_engaged_piers(sheet: MarkupSheet, rect: pymupdf.Rect) -> int:
+    """Engaged piers (EP) sit where each bearer ends on a base wall. Snapping moves bearers onto
+    the walls and piers onto nearby corners separately, so after snapping each EP is put back on
+    the end of its bearer (as finally placed), on the wall's centreline. Returns how many moved."""
+    w, h = rect.width, rect.height
+
+    def P(pt):
+        return pymupdf.Point(pt.x * w, pt.y * h)
+
+    walls = [(P(e.start), P(e.end)) for e in sheet.elements
+             if e.kind == "member" and _prefix(e.tag) in ("SF", "EB")]
+    ends = [P(pt) for e in sheet.elements if e.kind == "member" and re.fullmatch(r"B\d+", e.tag.strip().upper())
+            for pt in (e.start, e.end)]
+    if not walls or not ends:
+        return 0
+
+    def on_wall(pt):
+        best = None
+        for a, b in walls:
+            d = b - a
+            L2 = d.x * d.x + d.y * d.y
+            t = 0.0 if L2 < 1e-9 else max(0.0, min(1.0, ((pt - a).x * d.x + (pt - a).y * d.y) / L2))
+            f = a + d * t
+            if best is None or abs(pt - f) < abs(pt - best):
+                best = f
+        return best
+
+    targets = [(end, on_wall(end)) for end in ends]
+    targets = [(e, f) for e, f in targets if f is not None and abs(e - f) <= 14]  # bearer ends on a wall
+    moved, used = 0, set()
+    for i, e in enumerate(sheet.elements):
+        if e.kind != "pier" or not e.tag.strip().upper().startswith("EP"):
+            continue
+        at = P(e.start)
+        cand = [(abs(at - end), k, f) for k, (end, f) in enumerate(targets) if k not in used and abs(at - end) <= 30]
+        if not cand:
+            continue
+        _, k, f = min(cand)
+        used.add(k)
+        pt = Point(x=f.x / w, y=f.y / h)
+        sheet.elements[i] = e.model_copy(update={"start": pt, "end": pt})
+        moved += 1
+    return moved
 
 
 def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> list[str]:
@@ -1888,6 +1933,10 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
             warnings += _snap_to_drawing(src[idx], sheet, SHEET_TITLES[kind])
         except Exception as e:
             warnings.append(f"{dwg_no}: snapping to the drawing skipped ({e})")
+        try:
+            _align_engaged_piers(sheet, src[idx].rect)
+        except Exception as e:
+            warnings.append(f"{dwg_no}: engaged piers not aligned ({e})")
     try:
         scale_ = drawing_scale(src[idx])[0]
         warnings += _spacing_check(sheet, src[idx], scale_, SHEET_TITLES[kind])

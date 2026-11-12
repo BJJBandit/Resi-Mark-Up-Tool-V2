@@ -694,7 +694,7 @@ def test_driveways_ignored():
     assert s.notes == ["-DRIVEWAY AND RETAINING WALLS BY OTHERS.", "-N25 THROUGHOUT."] and w
 
 
-def test_strip_footings_dashed_edge_beams_solid_outside():
+def test_perimeter_footings_dashed():
     from app import pdf as P
     doc = pymupdf.open()
     page = doc.new_page(width=1190, height=842)
@@ -714,7 +714,7 @@ def test_strip_footings_dashed_edge_beams_solid_outside():
     sf = [a for a in lines if a.info["subject"] == "Member SF"]
     eb = [a for a in lines if a.info["subject"] == "Member EB"]
     assert sf and all(a.border.get("dashes") for a in sf)
-    assert any(not a.border.get("dashes") for a in eb) and any(a.border.get("dashes") for a in eb)
+    assert eb and all(a.border.get("dashes") for a in eb)  # edge beams too (office practice)
 
 
 def test_wet_area_on_existing_slab_note():
@@ -809,3 +809,19 @@ def test_engaged_piers_at_bearer_ends_on_base_walls():
     assert len(eps) == 4 and "3 added, 1 pier(s) re-tagged" in w[0]
     assert any(e.tag == "P1" for e in s.elements) and any(x.tag == "EP1" for x in s.schedule)
     assert all(abs(e.start.x - 0.2) < 1e-6 or abs(e.start.x - 0.6) < 1e-6 for e in eps)  # on the wall line
+
+
+def test_engaged_piers_follow_snapped_bearers():
+    from app import pdf as P
+
+    def m(tag, x1, y1, x2, y2, kind="member"):
+        return Element(kind=kind, tag=tag, start=Point(x=x1 / 1000, y=y1 / 1000), end=Point(x=x2 / 1000, y=y2 / 1000), text="")
+
+    s = sheet([m("SF1", 100, 100, 100, 500), m("SF1", 600, 100, 600, 500),
+               m("B1", 104, 300, 596, 300),  # bearer as finally snapped
+               m("EP1", 100, 290, 100, 290, "pier"), m("EP1", 600, 312, 600, 312, "pier"),  # snapped off it
+               m("P1", 350, 300, 350, 300, "pier")])
+    assert P._align_engaged_piers(s, pymupdf.Rect(0, 0, 1000, 1000)) == 2
+    eps = [e for e in s.elements if e.tag == "EP1"]
+    assert all(abs(e.start.y * 1000 - 300) < 1e-6 for e in eps)
+    assert sorted(round(e.start.x * 1000) for e in eps) == [100, 600]
