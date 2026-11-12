@@ -418,6 +418,49 @@ askForm.addEventListener('submit', async e => {
   } finally { btn.disabled = false; }
 });
 
+// Paused review: change the direction, drawing notes, material / standard and sheets, then continue.
+function showPaused(id, j) {
+  const st = j.settings || {};
+  const opts = [...document.querySelectorAll('select[name=construction] option')].map(o => o.value);
+  if (st.construction && !opts.includes(st.construction)) opts.unshift(st.construction);
+  const sheets = [...document.querySelectorAll('.sheetpick input[name=sheets]')].map(c => ({
+    v: c.value, label: c.parentElement.textContent.trim() }));
+  box.innerHTML = `
+    <h3 style="margin-top:0">Review paused ${esc(j.paused_at || '')}</h3>
+    <p class="muted">Change anything below and continue. A new material / standard or direction after the drawing
+      review re-runs it (one more step-2 call); newly ticked sheets are added; unticked sheets not yet drawn are
+      skipped. If nothing happens for ${Math.round(j.pause_minutes || 120)} minutes the review carries on unchanged.</p>
+    <form id="resumeForm">
+      <label>Construction material / standard</label>
+      <select name="construction">${opts.map(o => `<option${o === st.construction ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>
+      <label>Direction for the review</label>
+      <textarea name="notes" rows="4">${esc(st.notes || '')}</textarea>
+      <label>Additional notes for the drawings <small>one per line</small></label>
+      <textarea name="sheet_notes" rows="3">${esc(st.sheet_notes || '')}</textarea>
+      <label>Sheets to produce</label>
+      <div class="sheetpick">${sheets.map(x => `<label class="check"><input type="checkbox" name="sheets" value="${x.v}"
+        ${(st.sheets || []).includes(x.v) ? 'checked' : ''}> ${esc(x.label)}</label>`).join('')}</div>
+      <p class="err" id="resumeErr" hidden></p>
+      <button type="submit">Continue</button>
+    </form>`;
+  const rf = document.getElementById('resumeForm');
+  rf.addEventListener('change', e => {  // one combined footing & floor sheet OR separate ones
+    const v = e.target.value, b = v2 => rf.querySelector(`input[value=${v2}]`);
+    if (!e.target.checked) return;
+    if (v === 'foundation') { b('footings').checked = false; b('floor').checked = false; }
+    if (v === 'footings' || v === 'floor') b('foundation').checked = false;
+  });
+  rf.addEventListener('submit', async e => {
+    e.preventDefault();
+    const err = document.getElementById('resumeErr');
+    if (!rf.querySelector('input[name=sheets]:checked')) { err.textContent = 'Tick at least one sheet.'; err.hidden = false; return; }
+    const r = await fetch(`/jobs/${id}/resume`, { method: 'POST', body: new FormData(rf) });
+    if (!r.ok) { err.textContent = (await r.json()).detail || r.statusText; err.hidden = false; return; }
+    box.dataset.pausedFor = '';
+    box.innerHTML = '<p>Continuing…</p>';
+  });
+}
+
 async function poll(id) {
   box.dataset.job = id;
   const r = await fetch(`/jobs/${id}`);
@@ -432,8 +475,21 @@ async function poll(id) {
     return setTimeout(() => poll(id), 4000);
   }
   if (ask.open && askForm.dataset.job === id) ask.close();  // answered elsewhere / timed out
+  if (j.status === 'paused') {
+    if (box.dataset.pausedFor !== id) { box.dataset.pausedFor = id; showPaused(id, j); }
+    return setTimeout(() => poll(id), 4000);
+  }
+  box.dataset.pausedFor = '';
   if (j.status !== 'done') {
-    box.innerHTML = `<p>${esc(j.step || 'Queued')}… <small>(a full review takes several minutes)</small></p>`;
+    box.innerHTML = `<p>${esc(j.step || 'Queued')}… <small>(a full review takes several minutes)</small></p>
+      ${j.pausable ? `<button type="button" class="secondary" id="pauseBtn">Pause</button>
+      <small class="muted">pauses at the next step so you can change the direction, notes, sheets or material</small>` : ''}`;
+    const pb = document.getElementById('pauseBtn');
+    if (pb) pb.onclick = async () => {
+      pb.disabled = true;
+      const r = await fetch(`/jobs/${id}/pause`, { method: 'POST' });
+      if (!r.ok) { pb.disabled = false; alert((await r.json()).detail || 'Could not pause'); }
+    };
     return setTimeout(() => poll(id), 4000);
   }
   const s = j.summary, errs = Object.entries(j.sheet_errors || {});

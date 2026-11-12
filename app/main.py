@@ -60,6 +60,12 @@ class Job:
     result: pipeline.JobResult | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
     questions: list[dict] = field(default_factory=list)  # information step 2 asks for
+    pause_requested: bool = False
+    paused_at: str = ""  # stage the review is paused at
+    settings: dict = field(default_factory=dict)  # current direction / notes / sheets / material (while paused)
+    changes: dict | None = None
+    resumed: threading.Event = field(default_factory=threading.Event)
+    inp: object = None
     answers: list[dict] | None = None
     answered: threading.Event = field(default_factory=threading.Event)
 
@@ -67,6 +73,8 @@ class Job:
 # How long a review waits for the answers to its information requests before carrying on
 # as if each were answered "No" (proceed with the stated assumptions).
 INFO_WAIT_MINUTES = float(os.environ.get("INFO_WAIT_MINUTES", "30"))
+# A paused review carries on unchanged after this long (it holds its drawings in memory).
+PAUSE_MAX_MINUTES = float(os.environ.get("PAUSE_MAX_MINUTES", "120"))
 
 
 JOBS: dict[str, Job] = {}
@@ -109,7 +117,26 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
         job.questions = []
         return answers
 
+    def checkpoint(stage: str) -> dict | None:
+        if not job.pause_requested:
+            return None
+        job.pause_requested = False
+        job.settings = {"notes": inp.notes, "sheet_notes": "\n".join(inp.sheet_notes),
+                        "construction": inp.construction,
+                        "sheets": [k.value for k in pipeline._wanted(inp)]}
+        job.changes = None
+        job.resumed.clear()
+        job.paused_at, job.status, job.step = stage, "paused", f"Paused {stage}"
+        got = job.resumed.wait(PAUSE_MAX_MINUTES * 60)
+        job.status, job.paused_at = "running", ""
+        if not got:
+            job.step = "Pause timed out - continuing unchanged"
+            return None
+        return job.changes
+
     inp.ask = ask
+    inp.checkpoint = checkpoint
+    job.inp = inp
     try:
         job.result = pipeline.run(inp, progress)
         job.status = "done"
@@ -157,6 +184,37 @@ def rerun_sheet(job_id: str, kind: str, change: str = Form("")) -> dict:
         raise HTTPException(409, "A sheet is already being re-run - wait for it to finish.")
     job.status, job.step = "running", f"Re-running {SHEET_TITLES[sk]}"
     threading.Thread(target=_rerun_worker, args=(job_id, sk, change.strip()), daemon=True).start()
+    return {"ok": True}
+
+
+@app.post("/jobs/{job_id}/pause")
+def pause_job(job_id: str) -> dict:
+    """Ask a running review to pause at its next safe point (after step 1, after step 2,
+    after the first sheet or before the PDF is built)."""
+    job = _job(job_id)
+    if job.status not in ("queued", "running"):
+        raise HTTPException(409, "Only a running review can be paused.")
+    job.pause_requested = True
+    job.step = (job.step or "") + " - pausing at the next step"
+    return {"ok": True}
+
+
+@app.post("/jobs/{job_id}/resume")
+def resume_job(job_id: str, notes: str = Form(""), sheet_notes: str = Form(""), construction: str = Form(""),
+               sheets: list[str] = Form([])) -> dict:
+    """Continue a paused review with the (possibly changed) direction, drawing notes,
+    construction material / standard and sheets."""
+    job = _job(job_id)
+    if job.status != "paused":
+        raise HTTPException(409, "This review isn't paused.")
+    try:
+        chosen = [SheetKind(k).value for k in sheets]
+    except ValueError:
+        raise HTTPException(400, "Unknown sheet selected.")
+    job.changes = {"notes": notes, "sheet_notes": [n for n in sheet_notes.splitlines() if n.strip()],
+                   "construction": construction, "sheets": chosen}
+    job.step = "Continuing"
+    job.resumed.set()
     return {"ok": True}
 
 
@@ -394,6 +452,11 @@ def _job(job_id: str) -> Job:
 
 def _status_body(job: Job) -> dict:
     body: dict = {"status": job.status, "step": job.step, "error": job.error, "project": job.project}
+    if job.status == "paused":
+        body["paused_at"] = job.paused_at
+        body["settings"] = job.settings
+        body["pause_minutes"] = PAUSE_MAX_MINUTES
+    body["pausable"] = job.status in ("queued", "running") and not job.pause_requested
     if job.status == "waiting":
         body["questions"] = job.questions
         body["wait_minutes"] = INFO_WAIT_MINUTES

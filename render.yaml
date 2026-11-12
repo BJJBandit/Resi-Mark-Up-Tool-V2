@@ -36,6 +36,9 @@ services:
         value: /var/data/jobs
       # Minutes a review waits for answers to its information requests before carrying on
       # with the assumptions.
+      # Minutes a paused review waits before carrying on unchanged.
+      - key: PAUSE_MAX_MINUTES
+        value: "120"
       - key: INFO_WAIT_MINUTES
         value: "30"
       - key: PYTHON_VERSION

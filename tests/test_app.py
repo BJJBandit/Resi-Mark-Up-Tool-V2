@@ -157,3 +157,63 @@ def test_answers_endpoint(client):
     assert job.answers[0]["files"][0][0] == "trusses.pdf" and job.answers[1]["answer"] == "no"
     main.JOBS.pop("w1")
     assert client.post("/jobs/nope/answers", data={}).status_code == 404
+
+
+def test_pause_changes_material_and_sheets(monkeypatch):
+    """Paused after step 2: a new material re-runs step 2; sheets added while paused before
+    the PDF are drawn; sheet notes changed while paused reach every sheet."""
+    from app import claude
+    from app.schemas import DesignAssessment, GeotechReview
+    from app.schemas import SheetKind as K
+    calls = {"design": [], "sheets": []}
+    monkeypatch.setattr(claude, "review_geotech", lambda *a, **k: GeotechReview.model_construct(
+        recommendations=[], founding="", site_classification="M", wind_classification="N2"))
+
+    def design(pages, geotech, construction, notes, refs):
+        calls["design"].append(construction)
+        return DesignAssessment.model_construct(information_requests=[], opening_crosscheck=[], dimension_crosscheck=[],
+                                                assumptions=[], external_wall_type="", framing_material="", governing_standard="")
+    monkeypatch.setattr(claude, "assess_design", design)
+
+    def plan(kind, pages, geotech, design, refs, direction):
+        calls["sheets"].append(kind)
+        return MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1), elements=[],
+                                           schedule=[], legend=[], notes=["-CLAUDE NOTE."], classification="",
+                                           schedule_title="", legend_title="")
+    monkeypatch.setattr(claude, "plan_sheet", plan)
+    monkeypatch.setattr(pipeline, "apply_rules", lambda *a, **k: [])
+    monkeypatch.setattr(pipeline, "check_geotech", lambda *a, **k: [])
+    monkeypatch.setattr(pipeline, "stock", type("S", (), {"check": staticmethod(lambda *a: [])}))
+    built = {}
+    monkeypatch.setattr(pipeline, "build_markup_pdf", lambda *a, **k: (built.update(sheets=a[4]) or b"%PDF", []))
+
+    plan_changes = {"after step 2 (drawing review)": {"construction": "Light gauge steel frame to NASH Standard"},
+                    "before the PDF is built": {"sheets": ["walls", "foundation"], "sheet_notes": ["ALL TIMBER H3."]}}
+    seen = []
+    job = pipeline.JobInput(project="x", arch_pdf=b"", geotech_pdf=None, wind_class=None, site_class=None,
+                            construction="Timber frame to AS 1684", notes="", sheets=[K.WALLS])
+    job.checkpoint = lambda stage: (seen.append(stage), plan_changes.pop(stage, None))[1]
+    result = pipeline._run(job, [], [], lambda _: None)
+    assert calls["design"] == ["Timber frame to AS 1684", "Light gauge steel frame to NASH Standard"]
+    assert calls["sheets"] == [K.WALLS, K.FOUNDATION]
+    assert set(result.planned) == {K.WALLS, K.FOUNDATION}
+    assert all("-ALL TIMBER H3." in s.notes for s in built["sheets"].values())
+    assert seen.count("before the PDF is built") == 2  # paused again after adding the sheet
+
+
+def test_pause_and_resume_endpoints(client):
+    import app.main as main
+    from app.schemas import SheetKind as K
+    job = main.Job(status="running")
+    main.JOBS["p1"] = job
+    assert client.get("/jobs/p1").json()["pausable"]
+    assert client.post("/jobs/p1/pause").status_code == 200 and job.pause_requested
+    assert client.post("/jobs/p1/resume", data={}).status_code == 409  # not paused yet
+    job.status, job.paused_at, job.settings = "paused", "after step 2", {"notes": "", "sheets": ["walls"]}
+    st = client.get("/jobs/p1").json()
+    assert st["status"] == "paused" and st["settings"]["sheets"] == ["walls"]
+    r = client.post("/jobs/p1/resume", data={"notes": "USE LVL", "construction": "Timber frame to AS 1684",
+                                             "sheets": ["walls", "roof"], "sheet_notes": "A.\nB."})
+    assert r.status_code == 200 and job.resumed.is_set()
+    assert job.changes["sheets"] == [K.WALLS.value, K.ROOF.value] and job.changes["sheet_notes"] == ["A.", "B."]
+    main.JOBS.pop("p1")

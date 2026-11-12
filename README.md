@@ -29,6 +29,13 @@ checked before use. It is not for construction.
      - *Additional notes for the drawings*: one note per line, added word for word (in
        capitals) to the notes column of every sheet, after Claude's own notes. A note Claude
        already wrote isn't repeated, and the firm rules never rewrite these notes.
+   - **Pause and continue**: while a review runs, **Pause** stops it at the next safe point
+     (after step 1, after step 2, after the first sheet, or before the PDF is built). The
+     page then shows the direction, drawing notes, construction material / standard and
+     sheets to change; **Continue** carries on with them. A new material / standard or
+     direction after the drawing review re-runs step 2 (one more call); newly ticked sheets
+     are drawn; unticked sheets are left out; drawing notes go on every sheet. A pause left
+     for `PAUSE_MAX_MINUTES` (default 120) carries on unchanged.
    - **More information needed?** If the drawing review finds a standard, project document
      or piece of information it needs that wasn't supplied (e.g. a table of AS 1684.2, the
      truss layout with girder positions, a BAL report), the review pauses and the page pops
