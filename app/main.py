@@ -65,6 +65,7 @@ class Job:
     settings: dict = field(default_factory=dict)  # current direction / notes / sheets / material (while paused)
     changes: dict | None = None
     resumed: threading.Event = field(default_factory=threading.Event)
+    stop_requested: bool = False
     inp: object = None
     answers: list[dict] | None = None
     answered: threading.Event = field(default_factory=threading.Event)
@@ -82,7 +83,7 @@ MAX_KEPT_JOBS = 8  # finished reviews kept in memory (each holds its drawings an
 
 
 def _evict_old_jobs() -> None:
-    done = [k for k, j in JOBS.items() if j.status in ("done", "error")]
+    done = [k for k, j in JOBS.items() if j.status in ("done", "error", "stopped")]
     for k in done[:-MAX_KEPT_JOBS]:
         JOBS.pop(k, None)
 
@@ -102,14 +103,21 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
     job = JOBS[job_id]
     job.status = "running"
 
+    def stopped() -> None:
+        if job.stop_requested:
+            raise pipeline.ReviewStopped()
+
     def progress(msg: str) -> None:
+        stopped()  # every step reports progress first: the review stops there
         job.step = msg
 
     def ask(questions: list[dict]) -> list[dict]:
+        stopped()
         job.questions, job.answers = questions, None
         job.answered.clear()
         job.status = "waiting"
         got = job.answered.wait(INFO_WAIT_MINUTES * 60)
+        stopped()
         job.status = "running"
         if not got:
             job.step = "No answer to the information requests - proceeding with the assumptions"
@@ -118,6 +126,7 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
         return answers
 
     def checkpoint(stage: str) -> dict | None:
+        stopped()
         if not job.pause_requested:
             return None
         job.pause_requested = False
@@ -128,6 +137,7 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
         job.resumed.clear()
         job.paused_at, job.status, job.step = stage, "paused", f"Paused {stage}"
         got = job.resumed.wait(PAUSE_MAX_MINUTES * 60)
+        stopped()
         job.status, job.paused_at = "running", ""
         if not got:
             job.step = "Pause timed out - continuing unchanged"
@@ -142,6 +152,9 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
         job.status = "done"
         job.step = "Complete"
         _save(job_id, job)
+    except pipeline.ReviewStopped:
+        job.status, job.step, job.questions = "stopped", "Stopped", []
+        print(f"[job] {job_id} stopped by the engineer", flush=True)
     except Exception as e:
         traceback.print_exc()
         job.status = "error"
@@ -196,6 +209,20 @@ def pause_job(job_id: str) -> dict:
         raise HTTPException(409, "Only a running review can be paused.")
     job.pause_requested = True
     job.step = (job.step or "") + " - pausing at the next step"
+    return {"ok": True}
+
+
+@app.post("/jobs/{job_id}/stop")
+def stop_job(job_id: str) -> dict:
+    """Cancel a review completely. It stops at its next step (a Claude call already under way
+    finishes first), or at once if it is paused or waiting for answers. Nothing is saved."""
+    job = _job(job_id)
+    if job.status not in ("queued", "running", "paused", "waiting"):
+        raise HTTPException(409, "This review isn't running.")
+    job.stop_requested = True
+    job.step = "Stopping…"
+    job.resumed.set()   # release a pause
+    job.answered.set()  # release a wait for answers
     return {"ok": True}
 
 
@@ -456,7 +483,8 @@ def _status_body(job: Job) -> dict:
         body["paused_at"] = job.paused_at
         body["settings"] = job.settings
         body["pause_minutes"] = PAUSE_MAX_MINUTES
-    body["pausable"] = job.status in ("queued", "running") and not job.pause_requested
+    body["pausable"] = job.status in ("queued", "running") and not job.pause_requested and not job.stop_requested
+    body["stoppable"] = job.status in ("queued", "running", "paused", "waiting") and not job.stop_requested
     if job.status == "waiting":
         body["questions"] = job.questions
         body["wait_minutes"] = INFO_WAIT_MINUTES

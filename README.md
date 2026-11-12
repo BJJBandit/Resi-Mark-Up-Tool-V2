@@ -36,6 +36,9 @@ checked before use. It is not for construction.
      direction after the drawing review re-runs step 2 (one more call); newly ticked sheets
      are drawn; unticked sheets are left out; drawing notes go on every sheet. A pause left
      for `PAUSE_MAX_MINUTES` (default 120) carries on unchanged.
+   - **Stop**: **Stop review** (beside Pause) cancels the review completely after a confirm. It
+     ends at the next step (a Claude call already under way finishes first), or at once if
+     it is paused or waiting for answers; nothing is saved.
    - **More information needed?** If the drawing review finds a standard, project document
      or piece of information it needs that wasn't supplied (e.g. a table of AS 1684.2, the
      truss layout with girder positions, a BAL report), the review pauses and the page pops
