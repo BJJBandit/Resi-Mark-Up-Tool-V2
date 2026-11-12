@@ -3,8 +3,8 @@
 ## `title_block_a3.pdf` - Arete A3 title block (blank)
 
 The office A3 landscape sheet (1190.55 x 841.89 pt): border, Arete logo and company details,
-and a title block across the bottom with fillable form fields. Stored for future use on the
-mark-up sheets - not yet used by the app.
+and a title block across the bottom with fillable form fields. Used when **Use the Arete A3 title
+block** is ticked (`pdf._arete_title_block`).
 
 - Drawing area (inside the border): about x 28-1162, y 28-716 pt; the title block is below it
   (y 716-830).

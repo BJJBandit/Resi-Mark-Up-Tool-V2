@@ -840,3 +840,22 @@ def test_bearer_plate_and_spacing():
     assert len(plates) == 1 and abs(plates[0].start.x - 0.2) < 1e-6  # on the block wall end
     assert sum(e.tag == "EP1" for e in s.elements) == 1  # only the brick base wall end
     assert bearer_spacing(s, "F") and s.schedule[0].text == "2/240x45 F7 TP CONTINUOUS BEARER"
+
+
+def test_arete_title_block_layout():
+    """Sheets on the Arete A3 title block: template under the sheet, fields filled, layout
+    restored after the build."""
+    from app import pdf as P
+    src = pymupdf.open()
+    src.new_page(width=1190.55, height=841.89)
+    s = MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1), elements=[],
+                                    schedule=[], legend=[], notes=["-A NOTE."], classification="",
+                                    schedule_title="", legend_title="")
+    notes_before = P.NOTES
+    out, w = P.build_markup_pdf(src.tobytes(), "1 TEST ST", None, None, {K.WALLS: s}, job_no="J1", rev="B",
+                                made_by="DM", calc_sheet=False, arete_title_block=True)
+    page = pymupdf.open(stream=out)[0]
+    tb = [a.info["content"] for a in page.annots() if a.info.get("subject") == "Title Block"]
+    assert "SSK-1" in tb and "J1" in tb and "WALL FRAMING PLAN" in tb and "PRELIMINARY" in tb
+    assert "ARETE ENGINEERING PTY LTD" in page.get_text()
+    assert P.NOTES == notes_before  # layout restored
