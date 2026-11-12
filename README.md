@@ -29,7 +29,7 @@ checked before use. It is not for construction.
      - *Additional notes for the drawings*: one note per line, added word for word (in
        capitals) to the notes column of every sheet, after Claude's own notes. A note Claude
        already wrote isn't repeated, and the firm rules never rewrite these notes.
-   - **Pause and continue**: while a review runs, **Pause review** (next to Run review) stops it at the next safe point
+   - **Pause and continue**: while a review runs, **Pause review** (next to Run review, greyed out until a review is running) stops it at the next safe point
      (after step 1, after step 2, after the first sheet, or before the PDF is built). The
      page then shows the direction, drawing notes, construction material / standard and
      sheets to change; **Continue** carries on with them. A new material / standard or
