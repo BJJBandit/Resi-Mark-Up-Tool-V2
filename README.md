@@ -341,9 +341,13 @@ hold even if Claude slips:
   neighbours whose leaders would cross swap places, and a callout moves to another band if
   that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
   after the callouts, so they keep clear of the boxes and leaders too.
+- **Roof extent**: a roof outline shown dotted / dashed on the plan or noted 'roof over' (deck,
+  porch, ramp, carport) is a roofed area - Claude is told to frame it (beams, posts, piers) on
+  every sheet and include it in the load paths, never to assume it uncovered (office rule).
 - **Engaged piers at bearer ends**: a bearer ending on a brick base wall (strip footing SF)
   gets an EP1 engaged pier (350x230 brick bonded into the wall, on a P1 bored pier) at that
-  end - an existing pier there is re-tagged EP1 - and EP1 is added to the schedule. After the
+  end - an existing pier there is re-tagged EP1 - and EP1 is added to the schedule. Not under a
+  strip footing the sheet describes as under a (non-loadbearing) brick skirt. After the
   drawing snaps bearers and piers, each EP1 is put back on its bearer's final end, on the wall.
 - **Bearers on blockwork, bearer spacing**: where a bearer ends on blockwork / a slab edge (EB)
   the sheet gets one callout for the bolted wall plate (90x45 F7 TP, M12 chemset at max 900).
