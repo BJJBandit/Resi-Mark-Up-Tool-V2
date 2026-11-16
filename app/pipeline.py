@@ -494,7 +494,16 @@ def engaged_piers(sheet: MarkupSheet, title: str, aspect: float = 1.414) -> list
     """Office practice: a bearer ending on a brick base wall (strip footing SF) bears on an
     engaged pier bonded into the wall, over a bored pier. Each such bearer end gets an EP1
     (an existing pier there is re-tagged), and EP1 goes in the schedule. Returns warnings."""
-    walls = [e for e in sheet.elements if e.kind == "member" and re.match(r"SF\d*$", e.tag.strip().upper())]
+    # Strip footings under a non-loadbearing skirt / infill carry no bearers: no engaged piers there.
+    skirt = {s.tag.strip().upper() for s in sheet.schedule if re.search(r"SKIRT", s.text, re.I)}
+    for e in sheet.elements:
+        if e.kind == "callout" and re.search(r"SKIRT", e.text or "", re.I):
+            skirt |= set(re.findall(r"\b(SF\d+)\b", (e.text or "").upper()))
+    for n in sheet.notes:
+        if re.search(r"SKIRT", n, re.I):
+            skirt |= set(re.findall(r"\b(SF\d+)\b", n.upper()))
+    walls = [e for e in sheet.elements if e.kind == "member" and re.match(r"SF\d*$", e.tag.strip().upper())
+             and e.tag.strip().upper() not in skirt]
     bearers = [e for e in sheet.elements if e.kind == "member" and re.match(r"B\d+$", e.tag.strip().upper())]
     if not walls or not bearers:
         return []

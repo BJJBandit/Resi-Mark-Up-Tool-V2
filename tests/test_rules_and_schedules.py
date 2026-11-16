@@ -885,3 +885,15 @@ def test_tighten_region_and_client():
                                 arete_title_block=True, client="J & K SMITH")
     tb = [a.info["content"] for a in pymupdf.open(stream=out)[0].annots() if a.info.get("subject") == "Title Block"]
     assert "J & K SMITH" in tb
+
+
+def test_no_engaged_pier_under_skirt():
+    from app.pipeline import engaged_piers
+
+    def m(tag, x1, y1, x2, y2, kind="member", text=""):
+        return Element(kind=kind, tag=tag, start=Point(x=x1, y=y1), end=Point(x=x2, y=y2), text=text)
+
+    els = [m("SF1", 0.6, 0.2, 0.6, 0.5), m("B1", 0.2, 0.3, 0.595, 0.3),
+           m("", 0.6, 0.3, 0.6, 0.3, "callout", "SF1 450W x 450 DEEP STRIP FOOTING UNDER BRICK SKIRT (MA), NOT BEARING")]
+    s = sheet(els, [ScheduleItem(tag="SF1", text="450W x 450 DEEP STRIP FOOTING")])
+    assert engaged_piers(s, "F") == [] and not any(e.tag == "EP1" for e in s.elements)
