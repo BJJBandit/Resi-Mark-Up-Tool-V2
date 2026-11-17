@@ -620,6 +620,12 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
     if change:
         direction = (f"{direction}\n" if direction else "") + \
             f"Re-run of this sheet - the engineer asked for this change: {change}"
+    if job.details and kind != SheetKind.ARTICULATION:
+        listing = "; ".join(f"DETAIL {i} - {name.upper()}" for i, (name, _, _) in enumerate(job.details, 1))
+        direction = (f"{direction}\n" if direction else "") + (
+            f"This job's DETAILS sheet has these standard details: {listing}. In the callout of each member / "
+            "element on this sheet that a detail applies to, add 'SEE DETAIL n' (its number above); don't "
+            "reference a detail that doesn't apply.")
     sheet = claude.plan_sheet(kind, pages, result.geotech, result.design, refs, direction)
     if kind != SheetKind.ARTICULATION:
         # Articulation / control joints belong on the elevation sheet only.
@@ -702,14 +708,62 @@ def consistent_tags(sheets: dict[SheetKind, MarkupSheet]) -> list[str]:
     return out
 
 
+# Words in a detail's name -> the tag prefixes of the members it applies to.
+_DETAIL_WORDS = [
+    (r"ENGAGED\s+PIER", ("EP",)), (r"BRICK\s+PIER|ISOLATED\s+PIER", ("BP",)),
+    (r"BORED\s+PIER|\bPIER\b", ("P",)), (r"STRIP\s+FOOTING", ("SF",)), (r"EDGE\s+BEAM", ("EB",)),
+    (r"INTERNAL\s+BEAM", ("IB",)), (r"\bSLAB\b", ("S",)), (r"LINTEL", ("L", "SL")), (r"DECK\s+BEARER", ("DB",)),
+    (r"BEARER", ("B",)), (r"LEDGER", ("LD",)), (r"JOIST", ("J",)), (r"RAFTER", ("R",)),
+    (r"VERANDAH\s+BEAM|ROOF\s+BEAM", ("VB", "RB")), (r"COLUMN|\bPOST\b", ("C",)), (r"DOUBLE\s+STUD", ("DS",)),
+]
+
+
+def _detail_tags(name: str, tags: set[str]) -> list[str]:
+    """Tags on a sheet that a detail (by its name) applies to: tags named in it (EP1), else
+    every tag with a prefix its words point to (PIER -> P1, P2)."""
+    up = name.upper()
+    named = [t for t in tags if re.search(rf"(?<![A-Z0-9]){re.escape(t)}(?![A-Z0-9])", up)]
+    if named:
+        return sorted(named)
+    for rx, prefixes in _DETAIL_WORDS:
+        if re.search(rx, up):
+            return sorted(t for t in tags if (m := re.fullmatch(r"([A-Z]+)\d*", t)) and m.group(1) in prefixes)
+    return []
+
+
+def detail_callouts(sheet: MarkupSheet, details: list) -> int:
+    """'SEE DETAIL n' on the mark-up for each detail that applies to a member on this sheet,
+    where Claude hasn't already referenced it: one callout at the first such member. Returns
+    how many were added."""
+    tags = {e.tag.strip().upper() for e in sheet.elements if e.kind in ("member", "pier", "column", "bracing")
+            and e.tag.strip()}
+    said = " ".join([e.text or "" for e in sheet.elements] + list(sheet.notes)).upper()
+    added = 0
+    for i, (name, _, _) in enumerate(details, 1):
+        if re.search(rf"DETAIL\s*{i}(?!\d)", said):
+            continue
+        hit = _detail_tags(name, tags)
+        if not hit:
+            continue
+        at = next(e for e in sheet.elements if e.tag.strip().upper() in hit
+                  and e.kind in ("member", "pier", "column", "bracing"))
+        pt = Point(x=(at.start.x + at.end.x) / 2, y=(at.start.y + at.end.y) / 2)
+        sheet.elements.append(Element(kind="callout", tag="", start=pt, end=pt,
+                                      text=f"{'/'.join(hit[:3])}: SEE DETAIL {i} - {name.upper()}"))
+        added += 1
+    return added
+
+
 def _build(job: JobInput, result: JobResult) -> None:
     result.sheets = {k: result.planned[k].model_copy(deep=True) for k in SheetKind if k in result.planned}
     # The engineer's own notes go on every sheet word for word (after the rules, so they are
     # never rewritten), skipping any Claude already wrote. Added here, at build time, so notes
     # changed while the review was paused reach every sheet.
-    for sheet in result.sheets.values():
+    for kind, sheet in result.sheets.items():
         have = {_norm(n) for n in sheet.notes}
         sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
+        if job.details and kind != SheetKind.ARTICULATION:
+            detail_callouts(sheet, job.details)
     retagged = consistent_tags(result.sheets)
     result.pdf, result.build_warnings = build_markup_pdf(
         job.arch_pdf,
