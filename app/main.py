@@ -331,6 +331,42 @@ async def add_details(files: list[UploadFile] = File(...)) -> list[dict]:
     return out
 
 
+@app.get("/details/{key}/page.png")
+def detail_page(key: str) -> Response:
+    """The tile large, for the split (crop) tool."""
+    try:
+        return Response(detailstore.preview(key), media_type="image/png")
+    except ValueError:
+        raise HTTPException(404, "No such detail.")
+
+
+@app.get("/details/{key}/suggest")
+def detail_suggest(key: str) -> dict:
+    """Suggested boxes round each separate detail on a tile."""
+    try:
+        return detailstore.suggest(key)
+    except ValueError:
+        raise HTTPException(404, "No such detail.")
+
+
+@app.post("/details/{key}/split")
+async def detail_split(key: str, request: Request) -> list[dict]:
+    """Cut a tile into new tiles: JSON {"regions": [{x0, y0, x1, y1 (0-1), name}], "remove_original": bool}."""
+    body = await request.json()
+    regions = body.get("regions") or []
+    if not regions:
+        raise HTTPException(400, "Draw at least one box.")
+    try:
+        made = detailstore.split(key, regions)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, f"Could not split the detail ({e})")
+    if made and body.get("remove_original") and key not in {m["id"] for m in made}:
+        detailstore.delete(key)
+    return made
+
+
 @app.post("/details/{key}/name")
 def rename_detail(key: str, name: str = Form(...)) -> dict:
     try:
