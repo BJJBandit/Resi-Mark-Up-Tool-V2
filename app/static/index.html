@@ -11,8 +11,21 @@
   }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif; }
-  .layout { display: grid; grid-template-columns: minmax(0, 760px) 340px; gap: 28px; justify-content: center;
+  .layout { display: grid; grid-template-columns: 300px minmax(0, 760px) 340px; gap: 28px; justify-content: center;
     padding: 32px 16px 64px; }
+  aside.details { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow-y: auto;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 16px 8px;
+    margin-top: 112px; font-size: 13px; }
+  aside.details h2 { font-size: 16px; margin: 0 0 4px; }
+  aside.details .dlist { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+  aside.details .det { border: 1px solid var(--line); border-radius: 6px; padding: 6px; background: var(--bg); }
+  aside.details .det.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  aside.details .det img { width: 100%; height: 90px; object-fit: contain; background: #fff; border-radius: 4px; display: block; }
+  aside.details .det label { display: flex; gap: 6px; align-items: flex-start; margin: 6px 0 0; font-weight: 600;
+    font-size: 12px; line-height: 1.3; word-break: break-word; }
+  aside.details .det .acts { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; }
+  @media (max-width: 1480px) { .layout { grid-template-columns: minmax(0, 760px) 340px; }
+    aside.details { grid-column: 1; grid-row: 2; position: static; max-height: none; margin-top: 0; } }
   main { max-width: 760px; margin: 0; padding: 0; min-width: 0; }
   aside.rules { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow-y: auto;
     background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 16px 8px;
@@ -28,6 +41,7 @@
     border-radius: 6px; padding: 6px 8px; margin: 0 0 8px; }
   aside.rules details.edited summary::after { content: ' - edited'; color: var(--accent); font-weight: 600; }
   @media (max-width: 1160px) { .layout { grid-template-columns: minmax(0, 760px); }
+    aside.details { grid-column: auto; grid-row: auto; }
     aside.rules { position: static; max-height: none; margin-top: 0; } }
   h1 { font-size: 22px; margin: 0 0 4px; }
   form h2 { font-size: 16px; margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--line); }
@@ -103,6 +117,15 @@
 </head>
 <body>
 <div class="layout">
+<aside class="details" aria-label="Details">
+  <h2>Details</h2>
+  <p class="muted" style="margin:0">Standard details to add to the DETAILS sheet. Tick the ones this job needs (in
+    order) - the <b>Details</b> sheet is ticked for you. Uploads (PNG, JPG or PDF) are kept for later jobs.</p>
+  <div class="dlist" id="detailList"><p class="muted">Loading…</p></div>
+  <input type="file" id="detailFiles" accept="image/png,image/jpeg,application/pdf" multiple hidden>
+  <button type="button" class="secondary" id="detailAdd" style="margin:0 0 8px">Add details…</button>
+  <p class="err" id="detailErr" hidden></p>
+</aside>
 <main>
   <h1>Resi Mark-Up Tool</h1>
   <p class="lead">Upload the geotechnical report and architectural drawings. Claude reviews them and produces a preliminary structural mark-up set for engineer review.</p>
@@ -164,6 +187,7 @@
       <label class="check"><input type="checkbox" name="sheets" value="foundation"> Footings &amp; floor framing / slab <small>(one sheet)</small></label>
       <label class="check"><input type="checkbox" name="sheets" value="footings"> Footings <small>(own sheet)</small></label>
       <label class="check"><input type="checkbox" name="sheets" value="floor"> Floor framing / slab <small>(own sheet)</small></label>
+      <label class="check"><input type="checkbox" name="details_sheet" value="true" id="detailsSheet"> Details <small>(chosen in the Details panel)</small></label>
     </div>
     <p class="muted sheethelp">Footings and floor go on one FOOTING &amp; FLOOR PLAN, or tick them as separate sheets (clearer on busy suspended-floor jobs, one more sheet call) - not both.</p>
     <p class="err" id="sheetMsg" hidden>Tick at least one sheet.</p>
@@ -402,6 +426,7 @@ f.addEventListener('submit', async e => {
       fd.append('stored_ref_pages', storedList.querySelector(`[data-stdpages="${c.dataset.use}"]`).value);
     }
     if (RULES && rulesEdited()) fd.set('office_rules', rulesText());  // this job only
+    if (detailsSheet.checked) detailOrder.forEach(id => fd.append('detail_ids', id));
     const r = await fetch('/jobs', { method: 'POST', body: fd });
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.statusText);
@@ -527,6 +552,55 @@ pauseBtn.addEventListener('click', async () => {
   const r = await fetch(`/jobs/${pauseBtn.dataset.job}/pause`, { method: 'POST' });
   if (!r.ok) { pauseBtn.disabled = false; pauseBtn.textContent = 'Pause review'; alert((await r.json()).detail || 'Could not pause'); }
 });
+
+// Details panel: stored standard details (app/detailstore.py); ticked ones go on the DETAILS sheet.
+const detailList = document.getElementById('detailList'), detailErr = document.getElementById('detailErr');
+const detailsSheet = document.getElementById('detailsSheet');
+let detailOrder = [];  // ids in the order ticked
+function detailShowErr(m) { detailErr.textContent = m || ''; detailErr.hidden = !m; }
+async function loadDetails() {
+  try {
+    const r = await fetch('/details');
+    const ds = await r.json();
+    if (!r.ok || !Array.isArray(ds)) throw new Error(r.statusText);
+    detailOrder = detailOrder.filter(id => ds.some(d => d.id === id));
+    detailList.innerHTML = ds.length ? ds.map(d => `<div class="det${detailOrder.includes(d.id) ? ' on' : ''}" data-id="${d.id}">
+        <img src="/details/${d.id}/thumb.png" alt="" loading="lazy">
+        <label><input type="checkbox" data-pick="${d.id}" ${detailOrder.includes(d.id) ? 'checked' : ''}>
+          <span>${detailOrder.includes(d.id) ? `${detailOrder.indexOf(d.id) + 1}. ` : ''}${esc(d.name)}</span></label>
+        <div class="acts"><button type="button" class="link" style="color:var(--accent)" data-ren="${d.id}">Rename</button>
+          <button type="button" class="link" data-del="${d.id}">Forget</button></div></div>`).join('')
+      : '<p class="muted" style="grid-column:1/-1">None yet - add your standard details below.</p>';
+  } catch (e) { detailList.innerHTML = `<p class="err" style="grid-column:1/-1">Could not load the details: ${esc(e.message)}</p>`; }
+}
+detailList.addEventListener('change', e => {
+  const id = e.target.dataset.pick; if (!id) return;
+  detailOrder = e.target.checked ? [...detailOrder, id] : detailOrder.filter(x => x !== id);
+  if (detailOrder.length) detailsSheet.checked = true;
+  loadDetails();
+});
+detailList.addEventListener('click', async e => {
+  const del = e.target.dataset.del, ren = e.target.dataset.ren;
+  if (del && confirm('Forget this detail? It is removed for every job.')) {
+    await fetch(`/details/${del}`, { method: 'DELETE' }); detailOrder = detailOrder.filter(x => x !== del); loadDetails();
+  }
+  if (ren) {
+    const name = prompt('Detail name', e.target.closest('.det').querySelector('label span').textContent.replace(/^\d+\. /, ''));
+    if (name) { const fd = new FormData(); fd.append('name', name); await fetch(`/details/${ren}/name`, { method: 'POST', body: fd }); loadDetails(); }
+  }
+});
+document.getElementById('detailAdd').addEventListener('click', () => document.getElementById('detailFiles').click());
+document.getElementById('detailFiles').addEventListener('change', async e => {
+  const files = [...e.target.files]; e.target.value = '';
+  if (!files.length) return;
+  const fd = new FormData(); files.forEach(f => fd.append('files', f));
+  detailShowErr('');
+  const r = await fetch('/details', { method: 'POST', body: fd });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) detailShowErr(j.detail || r.statusText);
+  loadDetails();
+});
+loadDetails();
 
 // Office rules panel (app/office_rules.md). "Edit for this job" turns each section into a text
 // box; edited rules go with the next review only (office_rules form field) - the office

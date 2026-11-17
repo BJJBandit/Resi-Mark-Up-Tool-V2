@@ -279,3 +279,37 @@ def test_job_office_rules_used_in_prompt():
     contextvars.copy_context().run(inside)
     rules = "## Member sizes - office stock list\n- Timber, F17 / LVL: 90x35.\n"
     assert stock.check([type("I", (), {"tag": "L1", "text": "120x35 F17/LVL LINTEL"})()], "W", rules)
+
+
+def _png(w=200, h=120):
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, w, h), 0)
+    pix.clear_with(200)
+    return pix.tobytes("png")
+
+
+def test_details_store_and_sheet(client, tmp_path, monkeypatch):
+    from app import detailstore
+    from app import pdf as P
+    monkeypatch.setattr(detailstore, "DETAILS_DIR", tmp_path / "details")
+    doc = pymupdf.open()
+    doc.new_page().insert_text((50, 50), "PIER DETAIL")
+    r = client.post("/details", files=[("files", ("Pier detail.png", _png(), "image/png")),
+                                        ("files", ("Tie down.pdf", doc.tobytes(), "application/pdf"))])
+    assert r.status_code == 200
+    ids = [d["id"] for d in r.json()]
+    listed = client.get("/details").json()
+    assert {d["name"] for d in listed} == {"Pier detail", "Tie down"}
+    assert client.get(f"/details/{ids[0]}/thumb.png").status_code == 200
+    assert client.post("/details", files=[("files", ("x.txt", b"hello", "text/plain"))]).status_code == 400
+    client.post(f"/details/{ids[0]}/name", data={"name": "P1 PIER"})
+    assert any(d["name"] == "P1 PIER" for d in client.get("/details").json())
+    # the DETAILS sheet: 2 details on one page, captioned in order
+    details = [detailstore.load(i) for i in ids]
+    out = pymupdf.open()
+    w = P._details_sheets(out, P.SheetMeta("J", "", "A", "", "01/01/2026"), details, 3)
+    assert w == [] and out.page_count == 1
+    caps = [a.info["content"] for a in out[0].annots() if a.info.get("subject") == "Detail Caption"]
+    assert caps == ["DETAIL 1 - P1 PIER", "DETAIL 2 - TIE DOWN"]
+    assert out[0].get_images() and "PIER DETAIL" in out[0].get_text()
+    assert client.delete(f"/details/{ids[1]}").json()["deleted"] is True
+    assert len(client.get("/details").json()) == 1

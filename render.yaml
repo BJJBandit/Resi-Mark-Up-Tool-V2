@@ -56,6 +56,9 @@ services:
         value: "150"
       - key: REF_STORE_DIR
         value: /var/data/references
+      # Standard details for the DETAILS sheet (Details panel), kept on the disk.
+      - key: DETAILS_DIR
+        value: /var/data/details
     disk:
       name: data
       mountPath: /var/data

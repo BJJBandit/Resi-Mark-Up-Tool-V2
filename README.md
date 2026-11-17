@@ -88,6 +88,13 @@ checked before use. It is not for construction.
        RB1 2/290x45, schedule RB1 290x35) a CHECK line is added under it and a warning given.
        The sheets are told to use the calculation sizes and never reduce one.
 
+   - a **DETAILS** sheet if you tick **Details** under Sheets to produce: the standard details
+     ticked in the **Details** panel on the left (in the order ticked, up to 4 per sheet, each
+     fitted to its cell and captioned 'DETAIL n - NAME'), on the title block when that's on.
+     Upload details (PNG, JPG or PDF - a PDF's first page, kept as vector) in the panel; they are
+     kept on the server (`DETAILS_DIR`) for later jobs and can be renamed or forgotten there.
+     Ticking a detail ticks the Details sheet. No Claude call.
+
    **Add title block to sheets** (tick box, top of the form): every drawing sheet is laid out
    inside the office title block (`app/assets/title_block_a3.pdf`) - border, logo and company
    details - with its fields filled as editable text: project title and job no, drawing title
