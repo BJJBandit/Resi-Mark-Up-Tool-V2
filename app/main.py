@@ -283,18 +283,22 @@ def index() -> str:
 
 
 @app.get("/office-rules")
-def office_rules() -> list[dict]:
-    """The office practice rules Claude follows (app/office_rules.md), as sections of bullets."""
+def office_rules() -> dict:
+    """The office practice rules Claude follows (app/office_rules.md): the intro, and each
+    section's title, raw text (for editing per job) and rules (for display)."""
     text = (Path(__file__).parent / "office_rules.md").read_text()
+    intro, _, rest = text.partition("\n## ")
     sections: list[dict] = []
-    for line in text.splitlines():
-        if line.startswith("## "):
-            sections.append({"title": line[3:].strip(), "rules": []})
-        elif sections and line.startswith("- "):
-            sections[-1]["rules"].append(line[2:].strip())
-        elif sections and line.startswith("  - ") and sections[-1]["rules"]:
-            sections[-1]["rules"][-1] += "\n" + line.strip()
-    return sections
+    for chunk in ("## " + rest).split("\n## ") if rest else []:
+        title, _, body = chunk.removeprefix("## ").partition("\n")
+        rules: list[str] = []
+        for line in body.splitlines():
+            if line.startswith("- "):
+                rules.append(line[2:].strip())
+            elif line.startswith("  - ") and rules:
+                rules[-1] += "\n" + line.strip()
+        sections.append({"title": title.strip(), "body": body.strip("\n"), "rules": rules})
+    return {"intro": intro.strip(), "sections": sections}
 
 
 @app.get("/healthz")
@@ -360,6 +364,7 @@ async def create_job(
     calc_sheet: bool = Form(False),
     arete_title_block: bool = Form(False),
     client: str = Form(""),
+    office_rules: str = Form(""),  # edited for this job only (from the Office rules panel)
 ) -> dict:
     try:
         chosen = [SheetKind(s) for s in sheets]
@@ -479,6 +484,7 @@ async def create_job(
         calc_sheet=calc_sheet,
         arete_title_block=arete_title_block or title_block,  # the Arete A3 template is the title block
         client=client.strip().upper(),
+        office_rules=office_rules.strip()[:60000],
     )
     job_id = uuid.uuid4().hex
     _evict_old_jobs()

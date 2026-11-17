@@ -50,6 +50,7 @@ class JobInput:
     # Pause point: checkpoint(stage) -> None to carry on, or the engineer's changes made while
     # paused: {"notes", "sheet_notes", "construction", "sheets"} (any subset).
     checkpoint: Callable[[str], dict | None] | None = field(default=None, repr=False)
+    office_rules: str = ""  # office rules edited for this job (markdown); "" = the office defaults
 
 
 @dataclass
@@ -184,11 +185,15 @@ def _stored_references(docs: list[RefDoc], progress: Callable[[str], None]):
 
 def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobResult:
     log = usage.start()
+    claude.set_office_rules(job.office_rules)
     try:
         result = _run_all(job, progress, log)
     finally:
         s = _report_usage(log, "review")
     result.usage = s
+    if job.office_rules.strip() and job.office_rules.strip() != claude.OFFICE_RULES:
+        result.base_warnings.insert(0, "Office rules were edited for this job (the office defaults are unchanged)")
+        result.compose_warnings()
     return result
 
 
@@ -634,7 +639,7 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
         result.sheet_warnings[kind] += bearer_spacing(sheet, SHEET_TITLES[kind])
     # House style: schedules list only the member type and spacing - no notes.
     sheet.schedule = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.schedule]
-    result.sheet_warnings[kind] += stock.check(sheet.schedule, SHEET_TITLES[kind])
+    result.sheet_warnings[kind] += stock.check(sheet.schedule, SHEET_TITLES[kind], job.office_rules or None)
     sheet.legend = [s.model_copy(update={"text": short_spec(s.text)}) for s in sheet.legend]
     # Australian English on everything written on the sheet (catches American spellings).
     # Units in their SI case (450 mm, 27 kN, 0.8 kPa) and no value cited 'from memory'.
@@ -764,6 +769,7 @@ def rerun_sheet(result: JobResult, kind: SheetKind, change: str = "",
     ctx = result.ctx
     assert ctx is not None
     usage.use(ctx.log)  # the re-run's calls count toward this review's usage
+    claude.set_office_rules(ctx.job.office_rules)  # the job's own rules, if edited
     title = SHEET_TITLES[kind]
     refs = list(ctx.text_refs)
     uploaded: list = []

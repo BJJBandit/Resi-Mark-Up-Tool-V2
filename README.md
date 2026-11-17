@@ -188,6 +188,12 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 
 The page shows these rules in an **Office rules** panel on the right (read live from
 `app/office_rules.md`, one collapsible section per heading); on a narrow screen it sits below the form.
+**Edit for this job** (in the panel) turns each section into a text box (one rule per line,
+starting '- '). The edited rules go with the next review only: Claude is given them instead of
+the office defaults (every step, and that review's sheet re-runs), the stock size check uses the
+edited stock list, and the review's warnings say the rules were edited. `office_rules.md` is
+never changed - once that review has started the panel goes back to the office defaults, so the
+next job starts with them. **Reset to office defaults** undoes the edits before running.
 
 `app/office_rules.md` holds the office's standard choices, given to Claude in every step
 (steps 1-3) unless the engineer's direction for a job says otherwise; the firm rules below

@@ -256,6 +256,26 @@ def test_stop_review(client, monkeypatch):
 
 
 def test_office_rules_endpoint(client):
-    secs = client.get("/office-rules").json()
-    titles = [s["title"] for s in secs]
-    assert any("Footings" in t for t in titles) and all(s["rules"] for s in secs)
+    from app import claude
+    data = client.get("/office-rules").json()
+    secs = data["sections"]
+    assert any("Footings" in s["title"] for s in secs) and all(s["rules"] for s in secs)
+    # intro + sections rebuild the file exactly as the page sends it back
+    rebuilt = data["intro"] + "".join(f"\n\n## {s['title']}\n{s['body']}" for s in secs)
+    assert " ".join(rebuilt.split()) == " ".join(claude.OFFICE_RULES.split())
+
+
+def test_job_office_rules_used_in_prompt():
+    import contextvars
+
+    from app import claude, stock
+
+    def inside():
+        assert claude._system() == claude.SYSTEM  # defaults
+        claude.set_office_rules("## Footings\n- Strip footings 600 wide for this job.")
+        assert "600 wide for this job" in claude._system() and "600 wide" not in claude.SYSTEM
+        claude.set_office_rules("")
+        assert claude._system() == claude.SYSTEM
+    contextvars.copy_context().run(inside)
+    rules = "## Member sizes - office stock list\n- Timber, F17 / LVL: 90x35.\n"
+    assert stock.check([type("I", (), {"tag": "L1", "text": "120x35 F17/LVL LINTEL"})()], "W", rules)

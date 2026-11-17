@@ -22,6 +22,11 @@
   aside.rules summary { cursor: pointer; font-weight: 600; }
   aside.rules ul { margin: 6px 0 4px; padding-left: 18px; }
   aside.rules li { margin: 0 0 6px; white-space: pre-line; }
+  aside.rules .ruleshead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  aside.rules textarea { font: 12px/1.45 system-ui, sans-serif; min-height: 120px; margin: 6px 0; }
+  aside.rules .rulesbadge { background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 6px 8px; margin: 0 0 8px; }
+  aside.rules details.edited summary::after { content: ' - edited'; color: var(--accent); font-weight: 600; }
   @media (max-width: 1160px) { .layout { grid-template-columns: minmax(0, 760px); }
     aside.rules { position: static; max-height: none; margin-top: 0; } }
   h1 { font-size: 22px; margin: 0 0 4px; }
@@ -208,8 +213,12 @@
   </details>
 </main>
 <aside class="rules" aria-label="Office rules">
-  <h2>Office rules</h2>
-  <p class="muted" style="margin:0 0 8px">The office practice Claude follows on every review (unless your direction says otherwise).</p>
+  <div class="ruleshead"><h2>Office rules</h2>
+    <span><button type="button" class="link" id="rulesEdit" style="color:var(--accent)">Edit for this job</button></span></div>
+  <p class="muted" style="margin:0 0 8px" id="rulesHelp">The office practice Claude follows on every review (unless your
+    direction says otherwise).</p>
+  <p class="rulesbadge" id="rulesBadge" hidden>Edited for this job - the next review uses these rules; the office defaults
+    are unchanged and come back for the job after. <button type="button" class="link" id="rulesReset">Reset to office defaults</button></p>
   <div id="rulesList"><p class="muted">Loading…</p></div>
 </aside>
 </div>
@@ -392,9 +401,11 @@ f.addEventListener('submit', async e => {
       fd.append('stored_refs', c.dataset.use);
       fd.append('stored_ref_pages', storedList.querySelector(`[data-stdpages="${c.dataset.use}"]`).value);
     }
+    if (RULES && rulesEdited()) fd.set('office_rules', rulesText());  // this job only
     const r = await fetch('/jobs', { method: 'POST', body: fd });
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.statusText);
+    if (RULES && rulesEdited()) rulesReset();  // the next job starts from the office defaults
     poll(j.id);
   } catch (err) {
     box.innerHTML = `<p class="err">${esc(err.message)}</p>`;
@@ -517,16 +528,68 @@ pauseBtn.addEventListener('click', async () => {
   if (!r.ok) { pauseBtn.disabled = false; pauseBtn.textContent = 'Pause review'; alert((await r.json()).detail || 'Could not pause'); }
 });
 
-// Office rules panel (read-only; from app/office_rules.md).
+// Office rules panel (app/office_rules.md). "Edit for this job" turns each section into a text
+// box; edited rules go with the next review only (office_rules form field) - the office
+// defaults are unchanged and the panel goes back to them once that review has started.
+const rulesList = document.getElementById('rulesList'), rulesBadge = document.getElementById('rulesBadge');
+const rulesEditBtn = document.getElementById('rulesEdit');
+let RULES = null, rulesEditing = false;
+function rulesText() {  // the full rules as edited (same form as office_rules.md)
+  return RULES.intro + RULES.sections.map((sec, i) => {
+    const ta = rulesList.querySelector(`textarea[data-sec="${i}"]`);
+    return `\n\n## ${sec.title}\n${(ta ? ta.value : sec.body).replace(/\s+$/, '')}`;
+  }).join('') + '\n';
+}
+function rulesEdited() {
+  return !!RULES && RULES.sections.some((sec, i) => {
+    const ta = rulesList.querySelector(`textarea[data-sec="${i}"]`);
+    return ta && ta.value.trim() !== sec.body.trim();
+  });
+}
+function rulesMark() {
+  rulesBadge.hidden = !rulesEdited();
+  RULES.sections.forEach((sec, i) => {
+    const ta = rulesList.querySelector(`textarea[data-sec="${i}"]`);
+    ta && ta.closest('details').classList.toggle('edited', ta.value.trim() !== sec.body.trim());
+  });
+}
+function rulesRender(edit) {
+  rulesEditing = edit;
+  rulesEditBtn.textContent = edit ? 'Done' : 'Edit for this job';
+  const open = [...rulesList.querySelectorAll('details')].map(d => d.open);
+  const vals = [...rulesList.querySelectorAll('textarea')].reduce((o, t) => (o[t.dataset.sec] = t.value, o), {});
+  rulesList.innerHTML = RULES.sections.map((sec, i) => {
+    const body = vals[i] ?? (RULES.edits?.[i] ?? sec.body);
+    const shown = body.split('\n').filter(l => l.startsWith('- ')).map(l => l.slice(2));
+    return `<details${open[i] || (edit && body.trim() !== sec.body.trim()) ? ' open' : ''}${body.trim() !== sec.body.trim() ? ' class="edited"' : ''}>
+      <summary>${esc(sec.title)} <span class="muted">(${shown.length})</span></summary>
+      ${edit ? `<textarea data-sec="${i}" rows="${Math.min(18, body.split('\n').length + 2)}">${esc(body)}</textarea>
+        <small class="muted">one rule per line, starting '- '</small>`
+             : `<ul>${shown.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`}</details>`;
+  }).join('');
+  if (!edit) {  // keep the edits while viewing
+    RULES.edits = Object.keys(vals).length ? vals : RULES.edits;
+    if (RULES.edits) {  // re-create hidden text boxes so the edits are still sent
+      Object.entries(RULES.edits).forEach(([i, v]) => {
+        const t = document.createElement('textarea'); t.hidden = true; t.dataset.sec = i; t.value = v;
+        rulesList.appendChild(t);
+      });
+    }
+  }
+  rulesList.querySelectorAll('textarea').forEach(t => t.addEventListener('input', rulesMark));
+  rulesMark();
+}
+function rulesReset() { RULES.edits = null; rulesList.innerHTML = ''; rulesRender(false); }
+rulesEditBtn.addEventListener('click', () => rulesRender(!rulesEditing));
+document.getElementById('rulesReset').addEventListener('click', rulesReset);
 (async () => {
-  const box = document.getElementById('rulesList');
   try {
     const r = await fetch('/office-rules');
-    const secs = await r.json();
-    if (!r.ok || !Array.isArray(secs)) throw new Error(r.statusText);
-    box.innerHTML = secs.map(sec => `<details><summary>${esc(sec.title)} <span class="muted">(${sec.rules.length})</span></summary>
-      <ul>${sec.rules.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('');
-  } catch (e) { box.innerHTML = `<p class="err">Could not load the office rules: ${esc(e.message)}</p>`; }
+    const data = await r.json();
+    if (!r.ok || !Array.isArray(data.sections)) throw new Error(r.statusText);
+    RULES = data;
+    rulesRender(false);
+  } catch (e) { rulesList.innerHTML = `<p class="err">Could not load the office rules: ${esc(e.message)}</p>`; }
 })();
 
 async function poll(id) {
