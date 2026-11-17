@@ -80,10 +80,27 @@ SYSTEM += (
 # details. Followed in every step unless the engineer's direction for the job says otherwise;
 # the FIRM RULES above still win.
 OFFICE_RULES = (Path(__file__).parent / "office_rules.md").read_text().strip()
-SYSTEM += (
-    "\n\nOFFICE PRACTICE - follow these in every step unless the engineer's direction for this "
-    "job says otherwise (the FIRM RULES above always apply):\n" + OFFICE_RULES + "\n"
-)
+_OFFICE_HEAD = ("\n\nOFFICE PRACTICE - follow these in every step unless the engineer's direction for this "
+                "job says otherwise (the FIRM RULES above always apply):\n")
+SYSTEM_BASE = SYSTEM
+SYSTEM += _OFFICE_HEAD + OFFICE_RULES + "\n"
+
+# Office rules edited for one job (from the page's Office rules panel); "" = the office defaults.
+# Set per review thread (copied into worker threads by usage.submit).
+_job_rules: contextvars.ContextVar[str] = contextvars.ContextVar("office_rules", default="")
+
+
+def set_office_rules(text: str) -> None:
+    _job_rules.set((text or "").strip())
+
+
+def office_rules() -> str:
+    return _job_rules.get() or OFFICE_RULES
+
+
+def _system() -> str:
+    rules = _job_rules.get()
+    return SYSTEM if not rules or rules == OFFICE_RULES else SYSTEM_BASE + _OFFICE_HEAD + rules + "\n"
 
 
 class ClaudeError(RuntimeError):
@@ -151,7 +168,7 @@ def _send(messages: list[dict], max_tokens: int, schema: dict | None, effort: st
     with client.beta.messages.stream(
         model=MODEL,
         max_tokens=max_tokens,
-        system=SYSTEM,
+        system=_system(),
         betas=["server-side-fallback-2026-07-01", *betas],
         fallbacks="default",
         # Summarised thinking streams text while Claude works, so the connection

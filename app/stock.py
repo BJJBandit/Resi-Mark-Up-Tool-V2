@@ -13,9 +13,9 @@ def _norm(size: str) -> str:
     return re.sub(r"\s+", "", size.upper().replace("×", "X"))
 
 
-def load() -> dict[str, set[str]]:
-    """{category: {sizes}} from office_rules.md, e.g. 'F17' -> {'90X35', '2/240X45', ...}."""
-    text = _RULES.read_text()
+def load(text: str | None = None) -> dict[str, set[str]]:
+    """{category: {sizes}} from office_rules.md (or a job's edited rules), e.g. 'F17' -> {'90X35', ...}."""
+    text = text or _RULES.read_text()
     if "## Member sizes" not in text:
         return {}
     section = text.split("## Member sizes", 1)[1].split("\n## ", 1)[0]
@@ -45,9 +45,9 @@ _STEEL = [
 ]
 
 
-def check(schedule, title: str) -> list[str]:
+def check(schedule, title: str, rules: str | None = None) -> list[str]:
     """Warnings for schedule items whose timber / steel size isn't on the stock list."""
-    stock = load()
+    stock = load(rules)
     if not stock:
         return []
     bad = []
