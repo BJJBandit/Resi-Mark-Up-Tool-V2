@@ -17,6 +17,7 @@
     background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 16px 8px;
     margin-top: 112px; font-size: 13px; }
   aside.details h2 { font-size: 16px; margin: 0 0 4px; }
+  aside.details.over { border: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
   aside.details .dlist { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
   aside.details .det { border: 1px solid var(--line); border-radius: 6px; padding: 6px; background: var(--bg); }
   aside.details .det.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
@@ -124,7 +125,8 @@
     DWG must be saved as DXF or PDF first. Kept for later jobs.</p>
   <div class="dlist" id="detailList"><p class="muted">Loading…</p></div>
   <input type="file" id="detailFiles" accept="image/png,image/jpeg,application/pdf,.pdf,.png,.jpg,.jpeg,.dxf,.dwg" multiple hidden>
-  <button type="button" class="secondary" id="detailAdd" style="margin:0 0 8px">Add details…</button>
+  <button type="button" class="secondary" id="detailAdd" style="margin:0 0 4px">Add details…</button>
+  <p class="muted" style="margin:0 0 8px">or drag files onto this box</p>
   <p class="err" id="detailErr" hidden></p>
 </aside>
 <main>
@@ -591,15 +593,32 @@ detailList.addEventListener('click', async e => {
   }
 });
 document.getElementById('detailAdd').addEventListener('click', () => document.getElementById('detailFiles').click());
-document.getElementById('detailFiles').addEventListener('change', async e => {
-  const files = [...e.target.files]; e.target.value = '';
+async function uploadDetails(files) {
   if (!files.length) return;
   const fd = new FormData(); files.forEach(f => fd.append('files', f));
   detailShowErr('');
-  const r = await fetch('/details', { method: 'POST', body: fd });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) detailShowErr(j.detail || r.statusText);
-  loadDetails();
+  const btn = document.getElementById('detailAdd'); btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    const r = await fetch('/details', { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) detailShowErr(j.detail || r.statusText);
+  } finally { btn.disabled = false; btn.textContent = 'Add details…'; loadDetails(); }
+}
+document.getElementById('detailFiles').addEventListener('change', e => {
+  const files = [...e.target.files]; e.target.value = ''; uploadDetails(files);
+});
+// Drag and drop files anywhere on the Details panel.
+const detailPanel = document.querySelector('aside.details');
+['dragenter', 'dragover'].forEach(t => detailPanel.addEventListener(t, e => {
+  if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+  e.preventDefault(); detailPanel.classList.add('over');
+}));
+['dragleave', 'dragend'].forEach(t => detailPanel.addEventListener(t, e => {
+  if (!detailPanel.contains(e.relatedTarget)) detailPanel.classList.remove('over');
+}));
+detailPanel.addEventListener('drop', e => {
+  e.preventDefault(); detailPanel.classList.remove('over');
+  uploadDetails([...(e.dataTransfer?.files || [])]);
 });
 loadDetails();
 
