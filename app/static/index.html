@@ -228,8 +228,8 @@
     <div class="gobar"><button id="go" type="submit">Run review</button>
       <button id="pauseBtn" type="button" class="secondary" disabled title="Pause the running review at its next step to change the direction, notes, sheets or material">Pause review</button>
       <button id="stopBtn" type="button" class="danger" disabled title="Cancel the running review completely">Stop review</button>
-      <!-- Placeholder: what Draft does is still to be decided; kept disabled until then. -->
-      <button id="draftBtn" type="button" class="secondary" disabled title="Draft - coming soon">Draft</button></div>
+      <button id="draftBtn" type="button" class="secondary" disabled
+        title="Download the sheets finished so far, marked DRAFT, while the review carries on">Draft</button></div>
   </form>
 
   <div class="card" id="status"></div>
@@ -570,6 +570,20 @@ function showPauseBtn(id, j) {
   pauseBtn.disabled = !j.pausable;
   pauseBtn.textContent = j.pausable ? 'Pause review' : 'Pausing at the next step…';
 }
+const draftBtn = document.getElementById('draftBtn');
+draftBtn.addEventListener('click', async () => {
+  const label = draftBtn.textContent;
+  draftBtn.disabled = true; draftBtn.textContent = 'Building draft…';
+  try {
+    const r = await fetch(`/jobs/${draftBtn.dataset.job}/draft.pdf`);
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    const blob = await r.blob();
+    const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'markup_DRAFT.pdf';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (e) { alert(`Draft not available: ${e.message}`); }
+  finally { draftBtn.disabled = false; draftBtn.textContent = label; }
+});
 const stopBtn = document.getElementById('stopBtn');
 stopBtn.addEventListener('click', async () => {
   if (!confirm('Stop this review completely? It ends at its next step and nothing is saved.')) return;
@@ -819,6 +833,9 @@ async function poll(id) {
   if (!r.ok || !['queued', 'running'].includes(j.status)) { pauseBtn.disabled = true; pauseBtn.textContent = 'Pause review'; }
   stopBtn.disabled = !(r.ok && j.stoppable);
   stopBtn.dataset.job = id;
+  draftBtn.dataset.job = id;
+  draftBtn.disabled = !(r.ok && j.draft_sheets > 0 && j.status !== 'done');
+  draftBtn.textContent = r.ok && j.draft_sheets > 0 && j.status !== 'done' ? `Draft (${j.draft_sheets} sheet${j.draft_sheets === 1 ? '' : 's'})` : 'Draft';
   if (r.ok && j.status === 'stopped') {
     if (ask.open) ask.close();
     box.dataset.pausedFor = '';
