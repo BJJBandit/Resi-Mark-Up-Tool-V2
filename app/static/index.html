@@ -126,7 +126,7 @@
   <div class="dlist" id="detailList"><p class="muted">Loading…</p></div>
   <input type="file" id="detailFiles" accept="image/png,image/jpeg,application/pdf,.pdf,.png,.jpg,.jpeg,.dxf,.dwg" multiple hidden>
   <button type="button" class="secondary" id="detailAdd" style="margin:0 0 4px">Add details…</button>
-  <p class="muted" style="margin:0 0 8px">or drag files onto this box</p>
+  <p class="muted" style="margin:0 0 8px">or drag files onto this box, or paste (Ctrl+V) a screenshot or copied file</p>
   <p class="err" id="detailErr" hidden></p>
 </aside>
 <main>
@@ -616,6 +616,20 @@ const detailPanel = document.querySelector('aside.details');
 ['dragleave', 'dragend'].forEach(t => detailPanel.addEventListener(t, e => {
   if (!detailPanel.contains(e.relatedTarget)) detailPanel.classList.remove('over');
 }));
+// Paste (Ctrl+V / Cmd+V) a screenshot, copied image or copied files to add them as details -
+// anywhere on the page except while typing in a text box (those keep their normal paste).
+document.addEventListener('paste', e => {
+  const files = [...(e.clipboardData?.files || [])];
+  if (!files.length) return;
+  const t = e.target;
+  if (t.closest?.('aside.details') == null && t.matches?.('input[type=text], textarea, [contenteditable]')) return;
+  e.preventDefault();
+  const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  uploadDetails(files.map((f, i) => /^image\.(png|jpe?g)$/i.test(f.name) || !f.name
+    ? new File([f], `Pasted detail ${stamp}${files.length > 1 ? ' ' + (i + 1) : ''}.${(f.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, { type: f.type })
+    : f));
+  detailPanel.scrollIntoView({ block: 'nearest' });
+});
 detailPanel.addEventListener('drop', e => {
   e.preventDefault(); detailPanel.classList.remove('over');
   uploadDetails([...(e.dataTransfer?.files || [])]);
