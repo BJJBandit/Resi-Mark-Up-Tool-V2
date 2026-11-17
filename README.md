@@ -98,6 +98,11 @@ checked before use. It is not for construction.
      plot it to PDF first. Tiles are kept on the server (`DETAILS_DIR`) for later jobs and can be
      renamed or forgotten there.
      Ticking a detail ticks the Details sheet. No Claude call for the sheet itself.
+     **Split** (on a tile) cuts a sheet of several details into separate tiles: the tile opens large
+     with a box suggested round each detail found (line work / dark pixels grouped where they come
+     close, sheet frames ignored, a title just below a detail taken in, named from its 'DETAIL / SECTION'
+     title). Drag to add a box, drag a box to move it, its corner to resize, x to delete, edit the
+     names, then Create tiles (optionally removing the original). PDF details stay vector.
      **SEE DETAIL callouts**: Claude is given the numbered list and adds 'SEE DETAIL n' to the
      callouts of the members each detail applies to; any it misses, the app adds - one callout
      per detail per sheet, at the first member the detail's name points to (a tag in the name,

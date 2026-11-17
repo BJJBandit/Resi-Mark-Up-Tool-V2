@@ -339,3 +339,32 @@ def test_details_one_tile_each_pdf_page_dxf_dwg(client, tmp_path, monkeypatch):
     # DWG -> a clear message
     r = client.post("/details", files=[("files", ("Bracing.dwg", b"AC1032" + b"\0" * 100, "application/acad"))])
     assert r.status_code == 400 and "DXF" in r.json()["detail"]
+
+
+def test_detail_split_suggest_and_cut(client, tmp_path, monkeypatch):
+    from app import detailstore
+    monkeypatch.setattr(detailstore, "DETAILS_DIR", tmp_path / "details")
+    doc = pymupdf.open()
+    page = doc.new_page(width=842, height=595)
+    page.draw_rect(pymupdf.Rect(15, 15, 827, 580))  # sheet frame: ignored
+    for i, (x, y) in enumerate([(60, 60), (330, 60), (600, 60), (60, 330), (330, 330)]):
+        page.draw_rect(pymupdf.Rect(x, y, x + 180, y + 150))
+        page.insert_text((x + 10, y + 175), f"DETAIL {i + 1} - PIER TYPE {i + 1}", fontsize=10)
+    key = client.post("/details", files=[("files", ("Sheet.pdf", doc.tobytes(), "application/pdf"))]).json()[0]["id"]
+    assert client.get(f"/details/{key}/page.png").status_code == 200
+    sg = client.get(f"/details/{key}/suggest").json()
+    assert [r["name"] for r in sg["regions"]] == [f"DETAIL {i} - PIER TYPE {i}" for i in range(1, 6)]
+    assert all(r["y1"] * 595 > (60 + 165 if r["y0"] < 0.3 else 330 + 165) for r in sg["regions"])  # title inside
+    made = client.post(f"/details/{key}/split", json={"regions": sg["regions"][:2], "remove_original": True}).json()
+    assert [m["name"] for m in made] == ["DETAIL 1 - PIER TYPE 1", "DETAIL 2 - PIER TYPE 2"]
+    names = {d["name"] for d in client.get("/details").json()}
+    assert names == {"DETAIL 1 - PIER TYPE 1", "DETAIL 2 - PIER TYPE 2"}  # original removed
+    cut = detailstore.load(made[0]["id"])[1]
+    p = pymupdf.open(stream=cut)[0]
+    assert p.rect.width < 260 and "PIER TYPE 1" in p.get_text() and "PIER TYPE 2" not in p.get_text()
+    # an image tile
+    png = page.get_pixmap(dpi=100).tobytes("png")
+    k2 = client.post("/details", files=[("files", ("Sheet.png", png, "image/png"))]).json()[0]["id"]
+    regs = client.get(f"/details/{k2}/suggest").json()["regions"]
+    assert len(regs) == 5
+    assert client.post(f"/details/{k2}/split", json={"regions": []}).status_code == 400
