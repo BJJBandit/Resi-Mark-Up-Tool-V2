@@ -186,6 +186,9 @@ this repo. When Render asks for `ANTHROPIC_API_KEY`, paste in your key.
 
 ## Office practice
 
+The page shows these rules in an **Office rules** panel on the right (read live from
+`app/office_rules.md`, one collapsible section per heading); on a narrow screen it sits below the form.
+
 `app/office_rules.md` holds the office's standard choices, given to Claude in every step
 (steps 1-3) unless the engineer's direction for a job says otherwise; the firm rules below
 always win. Members are still sized for their span and load - the file sets the form and

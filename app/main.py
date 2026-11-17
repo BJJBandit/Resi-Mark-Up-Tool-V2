@@ -282,6 +282,21 @@ def index() -> str:
     return INDEX_HTML
 
 
+@app.get("/office-rules")
+def office_rules() -> list[dict]:
+    """The office practice rules Claude follows (app/office_rules.md), as sections of bullets."""
+    text = (Path(__file__).parent / "office_rules.md").read_text()
+    sections: list[dict] = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            sections.append({"title": line[3:].strip(), "rules": []})
+        elif sections and line.startswith("- "):
+            sections[-1]["rules"].append(line[2:].strip())
+        elif sections and line.startswith("  - ") and sections[-1]["rules"]:
+            sections[-1]["rules"][-1] += "\n" + line.strip()
+    return sections
+
+
 @app.get("/healthz")
 def healthz() -> dict:
     return {"ok": True}
