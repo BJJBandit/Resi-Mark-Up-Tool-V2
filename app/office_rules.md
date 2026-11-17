@@ -24,6 +24,8 @@ Edit this file to change them - one rule per bullet.
 
 - Alterations with wall work on more than one floor (e.g. an attic dormer and a first-floor window): mark up the floor plan with most of the new wall work, and label every item that is on another floor with that floor in its callout (e.g. 'L4 OVER BED 3 WINDOW A1827 - FIRST FLOOR'), placed where it sits on that floor; add the note 'ITEMS ON OTHER FLOORS ARE LABELLED WITH THEIR FLOOR'.
 
+- Alterations / extensions: new work is structurally isolated from the existing house unless the engineer's direction says otherwise - no new rafter, ledger, beam, joist or bearer fixed to or bearing on the existing structure; carry the new work on its own wall / stud line and piers beside the existing wall, with a movement gap and flexible flashing / cover strip at the junction. Apply it the same way on every sheet (roof, wall and footing) and say so in the notes.
+
 ## Bracing
 - Use a mix of bracing types to AS 1684.2: type h(b) structural ply panels (tag 'h(b) - <length>', e.g. h(b) - 900) on external walls, type d diagonal strap bracing (tag 'd - <length>', e.g. d - 2400, drawn dashed) along full-length internal walls, and type g where a short ply panel is needed (e.g. g - 600).
 - Distribute bracing walls through the whole building in both directions, including internal walls, at the spacing AS 1684.2 Clause 8.3.6 allows - not only on the external walls.
