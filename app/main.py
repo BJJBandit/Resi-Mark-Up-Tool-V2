@@ -66,6 +66,7 @@ class Job:
     changes: dict | None = None
     resumed: threading.Event = field(default_factory=threading.Event)
     stop_requested: bool = False
+    partial: pipeline.JobResult | None = None  # the running review's result (sheets so far), for drafts
     inp: object = None
     answers: list[dict] | None = None
     answered: threading.Event = field(default_factory=threading.Event)
@@ -144,8 +145,12 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
             return None
         return job.changes
 
+    def on_result(result: pipeline.JobResult) -> None:
+        job.partial = result
+
     inp.ask = ask
     inp.checkpoint = checkpoint
+    inp.on_result = on_result
     job.inp = inp
     try:
         job.result = pipeline.run(inp, progress)
@@ -210,6 +215,23 @@ def pause_job(job_id: str) -> dict:
     job.pause_requested = True
     job.step = (job.step or "") + " - pausing at the next step"
     return {"ok": True}
+
+
+@app.get("/jobs/{job_id}/draft.pdf")
+def job_draft(job_id: str) -> Response:
+    """The sheets finished so far, marked DRAFT, while the review is still running."""
+    job = _job(job_id)
+    if job.status == "done" and job.result:
+        raise HTTPException(409, "The review has finished - download the mark-up PDF.")
+    if job.partial is None or not job.partial.planned or job.inp is None:
+        raise HTTPException(409, "No sheets are finished yet - try again shortly.")
+    try:
+        pdf, n = pipeline.draft_pdf(job.inp, job.partial)
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, f"Could not build the draft ({e})")
+    name = _pdf_name(job.project).replace("_markup.pdf", f"_DRAFT_{n}_sheets.pdf")
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.post("/jobs/{job_id}/stop")
@@ -608,6 +630,7 @@ def _status_body(job: Job) -> dict:
         body["pause_minutes"] = PAUSE_MAX_MINUTES
     body["pausable"] = job.status in ("queued", "running") and not job.pause_requested and not job.stop_requested
     body["stoppable"] = job.status in ("queued", "running", "paused", "waiting") and not job.stop_requested
+    body["draft_sheets"] = len(job.partial.planned) if job.partial is not None and job.status != "done" else 0
     if job.status == "waiting":
         body["questions"] = job.questions
         body["wait_minutes"] = INFO_WAIT_MINUTES

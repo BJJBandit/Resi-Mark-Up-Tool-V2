@@ -52,6 +52,9 @@ class JobInput:
     # paused: {"notes", "sheet_notes", "construction", "sheets"} (any subset).
     checkpoint: Callable[[str], dict | None] | None = field(default=None, repr=False)
     office_rules: str = ""  # office rules edited for this job (markdown); "" = the office defaults
+    # Called with the review's result as soon as it exists (after step 2), so sheets finished
+    # so far can be downloaded as a draft while the rest are still being drawn.
+    on_result: Callable[["JobResult"], None] | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -302,6 +305,11 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None], extra: dic
         design, info_warnings = assess()
     result = JobResult(geotech=geotech, design=design, references=[r.title for r in refs])
     result.base_warnings += info_warnings
+    if job.on_result is not None:
+        try:
+            job.on_result(result)
+        except Exception:
+            pass
     # Claude's cross-reference of the plan and elevation views.
     result.base_warnings += [f"Plan vs elevations: {x}" for x in design.opening_crosscheck]
     result.base_warnings += [
@@ -752,6 +760,36 @@ def detail_callouts(sheet: MarkupSheet, details: list) -> int:
                                       text=f"{'/'.join(hit[:3])}: SEE DETAIL {i} - {name.upper()}"))
         added += 1
     return added
+
+
+def draft_pdf(job: JobInput, result: JobResult) -> tuple[bytes, int]:
+    """The sheets finished so far as a PDF marked DRAFT, without touching the running review
+    (works on copies). Returns (pdf, number of mark-up sheets)."""
+    planned = dict(result.planned)  # snapshot: sheets still being drawn may add to it
+    sheets = {k: planned[k].model_copy(deep=True) for k in SheetKind if k in planned}
+    for kind, sheet in sheets.items():
+        have = {_norm(n) for n in sheet.notes}
+        sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
+        if job.details and kind != SheetKind.ARTICULATION:
+            detail_callouts(sheet, job.details)
+    consistent_tags(sheets)
+    pdf, _ = build_markup_pdf(job.arch_pdf, job.project, result.geotech, result.design, sheets, result.references,
+                              job_no=job.job_no, rev=job.rev, made_by=job.made_by, calc_sheet=job.calc_sheet,
+                              arete_title_block=job.arete_title_block, client=job.client, details=job.details)
+    return stamp_draft(pdf), len(sheets)
+
+
+def stamp_draft(pdf: bytes) -> bytes:
+    """'DRAFT - REVIEW IN PROGRESS' in red at the top right of every page."""
+    import pymupdf as _pm
+    doc = _pm.open(stream=pdf, filetype="pdf")
+    for page in doc:
+        r = page.rect
+        a = page.add_freetext_annot(_pm.Rect(r.x1 - 330, 12, r.x1 - 14, 44), "DRAFT - REVIEW IN PROGRESS",
+                                    fontsize=16, fontname="Helv", text_color=(0.85, 0, 0), align=2)
+        a.set_info(title="Resi Mark-Up Tool", subject="Draft")
+        a.update()
+    return doc.tobytes(garbage=3, deflate=True)
 
 
 def _build(job: JobInput, result: JobResult) -> None:

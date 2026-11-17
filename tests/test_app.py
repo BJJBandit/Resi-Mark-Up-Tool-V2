@@ -368,3 +368,31 @@ def test_detail_split_suggest_and_cut(client, tmp_path, monkeypatch):
     regs = client.get(f"/details/{k2}/suggest").json()["regions"]
     assert len(regs) == 5
     assert client.post(f"/details/{k2}/split", json={"regions": []}).status_code == 400
+
+
+def test_draft_pdf_while_running(client):
+    import app.main as main
+    from app.schemas import DesignAssessment, GeotechReview
+    from app.schemas import SheetKind as K
+    src = pymupdf.open()
+    src.new_page(width=1190.55, height=841.89)
+    inp = pipeline.JobInput(project="1 TEST ST", arch_pdf=src.tobytes(), geotech_pdf=None, wind_class=None,
+                            site_class=None, construction="t", notes="", calc_sheet=False)
+    res = pipeline.JobResult(geotech=GeotechReview.model_construct(), design=DesignAssessment.model_construct())
+    job = main.Job(status="running", project="1 TEST ST")
+    job.inp = inp
+    main.JOBS["d1"] = job
+    assert client.get("/jobs/d1").json()["draft_sheets"] == 0
+    assert client.get("/jobs/d1/draft.pdf").status_code == 409  # nothing yet
+    job.partial = res
+    sh = MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1), elements=[],
+                                     schedule=[], legend=[], notes=["-A."], classification="", schedule_title="",
+                                     legend_title="")
+    res.planned[K.WALLS] = sh
+    assert client.get("/jobs/d1").json()["draft_sheets"] == 1
+    r = client.get("/jobs/d1/draft.pdf")
+    assert r.status_code == 200 and "DRAFT_1_sheets" in r.headers["content-disposition"]
+    doc = pymupdf.open(stream=r.content)
+    assert doc.page_count == 1 and any(a.info.get("subject") == "Draft" for a in doc[0].annots())
+    assert res.sheets == {} and res.pdf == b"" and sh.notes == ["-A."]  # the running review is untouched
+    main.JOBS.pop("d1")

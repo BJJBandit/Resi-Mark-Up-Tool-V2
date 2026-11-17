@@ -36,6 +36,9 @@ checked before use. It is not for construction.
      direction after the drawing review re-runs step 2 (one more call); newly ticked sheets
      are drawn; unticked sheets are left out; drawing notes go on every sheet. A pause left
      for `PAUSE_MAX_MINUTES` (default 120) carries on unchanged.
+   - **Draft**: once the first sheet is finished, **Draft (n sheets)** beside Stop downloads the
+     sheets finished so far (with the calculation and details sheets), each page marked DRAFT -
+     REVIEW IN PROGRESS. The review carries on untouched (the draft is built from copies).
    - **Stop**: **Stop review** (beside Pause) cancels the review completely after a confirm. It
      ends at the next step (a Claude call already under way finishes first), or at once if
      it is paused or waiting for answers; nothing is saved.
