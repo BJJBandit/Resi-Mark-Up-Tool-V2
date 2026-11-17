@@ -16,7 +16,7 @@ import pymupdf
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
-from . import jobstore, pipeline, refstore
+from . import detailstore, jobstore, pipeline, refstore
 from .pdf import MAX_PAGES, check_pages, combine_pdfs, extract_pages, parse_page_range
 from .refpages import MAX_REF_PAGES, RefDoc
 from .schemas import SHEET_TITLES, SheetKind
@@ -301,6 +301,53 @@ def office_rules() -> dict:
     return {"intro": intro.strip(), "sections": sections}
 
 
+@app.get("/details")
+def stored_details() -> list[dict]:
+    """Standard details kept for the DETAILS sheet."""
+    return detailstore.list_details()
+
+
+@app.get("/details/{key}/thumb.png")
+def detail_thumb(key: str) -> Response:
+    try:
+        data = detailstore.thumb(key)
+    except ValueError:
+        data = None
+    if data is None:
+        raise HTTPException(404, "No such detail.")
+    return Response(data, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
+
+
+@app.post("/details")
+async def add_details(files: list[UploadFile] = File(...)) -> list[dict]:
+    """Store details (PNG, JPG or PDF - a PDF's first page) for later jobs."""
+    out = []
+    for f in files:
+        data = await f.read()
+        try:
+            out.append(detailstore.save(f.filename or "detail", data))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    return out
+
+
+@app.post("/details/{key}/name")
+def rename_detail(key: str, name: str = Form(...)) -> dict:
+    try:
+        detailstore.rename(key, name)
+    except (ValueError, OSError):
+        raise HTTPException(404, "No such detail.")
+    return {"ok": True}
+
+
+@app.delete("/details/{key}")
+def delete_detail(key: str) -> dict:
+    try:
+        return {"deleted": detailstore.delete(key)}
+    except ValueError:
+        raise HTTPException(404, "No such detail.")
+
+
 @app.get("/healthz")
 def healthz() -> dict:
     return {"ok": True}
@@ -365,6 +412,8 @@ async def create_job(
     arete_title_block: bool = Form(False),
     client: str = Form(""),
     office_rules: str = Form(""),  # edited for this job only (from the Office rules panel)
+    details_sheet: bool = Form(False),
+    detail_ids: list[str] = Form([]),
 ) -> dict:
     try:
         chosen = [SheetKind(s) for s in sheets]
@@ -464,6 +513,19 @@ async def create_job(
             "Leave a document's 'Pages to review' blank to pick the relevant sections from its contents, "
             "or enter a smaller range.",
         )
+    chosen_details = []
+    if details_sheet:
+        for key in detail_ids:
+            try:
+                got = detailstore.load(key)
+            except ValueError:
+                got = None
+            if got is None:
+                raise HTTPException(400, "A detail you ticked is no longer stored - refresh the page.")
+            chosen_details.append(got)
+        if not chosen_details:
+            raise HTTPException(400, "Details is ticked under Sheets to produce, but no details are selected in the "
+                                     "Details panel.")
     inp = pipeline.JobInput(
         project=project.strip(),
         arch_pdf=arch,
@@ -485,6 +547,7 @@ async def create_job(
         arete_title_block=arete_title_block or title_block,  # the Arete A3 template is the title block
         client=client.strip().upper(),
         office_rules=office_rules.strip()[:60000],
+        details=chosen_details,
     )
     job_id = uuid.uuid4().hex
     _evict_old_jobs()

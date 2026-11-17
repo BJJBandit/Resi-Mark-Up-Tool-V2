@@ -2085,6 +2085,63 @@ def _notes_continuation(out, meta: SheetMeta, notes: list[str]) -> None:
                   "\n".join(chunk), CONT_FS, BLACK, "Notes")
 
 
+DETAIL_CAPTION_FS = 9.0
+
+
+def _details_sheets(out, meta: "SheetMeta", details: list[tuple[str, bytes, str]], first_no: int) -> list[str]:
+    """DETAILS sheet(s): the selected standard details in a grid (up to 4 per sheet), each
+    fitted into its cell (images as images, PDF details as their first page, vector) and
+    captioned 'DETAIL n - NAME'. Returns warnings."""
+    warnings: list[str] = []
+    if not details:
+        return warnings
+    area = PLAN_AREA_DETAILS()
+    per = 4
+    for start in range(0, len(details), per):
+        chunk = details[start:start + per]
+        page = _new_sheet(out, meta, "DETAILS", f"SSK-{first_no + start // per}")
+        cols = 1 if len(chunk) == 1 else 2
+        rows = 1 if len(chunk) <= 2 else 2
+        gap = 14
+        cw = (area.width - gap * (cols - 1)) / cols
+        ch = (area.height - gap * (rows - 1)) / rows
+        for i, (name, data, kind) in enumerate(chunk):
+            r, c = divmod(i, cols)
+            cell = pymupdf.Rect(area.x0 + c * (cw + gap), area.y0 + r * (ch + gap),
+                                area.x0 + c * (cw + gap) + cw, area.y0 + r * (ch + gap) + ch)
+            avail = pymupdf.Rect(cell.x0, cell.y0, cell.x1, cell.y1 - 20)
+            try:
+                if kind == "pdf":
+                    with pymupdf.open(stream=data, filetype="pdf") as d:
+                        w0, h0 = d[0].rect.width, d[0].rect.height
+                        box = _fit(avail, w0, h0)
+                        page.show_pdf_page(box, d, 0)
+                else:
+                    pix = pymupdf.Pixmap(data)
+                    box = _fit(avail, pix.width, pix.height)
+                    page.insert_image(box, stream=data)
+            except Exception as e:
+                warnings.append(f"Detail '{name}' could not be placed ({e})")
+                continue
+            cap = pymupdf.Rect(cell.x0, box.y1 + 4, cell.x1, box.y1 + 20)  # straight under the detail
+            _text(page, cap, f"DETAIL {start + i + 1} - {name}".upper(), DETAIL_CAPTION_FS, BLACK, "Detail Caption",
+                  align=1)
+    return warnings
+
+
+def _fit(area: pymupdf.Rect, w: float, h: float) -> pymupdf.Rect:
+    """The largest w:h rectangle centred across the top of area."""
+    s = min(area.width / w, area.height / h)
+    rw, rh = w * s, h * s
+    x0 = area.x0 + (area.width - rw) / 2
+    return pymupdf.Rect(x0, area.y0, x0 + rw, area.y0 + rh)
+
+
+def PLAN_AREA_DETAILS() -> pymupdf.Rect:
+    """Where details go: below the title, inside the border (the title block layout when on)."""
+    return pymupdf.Rect(TITLE.x0, TITLE.y1 + 20, BAND_TOP.x1, BAND_BOTTOM.y1)
+
+
 CALC_FS = 7.0
 
 
@@ -2135,6 +2192,7 @@ def _build_markup_pdf(
     calc_sheet: bool = True,
     arete_title_block: bool = False,
     client: str = "",
+    details: list[tuple[str, bytes, str]] | None = None,
 ) -> tuple[bytes, list[str]]:
     """Mark-up sheets (the review summary stays in the app / review.json), plus the
     calculation sheet. Returns (pdf bytes, warnings). Never fails because of one bad element."""
@@ -2167,6 +2225,11 @@ def _build_markup_pdf(
             warnings.append(f"{SHEET_TITLES[kind]} not produced: {e}")
             continue
         n += 1
+    if details:
+        try:
+            warnings += _details_sheets(out, meta, details, n)
+        except Exception as e:
+            warnings.append(f"Details sheet not produced: {e}")
     if overflow:
         _notes_continuation(out, meta, overflow)
     if calc_sheet:

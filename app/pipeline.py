@@ -42,6 +42,7 @@ class JobInput:
     calc_sheet: bool = True  # add the calculation sheet (racking / bracing check, member working)
     arete_title_block: bool = False  # sheets on the office Arete A3 title block
     client: str = ""  # title block client
+    details: list = field(default_factory=list, repr=False)  # [(name, bytes, kind)] for the DETAILS sheet
     page_labels: list[str] = field(default_factory=list)  # source file + page of each page of arch_pdf
     # Asks the engineer about the information step 2 says is missing and waits for the
     # answers: ask([request dicts]) -> [{"answer": "yes"|"no"|"ignore", "files": [(name,
@@ -723,6 +724,7 @@ def _build(job: JobInput, result: JobResult) -> None:
         calc_sheet=job.calc_sheet,
         arete_title_block=job.arete_title_block,
         client=job.client,
+        details=job.details,
     )
     result.build_warnings = retagged + result.build_warnings
     result.compose_warnings()
