@@ -11,7 +11,19 @@
   }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 760px) 340px; gap: 28px; justify-content: center;
+    padding: 32px 16px 64px; }
+  main { max-width: 760px; margin: 0; padding: 0; min-width: 0; }
+  aside.rules { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow-y: auto;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 16px 8px;
+    margin-top: 112px; font-size: 13px; }
+  aside.rules h2 { font-size: 16px; margin: 0 0 4px; }
+  aside.rules details { border-top: 1px solid var(--line); padding: 6px 0; }
+  aside.rules summary { cursor: pointer; font-weight: 600; }
+  aside.rules ul { margin: 6px 0 4px; padding-left: 18px; }
+  aside.rules li { margin: 0 0 6px; white-space: pre-line; }
+  @media (max-width: 1160px) { .layout { grid-template-columns: minmax(0, 760px); }
+    aside.rules { position: static; max-height: none; margin-top: 0; } }
   h1 { font-size: 22px; margin: 0 0 4px; }
   form h2 { font-size: 16px; margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--line); }
   p.lead { color: var(--muted); margin: 0 0 24px; }
@@ -85,6 +97,7 @@
 </style>
 </head>
 <body>
+<div class="layout">
 <main>
   <h1>Resi Mark-Up Tool</h1>
   <p class="lead">Upload the geotechnical report and architectural drawings. Claude reviews them and produces a preliminary structural mark-up set for engineer review.</p>
@@ -194,6 +207,12 @@
     <ul id="savedList" class="files"></ul>
   </details>
 </main>
+<aside class="rules" aria-label="Office rules">
+  <h2>Office rules</h2>
+  <p class="muted" style="margin:0 0 8px">The office practice Claude follows on every review (unless your direction says otherwise).</p>
+  <div id="rulesList"><p class="muted">Loading…</p></div>
+</aside>
+</div>
 <script>
 const f = document.getElementById('f'), go = document.getElementById('go'), box = document.getElementById('status');
 // Standards stored by earlier reviews (app/refstore.py): tick to use, view the text, forget.
@@ -497,6 +516,18 @@ pauseBtn.addEventListener('click', async () => {
   const r = await fetch(`/jobs/${pauseBtn.dataset.job}/pause`, { method: 'POST' });
   if (!r.ok) { pauseBtn.disabled = false; pauseBtn.textContent = 'Pause review'; alert((await r.json()).detail || 'Could not pause'); }
 });
+
+// Office rules panel (read-only; from app/office_rules.md).
+(async () => {
+  const box = document.getElementById('rulesList');
+  try {
+    const r = await fetch('/office-rules');
+    const secs = await r.json();
+    if (!r.ok || !Array.isArray(secs)) throw new Error(r.statusText);
+    box.innerHTML = secs.map(sec => `<details><summary>${esc(sec.title)} <span class="muted">(${sec.rules.length})</span></summary>
+      <ul>${sec.rules.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('');
+  } catch (e) { box.innerHTML = `<p class="err">Could not load the office rules: ${esc(e.message)}</p>`; }
+})();
 
 async function poll(id) {
   box.dataset.job = id;

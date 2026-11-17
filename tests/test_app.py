@@ -253,3 +253,9 @@ def test_stop_review(client, monkeypatch):
     assert job.status == "stopped" and job.result is None
     assert client.post("/jobs/s1/stop").status_code == 409
     main.JOBS.pop("s1")
+
+
+def test_office_rules_endpoint(client):
+    secs = client.get("/office-rules").json()
+    titles = [s["title"] for s in secs]
+    assert any("Footings" in t for t in titles) and all(s["rules"] for s in secs)
