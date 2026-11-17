@@ -93,7 +93,11 @@ checked before use. It is not for construction.
      fitted to its cell and captioned 'DETAIL n - NAME'), on the title block when that's on.
      Upload details (PNG, JPG or PDF - a PDF's first page, kept as vector) in the panel; they are
      kept on the server (`DETAILS_DIR`) for later jobs and can be renamed or forgotten there.
-     Ticking a detail ticks the Details sheet. No Claude call.
+     Ticking a detail ticks the Details sheet. No Claude call for the sheet itself.
+     **SEE DETAIL callouts**: Claude is given the numbered list and adds 'SEE DETAIL n' to the
+     callouts of the members each detail applies to; any it misses, the app adds - one callout
+     per detail per sheet, at the first member the detail's name points to (a tag in the name,
+     e.g. EP1, or its words: pier -> P, engaged pier -> EP, strip footing -> SF, lintel -> L ...).
 
    **Add title block to sheets** (tick box, top of the form): every drawing sheet is laid out
    inside the office title block (`app/assets/title_block_a3.pdf`) - border, logo and company

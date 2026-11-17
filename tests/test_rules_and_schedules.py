@@ -897,3 +897,19 @@ def test_no_engaged_pier_under_skirt():
            m("", 0.6, 0.3, 0.6, 0.3, "callout", "SF1 450W x 450 DEEP STRIP FOOTING UNDER BRICK SKIRT (MA), NOT BEARING")]
     s = sheet(els, [ScheduleItem(tag="SF1", text="450W x 450 DEEP STRIP FOOTING")])
     assert engaged_piers(s, "F") == [] and not any(e.tag == "EP1" for e in s.elements)
+
+
+def test_detail_callouts():
+    from app.pipeline import detail_callouts
+
+    def m(tag, x, kind="member", text=""):
+        return Element(kind=kind, tag=tag, start=Point(x=x, y=0.3), end=Point(x=x + 0.1, y=0.3), text=text)
+
+    s = sheet([m("EP1", 0.1, "pier"), m("P1", 0.3, "pier"), m("P2", 0.5, "pier"), m("SF1", 0.2),
+               m("", 0.6, "callout", "LD1 BOLTED TO BEARER. SEE DETAIL 3.")])
+    details = [("EP1 engaged pier", b"", "png"), ("Bored pier", b"", "png"), ("Deck ledger", b"", "png"),
+               ("Balustrade", b"", "png")]
+    assert detail_callouts(s, details) == 2  # 3 already referenced, 4 matches nothing on the sheet
+    texts = [e.text for e in s.elements if e.kind == "callout"]
+    assert "EP1: SEE DETAIL 1 - EP1 ENGAGED PIER" in texts and "P1/P2: SEE DETAIL 2 - BORED PIER" in texts
+    assert detail_callouts(s, details) == 0  # not twice
