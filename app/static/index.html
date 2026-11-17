@@ -120,9 +120,10 @@
 <aside class="details" aria-label="Details">
   <h2>Details</h2>
   <p class="muted" style="margin:0">Standard details to add to the DETAILS sheet. Tick the ones this job needs (in
-    order) - the <b>Details</b> sheet is ticked for you. Uploads (PNG, JPG or PDF) are kept for later jobs.</p>
+    order) - the <b>Details</b> sheet is ticked for you. Add JPG, PNG, PDF (each page becomes its own tile) or DXF;
+    DWG must be saved as DXF or PDF first. Kept for later jobs.</p>
   <div class="dlist" id="detailList"><p class="muted">Loading…</p></div>
-  <input type="file" id="detailFiles" accept="image/png,image/jpeg,application/pdf" multiple hidden>
+  <input type="file" id="detailFiles" accept="image/png,image/jpeg,application/pdf,.pdf,.png,.jpg,.jpeg,.dxf,.dwg" multiple hidden>
   <button type="button" class="secondary" id="detailAdd" style="margin:0 0 8px">Add details…</button>
   <p class="err" id="detailErr" hidden></p>
 </aside>

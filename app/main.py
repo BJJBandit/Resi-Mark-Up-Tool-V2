@@ -320,12 +320,12 @@ def detail_thumb(key: str) -> Response:
 
 @app.post("/details")
 async def add_details(files: list[UploadFile] = File(...)) -> list[dict]:
-    """Store details (PNG, JPG or PDF - a PDF's first page) for later jobs."""
+    """Store details for later jobs: PNG / JPG (a tile each), PDF (a tile per page), DXF."""
     out = []
     for f in files:
         data = await f.read()
         try:
-            out.append(detailstore.save(f.filename or "detail", data))
+            out += detailstore.save(f.filename or "detail", data)
         except ValueError as e:
             raise HTTPException(400, str(e))
     return out

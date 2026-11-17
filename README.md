@@ -91,8 +91,11 @@ checked before use. It is not for construction.
    - a **DETAILS** sheet if you tick **Details** under Sheets to produce: the standard details
      ticked in the **Details** panel on the left (in the order ticked, up to 4 per sheet, each
      fitted to its cell and captioned 'DETAIL n - NAME'), on the title block when that's on.
-     Upload details (PNG, JPG or PDF - a PDF's first page, kept as vector) in the panel; they are
-     kept on the server (`DETAILS_DIR`) for later jobs and can be renamed or forgotten there.
+     Add details in the panel - one tile per detail: a JPG or PNG is a tile, **every page of a PDF
+     is its own tile** (kept as vector), a **DXF** drawing is drawn to a vector tile (`ezdxf`).
+     DWG is a closed format that can't be read on the server - save it as DXF (SAVEAS > DXF) or
+     plot it to PDF first. Tiles are kept on the server (`DETAILS_DIR`) for later jobs and can be
+     renamed or forgotten there.
      Ticking a detail ticks the Details sheet. No Claude call for the sheet itself.
      **SEE DETAIL callouts**: Claude is given the numbered list and adds 'SEE DETAIL n' to the
      callouts of the members each detail applies to; any it misses, the app adds - one callout

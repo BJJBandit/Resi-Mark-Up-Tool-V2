@@ -313,3 +313,29 @@ def test_details_store_and_sheet(client, tmp_path, monkeypatch):
     assert out[0].get_images() and "PIER DETAIL" in out[0].get_text()
     assert client.delete(f"/details/{ids[1]}").json()["deleted"] is True
     assert len(client.get("/details").json()) == 1
+
+
+def test_details_one_tile_each_pdf_page_dxf_dwg(client, tmp_path, monkeypatch):
+    import ezdxf
+
+    from app import detailstore
+    monkeypatch.setattr(detailstore, "DETAILS_DIR", tmp_path / "details")
+    doc = pymupdf.open()
+    for t in ("PIER", "FOOTING", "LINTEL"):
+        doc.new_page().insert_text((50, 50), t)
+    r = client.post("/details", files=[("files", ("Standard details.pdf", doc.tobytes(), "application/pdf"))])
+    assert [d["name"] for d in r.json()] == ["Standard details - 1", "Standard details - 2", "Standard details - 3"]
+    tiles = {d["name"]: d["id"] for d in client.get("/details").json()}
+    name, data, kind = detailstore.load(tiles["Standard details - 2"])
+    assert kind == "pdf" and pymupdf.open(stream=data).page_count == 1 and "FOOTING" in pymupdf.open(stream=data)[0].get_text()
+    # DXF -> one vector tile
+    dx = ezdxf.new()
+    dx.modelspace().add_lwpolyline([(0, 0), (1000, 0), (1000, 600), (0, 600)], close=True)
+    import io
+    buf = io.StringIO()
+    dx.write(buf)
+    r = client.post("/details", files=[("files", ("Tie down.dxf", buf.getvalue().encode(), "application/dxf"))])
+    assert r.status_code == 200 and r.json()[0]["kind"] == "pdf" and r.json()[0]["name"] == "Tie down"
+    # DWG -> a clear message
+    r = client.post("/details", files=[("files", ("Bracing.dwg", b"AC1032" + b"\0" * 100, "application/acad"))])
+    assert r.status_code == 400 and "DXF" in r.json()["detail"]
