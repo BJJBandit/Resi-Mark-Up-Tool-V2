@@ -386,7 +386,9 @@ hold even if Claude slips:
   in `masonry_walls`, even when most of the building is clad. The wall sheet then names them and
   gives their openings masonry lintels (and gets the masonry lintel schedule box), the footing
   sheet puts a strip footing / edge beam under them (a warning if it doesn't), and they are never
-  called a non-loadbearing skirt unless the drawings say so (office rule).
+  called a non-loadbearing skirt unless the drawings say so (office rule). Office practice: brick
+  veneer on the new work runs the full perimeter of the enclosed building, excluding decks,
+  verandahs, ramps and open areas, with the strip footing under all of it.
 - **Roof extent**: a roof outline shown dotted / dashed on the plan or noted 'roof over' (deck,
   porch, ramp, carport) is a roofed area - Claude is told to frame it (beams, posts, piers) on
   every sheet and include it in the load paths, never to assume it uncovered (office rule).
