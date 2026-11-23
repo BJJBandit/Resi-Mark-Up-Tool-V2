@@ -27,8 +27,11 @@ checked before use. It is not for construction.
        review it still records what the report says and flags any difference); it overrides defaults but not the firm
        rules below.
      - *Additional notes for the drawings*: one note per line, added word for word (in
-       capitals) to the notes column of every sheet, after Claude's own notes. A note Claude
+       capitals) to every sheet's notes, after Claude's own notes. A note Claude
        already wrote isn't repeated, and the firm rules never rewrite these notes.
+     - The mark-up sheets themselves carry no notes, only the plan, callouts and the
+       schedule / legend. Each sheet's classification and notes go on **SHEET NOTES** pages
+       (SSK-N1, ...) after the calculation sheet, headed by the sheet they belong to.
    - **Pause and continue**: while a review runs, **Pause review** (next to Run review, greyed out until a review is running) stops it at the next safe point
      (after step 1, after step 2, after the first sheet, or before the PDF is built). The
      page then shows the direction, drawing notes, construction material / standard and

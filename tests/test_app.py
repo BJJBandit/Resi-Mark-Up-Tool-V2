@@ -393,6 +393,6 @@ def test_draft_pdf_while_running(client):
     r = client.get("/jobs/d1/draft.pdf")
     assert r.status_code == 200 and "DRAFT_1_sheets" in r.headers["content-disposition"]
     doc = pymupdf.open(stream=r.content)
-    assert doc.page_count == 1 and any(a.info.get("subject") == "Draft" for a in doc[0].annots())
+    assert doc.page_count == 2 and any(a.info.get("subject") == "Draft" for a in doc[0].annots())
     assert res.sheets == {} and res.pdf == b"" and sh.notes == ["-A."]  # the running review is untouched
     main.JOBS.pop("d1")
