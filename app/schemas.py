@@ -134,6 +134,13 @@ class DesignAssessment(Strict):
     deck_areas: list[str] = Field(description="Decks / verandahs / balconies and how they are framed and roofed.")
 
     external_wall_type: str = Field(description="e.g. brick veneer, clad timber frame, double brick, blockwork.")
+    masonry_walls: list[str] = Field(
+        default_factory=list,
+        description="Every NEW wall (or part of one) built in masonry - brick, block, stone, reclaimed brick - as "
+        "shown on the elevations / sections and their material tags or legend (e.g. 'MA - masonry, reclaimed red "
+        "brick'), each with its location, extent and openings, e.g. 'Link south wall (office, W01): reclaimed red "
+        "brick (MA) outer skin full height, 1900 long'. Empty if the new work has no masonry. Existing walls are "
+        "not listed.")
     internal_wall_type: str
     framing_material: str = Field(description="timber, light gauge steel, masonry, concrete block or mixed.")
     governing_standard: str = Field(description="e.g. AS 1684.2, NASH, AS 3700, AS 4773.")
