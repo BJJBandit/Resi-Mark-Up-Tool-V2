@@ -957,3 +957,44 @@ def test_masonry_wall_line_and_engaged_piers():
     xs = sorted({round((r.x0 + r.x1) / 2) for r in eps if abs((r.y0 + r.y1) / 2 - eps[0].y0) < 50})
     assert all(b - a <= 1800 * m.mm_pt + 1 for a, b in zip(xs, xs[1:]))
     assert any("ENGAGED PIERS" in n for n in s.notes)
+
+
+def test_no_engaged_piers_under_veneer():
+    """Markup 8: SF1 under the link's brick veneer wall got engaged piers (bearer ends and along
+    the wall) although the sheet said the veneer is not a loadbearing base wall."""
+    from app import pdf as P
+    from app.pipeline import engaged_piers, non_bearing_footings
+
+    def m(tag, x1, y1, x2, y2, kind="member", text=""):
+        return Element(kind=kind, tag=tag, start=Point(x=x1, y=y1), end=Point(x=x2, y=y2), text=text)
+
+    els = [m("SF1", 0.6, 0.2, 0.6, 0.5), m("B1", 0.2, 0.3, 0.595, 0.3),
+           m("", 0.6, 0.3, 0.6, 0.3, "callout", "450W x 450 DEEP STRIP FOOTING SF1 UNDER BRICK VENEER LINK SOUTH WALL")]
+    s = sheet(els, [ScheduleItem(tag="SF1", text="450W x 450 DEEP STRIP FOOTING")])
+    s.notes = ["-LINK BEARERS BEAR ON BP1 ON P1 AT THE SF1 ENDS (VENEER IS NOT A LOADBEARING BASE WALL)."]
+    assert non_bearing_footings(s) == {"SF1"}
+    assert engaged_piers(s, "F") == [] and not any(e.tag == "EP1" for e in s.elements)
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    pm = P.PlanMap(page, Box(x1=0, y1=0, x2=1, y2=1))
+    pm.mm_pt = 0.02
+    pm.masonry_lines = [(pymupdf.Point(100, 100), pymupdf.Point(400, 100), "SF1")]
+    assert P._engaged_piers_along_walls(page, s, pm) == 0
+    # a brick base wall still gets them
+    s.notes, s.elements = [], [m("SF2", 0.6, 0.2, 0.6, 0.5)]
+    pm.masonry_lines = [(pymupdf.Point(100, 100), pymupdf.Point(400, 100), "SF2")]
+    assert P._engaged_piers_along_walls(page, s, pm) > 0
+
+
+def test_perimeter_base_wall_warning():
+    from app.pipeline import perimeter_base_wall
+
+    def m(tag, x1, y1, x2, y2):
+        return Element(kind="member", tag=tag, start=Point(x=x1, y=y1), end=Point(x=x2, y=y2), text="")
+
+    b = m("B1", 0.25, 0.3, 0.55, 0.3)
+    loop = [m("SF1", 0.2, 0.2, 0.6, 0.2), m("SF1", 0.6, 0.2, 0.6, 0.5), m("SF1", 0.6, 0.5, 0.2, 0.5), m("SF1", 0.2, 0.5, 0.2, 0.2)]
+    assert perimeter_base_wall(sheet(loop + [b]), "F") == []
+    assert "no strip footing" in perimeter_base_wall(sheet([b]), "F")[0]
+    assert "loose end" in perimeter_base_wall(sheet([loop[2], b]), "F")[0]  # only the link wall (markup 8)
+    assert perimeter_base_wall(sheet(loop), "F") == []  # no bearers: not a suspended floor sheet

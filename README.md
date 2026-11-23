@@ -373,19 +373,27 @@ hold even if Claude slips:
   neighbours whose leaders would cross swap places, and a callout moves to another band if
   that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
   after the callouts, so they keep clear of the boxes and leaders too.
+- **Brick base wall round suspended floors**: on a suspended timber floor the brick base wall runs
+  the full perimeter of the enclosed floor of the new work (decks, ramps, landings and verandahs
+  excluded) on an SF strip footing, bearer ends on engaged piers (office rule + footing sheet
+  briefs). A warning is given when a footing sheet with bearers has no strip footing, or its
+  strip footing doesn't close into a loop round the floor.
 - **Masonry base walls drawn as the engineers draw them**: on footing sheets, every strip footing
   (SF - under brick / block base walls) and any edge / internal beam whose schedule or callout
   mentions brick / block / masonry carries a solid red wall line (3.25 pt) down the middle of its
   dashed footing band. Engaged piers (EP) are small filled red rectangles on that line (350 x 230
   to scale, long side along the wall) over a dashed bored pier, and brick base walls get engaged
   piers at max 1800 centres along their length (`ENGAGED_PIER_SPACING_MM`) as well as at bearer
-  ends, with a note.
+  ends, with a note. Never on a strip footing described (schedule, callout or note naming it) as
+  under a brick veneer, skirt / infill or non-loadbearing masonry - the wall line is still drawn.
 - **Masonry walls read from the elevations**: the drawing review lists every new wall shown in
   masonry on the elevations / sections and their material tags (e.g. 'MA - reclaimed red brick')
   in `masonry_walls`, even when most of the building is clad. The wall sheet then names them and
   gives their openings masonry lintels (and gets the masonry lintel schedule box), the footing
   sheet puts a strip footing / edge beam under them (a warning if it doesn't), and they are never
-  called a non-loadbearing skirt unless the drawings say so (office rule).
+  called a non-loadbearing skirt unless the drawings say so (office rule). Office practice: brick
+  veneer on the new work runs the full perimeter of the enclosed building, excluding decks,
+  verandahs, ramps and open areas, with the strip footing under all of it.
 - **Roof extent**: a roof outline shown dotted / dashed on the plan or noted 'roof over' (deck,
   porch, ramp, carport) is a roofed area - Claude is told to frame it (beams, posts, piers) on
   every sheet and include it in the load paths, never to assume it uncovered (office rule).
