@@ -1509,27 +1509,83 @@ def _is_masonry(design) -> bool:
 ARETE_TB = Path(__file__).parent / "assets" / "title_block_a3.pdf"
 
 
+def _fit_fs(text: str, width: float, fs: float, smallest: float = 5.0) -> float:
+    """Font size that fits text across a field's width (the template's size if it fits)."""
+    while fs > smallest and _text_width(text, fs) > width - 3:
+        fs -= 0.5
+    return fs
+
+
+def _tb_field(page: pymupdf.Page, name: str, rect: pymupdf.Rect, value: str, fontsize: float) -> None:
+    """A fillable text field (as in the office title block template), holding the job value."""
+    fontsize = _fit_fs(value, rect.width, fontsize) if value else fontsize
+    w = pymupdf.Widget()
+    w.field_type = pymupdf.PDF_WIDGET_TYPE_TEXT
+    w.field_name = name
+    w.rect = rect
+    w.field_value = value
+    w.text_font = "Helv"
+    w.text_fontsize = fontsize
+    w.text_color = BLACK
+    w.border_width = 0
+    page.add_widget(w)
+
+
 def _arete_title_block(page: pymupdf.Page, meta: "SheetMeta", title: str, dwg_no: str) -> None:
-    """The office Arete A3 title block under the sheet (border, logo, company details), its
-    fields written in as editable text boxes at the template's field positions."""
+    """The office Arete A3 title block under the sheet (border, logo, company details) with the
+    template's fillable fields, filled with the job values (blank where there is none). Field
+    names carry the drawing number ('CLIENT (SSK-1)') so every sheet's fields are its own."""
     with pymupdf.open(ARETE_TB) as tpl:
         page.show_pdf_page(page.rect, tpl, 0, overlay=False)
-        fields = {w.field_name: pymupdf.Rect(w.rect) for w in tpl[0].widgets()}
-    values = {
+        fields = [(w.field_name, pymupdf.Rect(w.rect), w.text_fontsize) for w in tpl[0].widgets()]
+    values = {**_title_block_values(meta), "DRAWING TITLE 1": title, "DRAWING TITLE 2": "", "SHEET NUMBER": dwg_no}
+    for name, r, fs in fields:
+        _tb_field(page, f"{name} ({dwg_no})", r, str(values.get(name, "") or "").upper(), fs or (9 if r.height >= 12 else 7))
+
+
+STRUCT_NOTES = Path(__file__).parent / "assets" / "structural_notes_n2.pdf"
+
+
+def _title_block_values(meta: "SheetMeta") -> dict[str, str]:
+    """Job values for the Arete title block fields (by base field name)."""
+    return {
         "PROJECT NUMBER": meta.job_no, "PROJECT TITLE": (meta.project or "").upper(), "ADDRESS": "",
-        "CLIENT": meta.client, "DRAWING TITLE 1": title, "DRAWING TITLE 2": "",
-        "SHEET NUMBER": dwg_no, "SHEET REVISION": meta.rev, "SHEET DATE": meta.date,
+        "CLIENT": meta.client, "SHEET REVISION": meta.rev, "SHEET DATE": meta.date,
         "DRAWING STATUS": "PRELIMINARY", "DESIGNED BY": meta.made_by, "DRAWN BY": meta.made_by,
         "APPROVED BY": "", "CHECKED BY": "",
         "ISSUE REVISION - 1": meta.rev, "ISSUE DESCRIPTION - 1": "PRELIMINARY MARK-UP", "ISSUE DATE - 1": meta.date,
     }
-    for name, value in values.items():
-        r = fields.get(name)
-        if r is None or not value:
-            continue
-        fs = 9 if r.height >= 12 else 7
-        _text(page, r + (0, -1, 40 if name.startswith("DRAWING TITLE") else 0, 1), str(value).upper(), fs, BLACK,
-              "Title Block")
+
+
+def structural_notes(meta: "SheetMeta") -> pymupdf.Document:
+    """The office structural notes sheets (S01-01 to S01-05, N2) with their title block form
+    fields kept fillable and filled with the job values (the template's placeholder text is
+    cleared where the job has no value)."""
+    doc = pymupdf.open(STRUCT_NOTES)
+    values = _title_block_values(meta)
+    for page in doc:
+        wanted = {}
+        for w in page.widgets():
+            base = re.sub(r"\s*\(\d+\)\s*$", "", w.field_name or "")  # 'ISSUE DATE - 2 (1)' -> 'ISSUE DATE - 2'
+            base = re.sub(r"(ISSUE \w+ - \d)\(\d+\)$", r"\1", base)  # 'ISSUE DATE - 1(2)'
+            wanted[w.xref] = str(values.get(base, "") or "").upper()
+        # An empty value clears the template's placeholder: PyMuPDF ignores '', so /V is emptied
+        # directly (on the field and any parent) before the appearance is rebuilt.
+        for xref, value in wanted.items():
+            if not value:
+                doc.xref_set_key(xref, "V", "()")
+                parent = doc.xref_get_key(xref, "Parent")
+                if parent[0] == "xref":
+                    doc.xref_set_key(int(parent[1].split()[0]), "V", "()")
+        for w in page.widgets():  # fresh widget objects: they read the cleared values
+            if wanted.get(w.xref):
+                fs = _fit_fs(wanted[w.xref], w.rect.width, w.text_fontsize or 8)
+                if fs != (w.text_fontsize or 8):  # shrink long values to fit (the DA string holds the size)
+                    doc.xref_set_key(w.xref, "DA", f"(0 0 0 rg /Helv {fs:g} Tf)")
+                    w = next(x for x in page.widgets() if x.xref == w.xref)
+                w.field_value = wanted[w.xref]
+            w.update()
+    return doc
 
 
 def _new_sheet(out: pymupdf.Document, meta: SheetMeta, title: str, dwg_no: str) -> pymupdf.Page:
@@ -2309,6 +2365,7 @@ def _build_markup_pdf(
     arete_title_block: bool = False,
     client: str = "",
     details: list[tuple[str, bytes, str]] | None = None,
+    notes_sheets: bool = False,
 ) -> tuple[bytes, list[str]]:
     """Mark-up sheets (the review summary stays in the app / review.json), plus the
     calculation sheet. Returns (pdf bytes, warnings). Never fails because of one bad element."""
@@ -2370,4 +2427,14 @@ def _build_markup_pdf(
             _calc_sheet(out, meta, calcs.lines(geotech, design, checks if walls else [], references, mism))
         except Exception as e:
             warnings.append(f"Calculation sheet not produced: {e}")
+    if notes_sheets and STRUCT_NOTES.exists():
+        try:  # the structural notes go first, as in an issued set
+            out.insert_pdf(structural_notes(meta), start_at=0)
+            wind = str(getattr(design, "wind_classification_used", "") or getattr(geotech, "wind_classification", "") or "")
+            m = re.search(r"\b([NC]\d)\b", wind.upper())
+            if m and m.group(1) != "N2":
+                warnings.append(f"Structural notes are the office N2 set, but this job is {m.group(1)} - check the "
+                                "wind-dependent notes")
+        except Exception as e:
+            warnings.append(f"Structural notes not added: {e}")
     return out.tobytes(garbage=3, deflate=True), warnings

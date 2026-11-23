@@ -855,8 +855,10 @@ def test_arete_title_block_layout():
     out, w = P.build_markup_pdf(src.tobytes(), "1 TEST ST", None, None, {K.WALLS: s}, job_no="J1", rev="B",
                                 made_by="DM", calc_sheet=False, arete_title_block=True)
     page = pymupdf.open(stream=out)[0]
-    tb = [a.info["content"] for a in page.annots() if a.info.get("subject") == "Title Block"]
-    assert "SSK-1" in tb and "J1" in tb and "WALL FRAMING PLAN" in tb and "PRELIMINARY" in tb
+    tb = {w.field_name: w.field_value for w in page.widgets()}
+    assert tb["SHEET NUMBER (SSK-1)"] == "SSK-1" and tb["PROJECT NUMBER (SSK-1)"] == "J1"
+    assert tb["DRAWING TITLE 1 (SSK-1)"] == "WALL FRAMING PLAN" and tb["DRAWING STATUS (SSK-1)"] == "PRELIMINARY"
+    assert tb["CHECKED BY (SSK-1)"] == ""  # fillable, blank
     assert "ARETE ENGINEERING PTY LTD" in page.get_text()
     assert P.NOTES == notes_before  # layout restored
 
@@ -883,8 +885,8 @@ def test_tighten_region_and_client():
                                      legend_title="")
     out, _ = P.build_markup_pdf(src.tobytes(), "1 TEST ST", None, None, {K.WALLS: sh}, calc_sheet=False,
                                 arete_title_block=True, client="J & K SMITH")
-    tb = [a.info["content"] for a in pymupdf.open(stream=out)[0].annots() if a.info.get("subject") == "Title Block"]
-    assert "J & K SMITH" in tb
+    tb = {w.field_name: w.field_value for w in pymupdf.open(stream=out)[0].widgets()}
+    assert tb["CLIENT (SSK-1)"] == "J & K SMITH"
 
 
 def test_no_engaged_pier_under_skirt():
@@ -998,3 +1000,20 @@ def test_perimeter_base_wall_warning():
     assert "no strip footing" in perimeter_base_wall(sheet([b]), "F")[0]
     assert "loose end" in perimeter_base_wall(sheet([loop[2], b]), "F")[0]  # only the link wall (markup 8)
     assert perimeter_base_wall(sheet(loop), "F") == []  # no bearers: not a suspended floor sheet
+
+
+def test_structural_notes_sheets_fillable():
+    from app import pdf as P
+    src = pymupdf.open()
+    src.new_page(width=1190.55, height=841.89)
+    sh = MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1), elements=[],
+                                     schedule=[], legend=[], notes=[], classification="", schedule_title="",
+                                     legend_title="")
+    out, w = P.build_markup_pdf(src.tobytes(), "1 TEST ST", None, None, {K.WALLS: sh}, calc_sheet=False,
+                                arete_title_block=True, client="J SMITH", job_no="J9", made_by="DM", notes_sheets=True)
+    doc = pymupdf.open(stream=out)
+    assert doc.page_count == 6 and "S01-01" in doc[0].get_text() and "S01-05" in doc[4].get_text()
+    notes = {x.field_name: x.field_value for x in doc[0].widgets()}
+    assert notes["CLIENT"] == "J SMITH" and notes["PROJECT NUMBER"] == "J9" and notes["CHECKED BY"] == ""
+    sheet = {x.field_name: x.field_value for x in doc[5].widgets()}
+    assert sheet["CLIENT (SSK-1)"] == "J SMITH" and sheet["SHEET NUMBER (SSK-1)"] == "SSK-1"

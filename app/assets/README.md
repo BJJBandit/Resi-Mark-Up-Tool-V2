@@ -17,3 +17,10 @@ block** is ticked (`pdf._arete_title_block`).
   - Issue table, rows 1-7: `ISSUE REVISION - n` (REV n), `ISSUE DESCRIPTION - n` (DESCRIPTION),
     `ISSUE DATE - n` (DATE)
 - Sheet size (A3) is printed, not a field.
+
+## `structural_notes_n2.pdf` - Arete structural notes (N2)
+
+Five A3 sheets: S01-01 / S01-02 / S01-03 general notes and S01-04 / S01-05 WHS notes, on the
+Arete title block with fillable fields (same names as the title block; issue rows 2-7 carry a
+page suffix such as 'ISSUE DATE - 2 (1)'). Added at the front of the set when **Add structural
+notes** is ticked (`pdf.structural_notes`).
