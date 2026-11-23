@@ -924,3 +924,36 @@ def test_masonry_walls_make_job_masonry():
     assert not P._is_masonry(d) and not PL._masonry(d)
     d.masonry_walls = ["Link south wall (office, W01): reclaimed red brick (MA), full height"]
     assert P._is_masonry(d) and PL._masonry(d)
+
+
+def test_masonry_wall_line_and_engaged_piers():
+    from app import pdf as P
+    doc = pymupdf.open()
+    page = doc.new_page(width=1190, height=842)
+    m = P.PlanMap(page, Box(x1=0, y1=0, x2=1, y2=1))
+    m.mm_pt = 0.02  # 1800 mm = 36 pt
+
+    def seg(tag, x1, y1, x2, y2, kind="member"):
+        return Element(kind=kind, tag=tag, start=Point(x=x1 / 1190, y=y1 / 842), end=Point(x=x2 / 1190, y=y2 / 842), text="")
+
+    els = [seg("SF1", 100, 100, 300, 100), seg("SF1", 300, 100, 300, 300), seg("SF1", 300, 300, 100, 300),
+           seg("SF1", 100, 300, 100, 100), seg("EB1", 400, 100, 500, 100), seg("EP1", 100, 200, 100, 200, "pier")]
+    s = sheet(els, [ScheduleItem(tag="SF1", text="450W x 450 DEEP STRIP FOOTING"), ScheduleItem(tag="EB1", text="EDGE BEAM")])
+    assert P._masonry_tags(s) == {"SF1"}
+    s.elements.append(Element(kind="callout", tag="", start=Point(x=0.4, y=0.1), end=Point(x=0.4, y=0.1),
+                              text="EB1 UNDER 190 CORE-FILLED BLOCKWORK"))
+    assert P._masonry_tags(s) == {"SF1", "EB1"}
+    m.masonry = {"SF1"}
+    m.bands = P._footing_bands(s, m)
+    for e in s.elements:
+        if e.kind != "callout":
+            P._draw_element(page, e, m)
+    subjects = [a.info.get("subject") for a in page.annots()]
+    assert subjects.count("Masonry Wall") == 4 and subjects.count("Engaged Pier") == 1
+    added = P._engaged_piers_along_walls(page, s, m)
+    # walls ~94 pt long on the sheet = 4700 mm: 2 extra piers each (<= 1800 mm gaps), 1 each side of EP1 on the 4th
+    assert added == 3 * 2 + 2
+    eps = [a.rect for a in page.annots() if a.info.get("subject") == "Engaged Pier"]
+    xs = sorted({round((r.x0 + r.x1) / 2) for r in eps if abs((r.y0 + r.y1) / 2 - eps[0].y0) < 50})
+    assert all(b - a <= 1800 * m.mm_pt + 1 for a, b in zip(xs, xs[1:]))
+    assert any("ENGAGED PIERS" in n for n in s.notes)
