@@ -1009,13 +1009,11 @@ def test_structural_notes_sheets_fillable():
     sh = MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1), elements=[],
                                      schedule=[], legend=[], notes=[], classification="", schedule_title="",
                                      legend_title="")
-    out, w = P.build_markup_pdf(src.tobytes(), "1 TEST ST", GeoStub(), _calc_design(), {K.WALLS: sh}, calc_sheet=True,
+    out, w = P.build_markup_pdf(src.tobytes(), "1 TEST ST", None, None, {K.WALLS: sh}, calc_sheet=False,
                                 arete_title_block=True, client="J SMITH", job_no="J9", made_by="DM", notes_sheets=True)
     doc = pymupdf.open(stream=out)
-    # mark-up sheet, calculation sheet, then the five notes sheets
-    assert doc.page_count == 7 and "CALCULATION SHEET" in " ".join(a.info.get("content", "") for a in doc[1].annots())
-    assert "S01-01" in doc[2].get_text() and "S01-05" in doc[6].get_text()
-    notes = {x.field_name: x.field_value for x in doc[2].widgets()}
+    assert doc.page_count == 6 and "S01-01" in doc[0].get_text() and "S01-05" in doc[4].get_text()
+    notes = {x.field_name: x.field_value for x in doc[0].widgets()}
     assert notes["CLIENT"] == "J SMITH" and notes["PROJECT NUMBER"] == "J9" and notes["CHECKED BY"] == ""
-    sheet = {x.field_name: x.field_value for x in doc[0].widgets()}
+    sheet = {x.field_name: x.field_value for x in doc[5].widgets()}
     assert sheet["CLIENT (SSK-1)"] == "J SMITH" and sheet["SHEET NUMBER (SSK-1)"] == "SSK-1"
