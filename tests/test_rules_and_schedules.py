@@ -984,3 +984,17 @@ def test_no_engaged_piers_under_veneer():
     s.notes, s.elements = [], [m("SF2", 0.6, 0.2, 0.6, 0.5)]
     pm.masonry_lines = [(pymupdf.Point(100, 100), pymupdf.Point(400, 100), "SF2")]
     assert P._engaged_piers_along_walls(page, s, pm) > 0
+
+
+def test_perimeter_base_wall_warning():
+    from app.pipeline import perimeter_base_wall
+
+    def m(tag, x1, y1, x2, y2):
+        return Element(kind="member", tag=tag, start=Point(x=x1, y=y1), end=Point(x=x2, y=y2), text="")
+
+    b = m("B1", 0.25, 0.3, 0.55, 0.3)
+    loop = [m("SF1", 0.2, 0.2, 0.6, 0.2), m("SF1", 0.6, 0.2, 0.6, 0.5), m("SF1", 0.6, 0.5, 0.2, 0.5), m("SF1", 0.2, 0.5, 0.2, 0.2)]
+    assert perimeter_base_wall(sheet(loop + [b]), "F") == []
+    assert "no strip footing" in perimeter_base_wall(sheet([b]), "F")[0]
+    assert "loose end" in perimeter_base_wall(sheet([loop[2], b]), "F")[0]  # only the link wall (markup 8)
+    assert perimeter_base_wall(sheet(loop), "F") == []  # no bearers: not a suspended floor sheet

@@ -373,6 +373,11 @@ hold even if Claude slips:
   neighbours whose leaders would cross swap places, and a callout moves to another band if
   that clears a crossing. Anything that still doesn't fit goes to the notes. Tags are placed
   after the callouts, so they keep clear of the boxes and leaders too.
+- **Brick base wall round suspended floors**: on a suspended timber floor the brick base wall runs
+  the full perimeter of the enclosed floor of the new work (decks, ramps, landings and verandahs
+  excluded) on an SF strip footing, bearer ends on engaged piers (office rule + footing sheet
+  briefs). A warning is given when a footing sheet with bearers has no strip footing, or its
+  strip footing doesn't close into a loop round the floor.
 - **Masonry base walls drawn as the engineers draw them**: on footing sheets, every strip footing
   (SF - under brick / block base walls) and any edge / internal beam whose schedule or callout
   mentions brick / block / masonry carries a solid red wall line (3.25 pt) down the middle of its

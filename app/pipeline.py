@@ -587,6 +587,39 @@ def engaged_piers(sheet: MarkupSheet, title: str, aspect: float = 1.414) -> list
             f"({added} added, {retagged} pier(s) re-tagged)"]
 
 
+def perimeter_base_wall(sheet: MarkupSheet, title: str, tol: float = 0.012) -> list[str]:
+    """Office practice: a suspended timber floor (house bearers B on the sheet) has a brick base
+    wall on SF strip footings round its whole perimeter (decks excluded). Warn when there is no
+    SF, or the SF runs don't close into a loop (a side is missing)."""
+    if not any(e.kind == "member" and re.match(r"B\d+$", e.tag.strip().upper()) for e in sheet.elements):
+        return []
+    sf = [e for e in sheet.elements if e.kind == "member" and re.match(r"SF\d*$", e.tag.strip().upper())]
+    if not sf:
+        return [f"{title}: suspended timber floor with no strip footing - office practice is a brick base wall on "
+                "an SF strip footing round the whole perimeter of the floor (decks excluded); check"]
+    ends = [p for e in sf for p in (e.start, e.end)]
+
+    def joined(p) -> bool:
+        return sum(abs(p.x - q.x) <= tol and abs(p.y - q.y) <= tol for q in ends) >= 2 or any(
+            _on_segment(p, e, tol) for e in sf if p is not e.start and p is not e.end)
+
+    loose = sum(not joined(p) for p in ends)
+    if loose:
+        return [f"{title}: the strip footing doesn't close round the floor ({loose} loose end(s)) - office practice is "
+                "a brick base wall round the whole perimeter of the new floor (decks excluded); check every side"]
+    return []
+
+
+def _on_segment(p, e: Element, tol: float) -> bool:
+    ax, ay, bx, by = e.start.x, e.start.y, e.end.x, e.end.y
+    dx, dy = bx - ax, by - ay
+    L2 = dx * dx + dy * dy
+    if L2 < 1e-12:
+        return False
+    t = max(0.0, min(1.0, ((p.x - ax) * dx + (p.y - ay) * dy) / L2))
+    return abs(p.x - (ax + dx * t)) <= tol and abs(p.y - (ay + dy * t)) <= tol
+
+
 def drop_driveways(sheet: MarkupSheet, title: str) -> list[str]:
     """Office practice: driveways are ignored. Driveway slab members / schedule items,
     callouts and notes about a driveway are removed (a note that it is 'by others' stays)."""
@@ -660,6 +693,8 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
             result.sheet_warnings[kind].append(
                 f"{SHEET_TITLES[kind]}: the design has masonry walls ({'; '.join(result.design.masonry_walls)[:200]}) "
                 "but no strip footing / edge beam is drawn under them - add one (re-run this sheet)")
+    if kind in (SheetKind.FOUNDATION, SheetKind.FOOTINGS):
+        result.sheet_warnings[kind] += perimeter_base_wall(sheet, SHEET_TITLES[kind])
     if kind in (SheetKind.FOUNDATION, SheetKind.FLOOR):
         result.sheet_warnings[kind] += wet_area_on_slab(result.design, sheet, SHEET_TITLES[kind])
         try:
