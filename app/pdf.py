@@ -255,10 +255,10 @@ def render_pages(pdf_bytes: bytes, page_numbers: list[int] | None = None) -> lis
 A3 = pymupdf.Rect(0, 0, 1190.55, 841.89)
 TITLE = pymupdf.Rect(15, 10, 760, 80)
 NOTES = pymupdf.Rect(15, 190, 335, 832)
-PLAN = pymupdf.Rect(345, 150, 905, 600)
-BAND_TOP = pymupdf.Rect(345, 84, 1180, 146)
+PLAN = pymupdf.Rect(15, 150, 905, 600)  # no notes column: the plan takes the left side too
+BAND_TOP = pymupdf.Rect(15, 84, 1180, 146)
 BAND_RIGHT = pymupdf.Rect(912, 150, 1180, 455)
-BAND_BOTTOM = pymupdf.Rect(345, 606, 905, 832)
+BAND_BOTTOM = pymupdf.Rect(15, 606, 905, 832)
 SCHEDULE = pymupdf.Rect(915, 460, 1180, 832)
 
 AUTHOR = os.environ.get("MARKUP_AUTHOR", "Resi Mark-Up Tool")
@@ -2191,15 +2191,20 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
             sheet.notes = meta.racking_notes(sheet, r.width / r.height)
         except Exception as e:
             warnings.append(f"{dwg_no}: racking note not updated ({e})")
-    notes = list(sheet.notes) + [f"-{t}" for t in unplaced]  # never drop a note
-    overflow = _notes(page, sheet.classification, notes)
+    # No notes on the mark-up sheet itself (only the schedule / legend): the classification and
+    # notes go on the SHEET NOTES pages after the calculation sheet - nothing is dropped.
+    notes = [n.strip() for n in sheet.notes if n.strip()] + [f"-{t}" for t in unplaced]
     try:
         _schedule(page, sheet.schedule_title, sheet.schedule, sheet.legend_title, sheet.legend,
                   SCHEDULE,
                   masonry=meta.masonry and kind == SheetKind.WALLS)
     except Exception as e:
         warnings.append(f"{dwg_no}: schedule not drawn ({e})")
-    return [f"{dwg_no}: {n.lstrip('-')}" for n in overflow], warnings
+    block = [f"{dwg_no} {SHEET_TITLES[kind]}"]
+    if sheet.classification.strip():
+        block.append(sheet.classification.strip().upper())
+    block += [n if n.lstrip().startswith("-") else f"-{n}" for n in notes]
+    return block, warnings
 
 
 NOTES_COLS = [pymupdf.Rect(15, 95, 395, 832), pymupdf.Rect(405, 95, 785, 832), pymupdf.Rect(795, 95, 1180, 832)]
@@ -2210,10 +2215,10 @@ CALC_COLS = list(NOTES_COLS)  # the calculation sheet never has a title block
 _ARETE_LAYOUT = {
     "TITLE": pymupdf.Rect(38, 34, 760, 104),
     "NOTES": pymupdf.Rect(38, 190, 335, 708),
-    "PLAN": pymupdf.Rect(345, 150, 905, 560),
-    "BAND_TOP": pymupdf.Rect(345, 106, 1154, 146),
+    "PLAN": pymupdf.Rect(38, 150, 905, 560),
+    "BAND_TOP": pymupdf.Rect(38, 106, 1154, 146),
     "BAND_RIGHT": pymupdf.Rect(912, 150, 1154, 455),
-    "BAND_BOTTOM": pymupdf.Rect(345, 566, 905, 708),
+    "BAND_BOTTOM": pymupdf.Rect(38, 566, 905, 708),
     "SCHEDULE": pymupdf.Rect(915, 460, 1154, 708),
     "NOTES_COLS": [pymupdf.Rect(38, 110, 395, 708), pymupdf.Rect(405, 110, 785, 708), pymupdf.Rect(795, 110, 1154, 708)],
 }
@@ -2238,23 +2243,34 @@ def _layout(arete: bool):
 CONT_FS = 7.5
 
 
-def _notes_continuation(out, meta: SheetMeta, notes: list[str]) -> None:
-    """Only used when a sheet's notes do not fit its notes column - nothing is dropped."""
+def _sheet_notes(out, meta: SheetMeta, blocks: list[list[str]]) -> None:
+    """The mark-up sheets' notes on their own SHEET NOTES pages: for each sheet a heading
+    ('SSK-1 WALL FRAMING PLAN'), its classification and its notes, flowed down three columns."""
+    blocks = [b for b in blocks if len(b) > 1]
+    if not blocks:
+        return
     cols = NOTES_COLS
     width = min(c.width for c in cols) - 8
-    lines = _wrap("NOTES:\n\n" + "\n\n".join(f"-{n}" for n in notes), width, CONT_FS)
+    lines: list[str] = []
+    for b in blocks:
+        if lines:
+            lines += [""]
+        lines += [b[0] + " - NOTES:", ""] + [x for n in b[1:] for x in (_wrap(n, width, CONT_FS) + [""])]
     per_line = CONT_FS * 1.18
     n_page = 0
     while lines:
         n_page += 1
-        page = _new_sheet(out, meta, "SHEET NOTES (CONT.)", f"SSK-N{n_page}")
+        page = _new_sheet(out, meta, "SHEET NOTES", f"SSK-N{n_page}")
         for col in cols:
             if not lines:
                 break
             n = max(1, int((col.height - 6) / per_line))
             chunk, lines = lines[:n], lines[n:]
-            _text(page, pymupdf.Rect(col.x0, col.y0, col.x1, col.y0 + _text_height(len(chunk), CONT_FS)),
-                  "\n".join(chunk), CONT_FS, BLACK, "Notes")
+            while chunk and not chunk[0]:
+                chunk = chunk[1:]
+            if chunk:
+                _text(page, pymupdf.Rect(col.x0, col.y0, col.x1, col.y0 + _text_height(len(chunk), CONT_FS)),
+                      "\n".join(chunk), CONT_FS, BLACK, "Notes")
 
 
 DETAIL_CAPTION_FS = 9.0
@@ -2378,7 +2394,7 @@ def _build_markup_pdf(
                      masonry=_is_masonry(design), arete=arete_title_block and ARETE_TB.exists(), client=client)
     if calc_sheet and getattr(design, "racking", None):
         meta.racking_notes = lambda sheet, aspect: calcs.racking_notes(design, sheet, aspect)
-    overflow: list[str] = []
+    overflow: list[list[str]] = []  # each sheet's notes block, for the SHEET NOTES pages
     warnings: list[str] = []
     n = 1
     for kind in SheetKind:
@@ -2390,7 +2406,7 @@ def _build_markup_pdf(
             plan_sheet = sheets.get(SheetKind.WALLS) or sheets.get(SheetKind.FOUNDATION) or sheets.get(SheetKind.FLOOR)
             plan_idx = (plan_sheet.source_page_number - 1) if plan_sheet else None
             o, w = _markup_sheet(out, src, meta, kind, sheets[kind], dwg_no, plan_idx)
-            overflow += o
+            overflow.append(o)
             warnings += w
         except Exception as e:  # keep the rest of the set
             while out.page_count > before:
@@ -2403,8 +2419,6 @@ def _build_markup_pdf(
             warnings += _details_sheets(out, meta, details, n)
         except Exception as e:
             warnings.append(f"Details sheet not produced: {e}")
-    if overflow:
-        _notes_continuation(out, meta, overflow)
     if calc_sheet:
         try:
             walls = sheets.get(SheetKind.WALLS)
@@ -2427,6 +2441,10 @@ def _build_markup_pdf(
             _calc_sheet(out, meta, calcs.lines(geotech, design, checks if walls else [], references, mism))
         except Exception as e:
             warnings.append(f"Calculation sheet not produced: {e}")
+    try:  # the sheets' notes, after the calculation sheet
+        _sheet_notes(out, meta, overflow)
+    except Exception as e:
+        warnings.append(f"Sheet notes not produced: {e}")
     if notes_sheets and STRUCT_NOTES.exists():
         try:  # the structural notes go first, as in an issued set
             out.insert_pdf(structural_notes(meta), start_at=0)
