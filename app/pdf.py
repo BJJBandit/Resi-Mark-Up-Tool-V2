@@ -2428,8 +2428,8 @@ def _build_markup_pdf(
         except Exception as e:
             warnings.append(f"Calculation sheet not produced: {e}")
     if notes_sheets and STRUCT_NOTES.exists():
-        try:  # the structural notes go at the end, after the calculation sheet
-            out.insert_pdf(structural_notes(meta))
+        try:  # the structural notes go first, as in an issued set
+            out.insert_pdf(structural_notes(meta), start_at=0)
             wind = str(getattr(design, "wind_classification_used", "") or getattr(geotech, "wind_classification", "") or "")
             m = re.search(r"\b([NC]\d)\b", wind.upper())
             if m and m.group(1) != "N2":
