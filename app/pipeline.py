@@ -147,6 +147,8 @@ def short_spec(text: str) -> str:
 
 
 def _masonry(design: DesignAssessment) -> bool:
+    if getattr(design, "masonry_walls", None):  # masonry on part of the new work
+        return True
     text = f"{design.external_wall_type} {design.framing_material} {design.governing_standard}"
     return re.search(r"brick|masonry|block|veneer|AS ?3700|AS ?4773", text, re.I) is not None
 
@@ -643,6 +645,12 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
     result.sheet_warnings[kind] = apply_rules(sheet, SHEET_TITLES[kind])
     result.sheet_warnings[kind] += ledger_tags(sheet, SHEET_TITLES[kind])
     result.sheet_warnings[kind] += drop_driveways(sheet, SHEET_TITLES[kind])
+    if kind in (SheetKind.FOUNDATION, SheetKind.FOOTINGS) and getattr(result.design, "masonry_walls", None):
+        has_footing = any(e.kind == "member" and re.match(r"(SF|EB)\d*$", e.tag.strip().upper()) for e in sheet.elements)
+        if not has_footing:
+            result.sheet_warnings[kind].append(
+                f"{SHEET_TITLES[kind]}: the design has masonry walls ({'; '.join(result.design.masonry_walls)[:200]}) "
+                "but no strip footing / edge beam is drawn under them - add one (re-run this sheet)")
     if kind in (SheetKind.FOUNDATION, SheetKind.FLOOR):
         result.sheet_warnings[kind] += wet_area_on_slab(result.design, sheet, SHEET_TITLES[kind])
         try:

@@ -458,7 +458,11 @@ def assess_design(
                 "2. Roof type: form, rafters vs trusses, pitch, cladding mass, decks. Roof extent: every area "
                 "the plan shows with a dotted / dashed roof outline or 'roof over' note (deck, porch, ramp, "
                 "carport) is roofed - include its beams, posts and footings in the load paths.\n"
-                "3. Wall type: external / internal construction and governing standard.\n"
+                "3. Wall type: external / internal construction and governing standard. Read the cladding of "
+                "EVERY new wall from the elevations / sections and their material tags and legend (e.g. 'MA - "
+                "masonry, reclaimed red brick', 'Tim1 - timber cladding'): a wall face shown in brick / block / "
+                "masonry is a masonry wall even where most of the building is clad - list each in masonry_walls. "
+                "Never call a masonry wall a skirt or non-loadbearing unless the drawings say so.\n"
                 "4. Load paths: roof -> walls/beams -> floor -> footings, including point "
                 "loads, girder trusses, beams and posts.\n"
                 "5. Footing type based on the geotechnical review and AS 2870 (state the "
@@ -577,6 +581,9 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "Schedule = 'ROOF FRAMING SCHEDULE:'. Classification: AS4055 wind class."
     ),
     SheetKind.WALLS: (
+        "MASONRY WALLS: every wall in the design assessment's masonry_walls is built in masonry - mark it with a "
+        "callout naming its construction, brick ties to AS 3700, and give each opening in it a masonry lintel (from "
+        "the masonry lintel schedule). "
         "WALL FRAMING PLAN. Lintels L1, L2 ... as 'member' over each opening in a load-bearing "
         "wall, double studs DS, columns C, and every bracing panel as 'bracing' (type and length "
         "from the bracing standard for this job's racking force and wind class). Provide enough "
@@ -598,6 +605,9 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "include the tie-down this job needs. Classification: AS4055 wind class."
     ),
     SheetKind.FOUNDATION: (
+        "MASONRY WALLS: every wall in the design assessment's masonry_walls sits on a strip footing / edge beam "
+        "(SF / EB, 450 x 450 4/L11TM top and bottom; spanning between piers on a class P site) drawn under it - "
+        "never a non-loadbearing skirt unless the drawings say so. "
         "FOOTING & FLOOR PLAN - footings AND the floor framing / slab on ONE sheet. "
         "FOOTINGS to AS 2870 and the geotech report: edge beams / strip footings EB / SF "
         "as 'member' around the perimeter, internal beams IB, slab thickenings, piers "
@@ -616,6 +626,9 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         "Classification: 'AS2870 SITE CLASSIFICATION: <class>'."
     ),
     SheetKind.FOOTINGS: (
+        "MASONRY WALLS: every wall in the design assessment's masonry_walls sits on a strip footing / edge beam "
+        "(SF / EB, 450 x 450 4/L11TM top and bottom; spanning between piers on a class P site) drawn under it - "
+        "never a non-loadbearing skirt unless the drawings say so. "
         "FOOTING PLAN to AS 2870 and the geotech report. Edge beams / strip footings EB / SF "
         "as 'member' around the perimeter, internal beams IB, slab thickenings, piers "
         "'pier' (corners and max spacing), pads under point loads, step-downs. Strip footings "

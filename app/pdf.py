@@ -1394,6 +1394,8 @@ MASONRY_LINTEL_NOTE = "ALL MASONRY LINTELS TO BEAR MIN 150 INTO BRICKWORK EACH E
 def _is_masonry(design) -> bool:
     if design is None:
         return False
+    if getattr(design, "masonry_walls", None):  # masonry on part of the new work (e.g. a brick link wall)
+        return True
     text = " ".join(str(getattr(design, k, "") or "") for k in ("external_wall_type", "framing_material", "governing_standard"))
     return re.search(r"brick|masonry|block|veneer|AS ?3700|AS ?4773", text, re.I) is not None
 

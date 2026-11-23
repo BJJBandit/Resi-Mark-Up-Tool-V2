@@ -913,3 +913,14 @@ def test_detail_callouts():
     texts = [e.text for e in s.elements if e.kind == "callout"]
     assert "EP1: SEE DETAIL 1 - EP1 ENGAGED PIER" in texts and "P1/P2: SEE DETAIL 2 - BORED PIER" in texts
     assert detail_callouts(s, details) == 0  # not twice
+
+
+def test_masonry_walls_make_job_masonry():
+    from app import pdf as P
+    from app import pipeline as PL
+    from app.schemas import DesignAssessment
+    d = DesignAssessment.model_construct(external_wall_type="Clad timber frame (vertical timber)", framing_material="timber",
+                                         governing_standard="AS 1684.2", masonry_walls=[])
+    assert not P._is_masonry(d) and not PL._masonry(d)
+    d.masonry_walls = ["Link south wall (office, W01): reclaimed red brick (MA), full height"]
+    assert P._is_masonry(d) and PL._masonry(d)
