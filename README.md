@@ -112,7 +112,8 @@ checked before use. It is not for construction.
      e.g. EP1, or its words: pier -> P, engaged pier -> EP, strip footing -> SF, lintel -> L ...).
 
    **Add structural notes** (tick box beside it): the office general and WHS notes S01-01 to
-   S01-05 (N2, `app/assets/structural_notes_n2.pdf`) go at the front of the set with their title
+   S01-05 (N2, `app/assets/structural_notes_n2.pdf`) go at the end of the set, after the
+   calculation sheet, with their title
    blocks filled from the form (client, job no, project, rev, date, initials, status, first issue
    row) - every field stays a fillable form field, placeholders cleared where there is no value,
    long values shrunk to fit. A warning is given when the job isn't N2.
