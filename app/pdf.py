@@ -588,6 +588,8 @@ class PlanMap:
         self.mm_pt: float | None = None  # sheet points per real mm (set when the plan scale is known)
         self.specs: dict[str, str] = {}  # schedule text by tag
         self.bands: dict[int, list[tuple]] = {}  # footing lines by id(element), see _footing_bands
+        self.masonry: set[str] = set()  # footing tags carrying a masonry wall (drawn as a solid wall line)
+        self.masonry_lines: list[tuple] = []  # the wall lines drawn (to orient engaged piers)
         # Everything drawn on the plan, so tags can be placed clear of it (see _place_labels).
         self.segments: list[tuple] = []  # (a, b) of every line / arrow drawn
         self.boxes: list[pymupdf.Rect] = []  # piers, columns, clouds ...
@@ -1124,6 +1126,97 @@ def _external_slab_note(sheet: MarkupSheet) -> bool:
     return True
 
 
+MASONRY_WALL_W = 3.25
+_MASONRY_RX = re.compile(r"BRICK|BLOCK|MASONRY|\bMA\b|CORE[- ]?FILLED", re.I)
+
+
+def _masonry_tags(sheet: MarkupSheet) -> set[str]:
+    """Footing tags that carry a masonry wall: every strip footing (SF - office practice puts them
+    under brick / block base walls), plus an edge / internal beam whose schedule item or a
+    callout naming it mentions brick / block / masonry (e.g. a garage on 190 blockwork)."""
+    tags = {e.tag.strip().upper() for e in sheet.elements if e.kind == "member" and _prefix(e.tag) in ("SF", "EB", "IB")}
+    out = {t for t in tags if _prefix(t) == "SF"}
+    texts = [(s.tag.strip().upper(), s.text) for s in sheet.schedule] + \
+        [("", e.text or "") for e in sheet.elements if e.kind == "callout"]
+    for t in tags - out:
+        if any((tag == t or re.search(rf"(?<![A-Z0-9]){re.escape(t)}(?![A-Z0-9])", text.upper()))
+               and _MASONRY_RX.search(text) for tag, text in texts):
+            out.add(t)
+    return out
+
+
+EP_MAX_MM = float(os.environ.get("ENGAGED_PIER_SPACING_MM", "1800"))
+
+
+def _engaged_piers_along_walls(page, sheet: MarkupSheet, m: "PlanMap") -> int:
+    """Office practice (as the engineers draw it): brick base walls (on SF strip footings) have
+    engaged piers at max 1800 centres. Adds the in-between ones (filled rectangles on the wall
+    line, untagged - EP1 typical) so no gap along a wall exceeds that. Returns how many."""
+    if not m.mm_pt:
+        return 0
+    lines = [(p, q) for p, q, pre in m.masonry_lines if pre == "SF"]
+    if not lines:
+        return 0
+    eps = [m(e.start) for e in sheet.elements if e.kind == "pier" and _prefix(e.tag) == "EP"]
+    gap = EP_MAX_MM * m.mm_pt
+    hl, hs = _scaled(m, 175, 3.5, 2.0, 9.0), _scaled(m, 115, 2.2, 1.4, 6.0)
+    added = 0
+    for p, q in lines:
+        d = q - p
+        L = abs(d)
+        if L < 1:
+            continue
+        u = d / L
+        on = sorted({0.0, L} | {t for a in eps
+                                if -hl <= (t := (a - p).x * u.x + (a - p).y * u.y) <= L + hl
+                                and abs((a - p).x * -u.y + (a - p).y * u.x) <= 6})
+        horiz = abs(u.x) >= abs(u.y)
+        for t0, t1 in zip(on, on[1:]):
+            if (t1 - t0) <= gap:
+                continue
+            n = int(-(-(t1 - t0) // gap)) - 1  # extra piers so each space is <= gap
+            for k in range(1, n + 1):
+                c = p + u * (t0 + (t1 - t0) * k / (n + 1))
+                rect = (pymupdf.Rect(c.x - hl, c.y - hs, c.x + hl, c.y + hs) if horiz
+                        else pymupdf.Rect(c.x - hs, c.y - hl, c.x + hs, c.y + hl))
+                _rect(page, rect, RED, 0.5, "Engaged Pier", fill=RED)
+                m.boxes.append(rect)
+                added += 1
+    if added and not any("ENGAGED PIER" in n.upper() and "1800" in n for n in sheet.notes):
+        sheet.notes.append(f"-BRICK BASE WALLS WITH ENGAGED PIERS (EP1 TYPICAL) AT MAX {EP_MAX_MM:.0f} CTRS AND UNDER "
+                           "EVERY BEARER END.")
+    return added
+
+
+def _engaged_pier(page, e: Element, a: pymupdf.Point, m: "PlanMap") -> None:
+    """An engaged pier as the engineers draw it: a small filled red rectangle on the wall line
+    (350 x 230 to scale, the long side along the wall), with its bored pier dashed under it."""
+    _, side = _sizes(f"{e.text} {m.spec(e.tag)}")
+    long_mm, short_mm = 350.0, 230.0
+    hl, hs = _scaled(m, long_mm / 2, 3.5, 2.0, 9.0), _scaled(m, short_mm / 2, 2.2, 1.4, 6.0)
+    horiz = True
+    if m.masonry_lines:
+        def dist(pq):
+            p, q = pq
+            d = q - p
+            L2 = max(1e-6, d.x * d.x + d.y * d.y)
+            t = max(0.0, min(1.0, ((a - p).x * d.x + (a - p).y * d.y) / L2))
+            return abs(a - (p + d * t))
+        p, q = min(((p, q) for p, q, _ in m.masonry_lines), key=dist)
+        horiz = abs(q.x - p.x) >= abs(q.y - p.y)
+    rect = pymupdf.Rect(a.x - hl, a.y - hs, a.x + hl, a.y + hs) if horiz else pymupdf.Rect(a.x - hs, a.y - hl, a.x + hs, a.y + hl)
+    r = _scaled(m, PIER_DEFAULT_MM / 2, 6.0, 2.5, 16.0)
+    c = page.add_circle_annot(pymupdf.Rect(a.x - r, a.y - r, a.x + r, a.y + r))
+    c.set_border(width=1, dashes=[2, 2])
+    c.set_colors(stroke=RED)
+    _info(c, "Pier", e.text or e.tag)
+    c.update()
+    _rect(page, rect, RED, 0.5, "Engaged Pier", fill=RED)
+    m.boxes.append(rect | pymupdf.Rect(a.x - r, a.y - r, a.x + r, a.y + r))
+    if e.tag:
+        m.label_requests.append(("point", (a, r), e.tag, TAG_FS, RED, "Pier Tag"))
+
+
 def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
     a, b = m(e.start), m(e.end)
     colour = tag_colour(e.tag, e.kind)
@@ -1135,6 +1228,15 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
             _line(page, p, q, colour, 1.0 if dashed else 1.25, f"Member {_prefix(e.tag)}", content,
                   dashes=[2, 2] if dashed else None)
             m.segments.append((p, q))
+        lines = m.bands[id(e)]
+        if e.tag.strip().upper() in m.masonry and len(lines) >= 2:
+            # The masonry wall on the footing, as the engineers draw it: a solid line down the
+            # middle of the dashed footing band.
+            (p1, q1, _), (p2, q2, _) = lines[0], lines[1]
+            wp, wq = (p1 + p2) * 0.5, (q1 + q2) * 0.5
+            _line(page, wp, wq, RED, MASONRY_WALL_W, "Masonry Wall", f"{content} - MASONRY WALL")
+            m.segments.append((wp, wq))
+            m.masonry_lines.append((wp, wq, _prefix(e.tag)))
         if e.tag:
             m.label_requests.append(("line", (a, b), e.tag, TAG_FS, colour, "Member Tag"))
     elif e.kind == "member" and _prefix(e.tag) == "S" and abs(b - a) > 20:
@@ -1157,6 +1259,8 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
         m.segments.append((a, b))
         if e.tag:
             m.label_requests.append(("line", (a, b), e.tag, TAG_FS, TEAL, "Bracing Tag"))
+    elif e.kind == "pier" and _prefix(e.tag) == "EP":
+        _engaged_pier(page, e, a, m)
     elif e.kind == "pier":
         dia, side = _sizes(f"{e.text} {m.spec(e.tag)}")
         r = _scaled(m, (dia or PIER_DEFAULT_MM) / 2, 6.0, 2.5, 16.0)
@@ -1970,13 +2074,16 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         warnings.append(f"{dwg_no}: architectural background not shown ({e})")
     try:
         m.bands = _footing_bands(sheet, m)
+        m.masonry = _masonry_tags(sheet) if kind in (SheetKind.FOUNDATION, SheetKind.FOOTINGS) else set()
     except Exception as e:  # fall back to single footing lines
         warnings.append(f"{dwg_no}: footings drawn as single lines ({e})")
     callouts: list[Element] = []
     off_plan: list[str] = []
     skipped = 0
     slab_tags = {e.tag.strip().upper() for e in sheet.elements if e.kind == "member" and _prefix(e.tag) == "S"}
-    for e in sheet.elements:
+    # Members (footings, walls) first, so engaged piers can sit on the wall lines drawn.
+    ordered = sorted(sheet.elements, key=lambda e: 0 if e.kind == "member" else 1)
+    for e in ordered:
         on_plan = m.inside(e.start) and m.inside(e.end)
         if e.kind == "callout" and any(re.match(rf"\s*{re.escape(t)}\b", e.text or "", re.I) for t in slab_tags):
             continue  # the slab callout sits on the slab line itself
@@ -1992,6 +2099,11 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
                 skipped += 1
     if skipped:
         warnings.append(f"{dwg_no}: {skipped} plan element(s) could not be drawn")
+    if kind in (SheetKind.FOUNDATION, SheetKind.FOOTINGS):
+        try:
+            _engaged_piers_along_walls(page, sheet, m)
+        except Exception as e:
+            warnings.append(f"{dwg_no}: engaged piers along the walls not drawn ({e})")
     if kind in (SheetKind.FOUNDATION, SheetKind.FOOTINGS, SheetKind.FLOOR):
         try:
             _reentrant_bars(page, sheet, m)
