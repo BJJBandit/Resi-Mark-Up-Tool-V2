@@ -951,5 +951,9 @@ def test_masonry_wall_line_and_engaged_piers():
     subjects = [a.info.get("subject") for a in page.annots()]
     assert subjects.count("Masonry Wall") == 4 and subjects.count("Engaged Pier") == 1
     added = P._engaged_piers_along_walls(page, s, m)
-    assert added >= 4 * 5  # each 200 pt wall (10 m) gets piers at <= 36 pt (1800 mm)
+    # walls ~94 pt long on the sheet = 4700 mm: 2 extra piers each (<= 1800 mm gaps), 1 each side of EP1 on the 4th
+    assert added == 3 * 2 + 2
+    eps = [a.rect for a in page.annots() if a.info.get("subject") == "Engaged Pier"]
+    xs = sorted({round((r.x0 + r.x1) / 2) for r in eps if abs((r.y0 + r.y1) / 2 - eps[0].y0) < 50})
+    assert all(b - a <= 1800 * m.mm_pt + 1 for a, b in zip(xs, xs[1:]))
     assert any("ENGAGED PIERS" in n for n in s.notes)
