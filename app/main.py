@@ -472,6 +472,7 @@ async def create_job(
     office_rules: str = Form(""),  # edited for this job only (from the Office rules panel)
     details_sheet: bool = Form(False),
     detail_ids: list[str] = Form([]),
+    notes_sheets: bool = Form(False),
 ) -> dict:
     try:
         chosen = [SheetKind(s) for s in sheets]
@@ -606,6 +607,7 @@ async def create_job(
         client=client.strip().upper(),
         office_rules=office_rules.strip()[:60000],
         details=chosen_details,
+        notes_sheets=notes_sheets,
     )
     job_id = uuid.uuid4().hex
     _evict_old_jobs()

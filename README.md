@@ -111,9 +111,15 @@ checked before use. It is not for construction.
      per detail per sheet, at the first member the detail's name points to (a tag in the name,
      e.g. EP1, or its words: pier -> P, engaged pier -> EP, strip footing -> SF, lintel -> L ...).
 
+   **Add structural notes** (tick box beside it): the office general and WHS notes S01-01 to
+   S01-05 (N2, `app/assets/structural_notes_n2.pdf`) go at the front of the set with their title
+   blocks filled from the form (client, job no, project, rev, date, initials, status, first issue
+   row) - every field stays a fillable form field, placeholders cleared where there is no value,
+   long values shrunk to fit. A warning is given when the job isn't N2.
+
    **Add title block to sheets** (tick box, top of the form): every drawing sheet is laid out
    inside the office title block (`app/assets/title_block_a3.pdf`) - border, logo and company
-   details - with its fields filled as editable text: project title and job no, drawing title
+   details - with the template's fillable form fields (named per sheet, e.g. 'CLIENT (SSK-1)'), filled: project title and job no, drawing title
    and no (SSK-x), revision, date, status PRELIMINARY, designed / drawn by (initials) and the
    first issue row, and the client (Client box on the form). The mark-up fits inside the border above the title strip. This is the only
    title block; the calculation sheet stays without one.
