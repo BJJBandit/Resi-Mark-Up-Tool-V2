@@ -489,6 +489,20 @@ def wet_area_on_slab(design: DesignAssessment, sheet: MarkupSheet, title: str) -
 
 
 EP_TEXT = "350x230 BRICK ENGAGED PIER BONDED INTO BASE WALL, ON P1"
+_NON_BEARING = re.compile(r"SKIRT|VENEER|NON[- ]?LOAD[- ]?BEARING|NOT\s+(?:A\s+)?LOAD[- ]?BEARING", re.I)
+
+
+def non_bearing_footings(sheet: MarkupSheet) -> set[str]:
+    """Strip footing tags (SF) under masonry that carries no floor framing - a brick veneer, a
+    skirt / infill, anything described as non-loadbearing - from the schedule item, a callout or
+    a note that names the tag. Engaged piers never go on these."""
+    out = {s.tag.strip().upper() for s in sheet.schedule
+           if re.match(r"SF\d*$", s.tag.strip().upper()) and _NON_BEARING.search(s.text)}
+    texts = [e.text or "" for e in sheet.elements if e.kind == "callout"] + list(sheet.notes)
+    for t in texts:
+        if _NON_BEARING.search(t) and not re.search(r"ENGAGED\s+PIER", t, re.I):
+            out |= set(re.findall(r"\b(SF\d+)\b", t.upper()))
+    return out
 BEARER_PLATE_NOTE = ("BEARERS BEAR ON 190 BLOCKWORK / SLAB EDGE VIA 90x45 F7 TP WALL PLATE, M12 CHEMSET ANCHORS AT "
                      "MAX 900 CTRS. TYPICAL.")
 _PIER_CTRS = re.compile(r"\s*(?:AT|@)\s*(?:MAX\.?\s*)?\d{3,4}\s*(?:mm\s*)?(?:MAX\.?\s*)?PIER\s+(?:CTRS|CENTRES)", re.I)
@@ -510,14 +524,9 @@ def engaged_piers(sheet: MarkupSheet, title: str, aspect: float = 1.414) -> list
     """Office practice: a bearer ending on a brick base wall (strip footing SF) bears on an
     engaged pier bonded into the wall, over a bored pier. Each such bearer end gets an EP1
     (an existing pier there is re-tagged), and EP1 goes in the schedule. Returns warnings."""
-    # Strip footings under a non-loadbearing skirt / infill carry no bearers: no engaged piers there.
-    skirt = {s.tag.strip().upper() for s in sheet.schedule if re.search(r"SKIRT", s.text, re.I)}
-    for e in sheet.elements:
-        if e.kind == "callout" and re.search(r"SKIRT", e.text or "", re.I):
-            skirt |= set(re.findall(r"\b(SF\d+)\b", (e.text or "").upper()))
-    for n in sheet.notes:
-        if re.search(r"SKIRT", n, re.I):
-            skirt |= set(re.findall(r"\b(SF\d+)\b", n.upper()))
+    # Strip footings under a veneer, skirt or other non-loadbearing masonry carry no bearers: no
+    # engaged piers there.
+    skirt = non_bearing_footings(sheet)
     walls = [e for e in sheet.elements if e.kind == "member" and re.match(r"SF\d*$", e.tag.strip().upper())
              and e.tag.strip().upper() not in skirt]
     bearers = [e for e in sheet.elements if e.kind == "member" and re.match(r"B\d+$", e.tag.strip().upper())]

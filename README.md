@@ -379,7 +379,8 @@ hold even if Claude slips:
   dashed footing band. Engaged piers (EP) are small filled red rectangles on that line (350 x 230
   to scale, long side along the wall) over a dashed bored pier, and brick base walls get engaged
   piers at max 1800 centres along their length (`ENGAGED_PIER_SPACING_MM`) as well as at bearer
-  ends, with a note.
+  ends, with a note. Never on a strip footing described (schedule, callout or note naming it) as
+  under a brick veneer, skirt / infill or non-loadbearing masonry - the wall line is still drawn.
 - **Masonry walls read from the elevations**: the drawing review lists every new wall shown in
   masonry on the elevations / sections and their material tags (e.g. 'MA - reclaimed red brick')
   in `masonry_walls`, even when most of the building is clad. The wall sheet then names them and

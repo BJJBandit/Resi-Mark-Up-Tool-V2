@@ -1150,11 +1150,13 @@ EP_MAX_MM = float(os.environ.get("ENGAGED_PIER_SPACING_MM", "1800"))
 
 def _engaged_piers_along_walls(page, sheet: MarkupSheet, m: "PlanMap") -> int:
     """Office practice (as the engineers draw it): brick base walls (on SF strip footings) have
-    engaged piers at max 1800 centres. Adds the in-between ones (filled rectangles on the wall
+    engaged piers at max 1800 centres - not veneers / skirts that carry no floor framing. Adds the in-between ones (filled rectangles on the wall
     line, untagged - EP1 typical) so no gap along a wall exceeds that. Returns how many."""
     if not m.mm_pt:
         return 0
-    lines = [(p, q) for p, q, pre in m.masonry_lines if pre == "SF"]
+    from .pipeline import non_bearing_footings  # (late import: pipeline imports this module)
+    skip = non_bearing_footings(sheet)
+    lines = [(p, q) for p, q, tag in m.masonry_lines if _prefix(tag) == "SF" and tag not in skip]
     if not lines:
         return 0
     eps = [m(e.start) for e in sheet.elements if e.kind == "pier" and _prefix(e.tag) == "EP"]
@@ -1236,7 +1238,7 @@ def _draw_element(page: pymupdf.Page, e: Element, m: PlanMap) -> None:
             wp, wq = (p1 + p2) * 0.5, (q1 + q2) * 0.5
             _line(page, wp, wq, RED, MASONRY_WALL_W, "Masonry Wall", f"{content} - MASONRY WALL")
             m.segments.append((wp, wq))
-            m.masonry_lines.append((wp, wq, _prefix(e.tag)))
+            m.masonry_lines.append((wp, wq, e.tag.strip().upper()))
         if e.tag:
             m.label_requests.append(("line", (a, b), e.tag, TAG_FS, colour, "Member Tag"))
     elif e.kind == "member" and _prefix(e.tag) == "S" and abs(b - a) > 20:
