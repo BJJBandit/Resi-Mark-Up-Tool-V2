@@ -260,6 +260,7 @@
       <button id="stopBtn" type="button" class="danger" disabled title="Cancel the running review completely">Stop review</button>
       <button id="draftBtn" type="button" class="secondary" disabled
         title="Download the sheets finished so far, marked DRAFT, while the review carries on">Draft</button></div>
+    <p class="err" id="goMsg" hidden></p>
   </form>
 
   <div class="card" id="status"></div>
@@ -500,13 +501,20 @@ function usageHtml(u) {
 }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+// Why Run review did not start, said next to the button (the field's own message may be off-screen).
+const goMsg = document.getElementById('goMsg');
+const goSay = m => { goMsg.textContent = m || ''; goMsg.hidden = !m; };
+// A script error anywhere on the page is shown, never a silent dead button.
+window.addEventListener('error', e => goSay(`Page error: ${e.message} - reload the page (Ctrl+Shift+R) and try again.`));
+window.addEventListener('unhandledrejection', e => goSay(`Page error: ${(e.reason && e.reason.message) || e.reason} - reload the page and try again.`));
 f.addEventListener('submit', async e => {
   e.preventDefault();
+  goSay('');
   const sheetMsg = document.getElementById('sheetMsg');
   sheetMsg.hidden = !!f.querySelector('input[name=sheets]:checked');
-  if (!sheetMsg.hidden) return;
+  if (!sheetMsg.hidden) { goSay('Tick at least one sheet to produce (Sheets to produce, above).'); return; }
   archList.error(archList.items.length ? '' : 'Add at least one architectural drawing set.');
-  if (!archList.items.length) { document.getElementById('archDrop').scrollIntoView({ block: 'center' }); return; }
+  if (!archList.items.length) { goSay('Add at least one architectural drawing set (top of the form).'); return; }
   go.disabled = true;
   box.style.display = 'block';
   box.innerHTML = 'Uploading…';
