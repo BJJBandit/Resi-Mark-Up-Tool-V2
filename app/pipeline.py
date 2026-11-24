@@ -43,6 +43,7 @@ class JobInput:
     arete_title_block: bool = False  # sheets on the office Arete A3 title block
     client: str = ""  # title block client
     details: list = field(default_factory=list, repr=False)  # [(name, bytes, kind)] for the DETAILS sheet
+    title_fields: dict = field(default_factory=dict)  # title block / notes fields typed in the tool
     notes_sheets: bool = False  # add the office structural notes (S01-01 to S01-05) at the front
     page_labels: list[str] = field(default_factory=list)  # source file + page of each page of arch_pdf
     # Asks the engineer about the information step 2 says is missing and waits for the
@@ -829,7 +830,7 @@ def draft_pdf(job: JobInput, result: JobResult) -> tuple[bytes, int]:
     pdf, _ = build_markup_pdf(job.arch_pdf, job.project, result.geotech, result.design, sheets, result.references,
                               job_no=job.job_no, rev=job.rev, made_by=job.made_by, calc_sheet=job.calc_sheet,
                               arete_title_block=job.arete_title_block, client=job.client, details=job.details,
-                              notes_sheets=job.notes_sheets)
+                              notes_sheets=job.notes_sheets, title_fields=job.title_fields)
     return stamp_draft(pdf), len(sheets)
 
 
@@ -872,6 +873,7 @@ def _build(job: JobInput, result: JobResult) -> None:
         client=job.client,
         details=job.details,
         notes_sheets=job.notes_sheets,
+        title_fields=job.title_fields,
     )
     result.build_warnings = retagged + result.build_warnings
     result.compose_warnings()

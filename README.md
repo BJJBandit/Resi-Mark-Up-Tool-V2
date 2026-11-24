@@ -127,6 +127,13 @@ checked before use. It is not for construction.
    first issue row, and the client (Client box on the form). The mark-up fits inside the border above the title strip. This is the only
    title block; the calculation sheet stays without one.
 
+   **Title block fields**: ticking **Add title block to sheets** or **Add structural notes**
+   shows a box with every fillable field - client, job no, rev, made by, project title,
+   address, drawing status, sheet date, designed / drawn / checked / approved by and all
+   seven issue rows (rev, description, date). What you type fills those fields on every sheet
+   and on the structural notes sheets (in capitals); a blank box keeps the default (shown in
+   grey) or leaves the field blank. The drawing title and number are set per sheet.
+
    The review summary (geotech, roof/wall/footing assessment, engineer checks) is shown
    in the app and in `review.json`; it is not added to the PDF.
 
