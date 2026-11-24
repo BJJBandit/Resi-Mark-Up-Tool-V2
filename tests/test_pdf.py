@@ -185,3 +185,33 @@ def test_separate_floor_sheet_bearers_checked_against_footing_sheet():
     assert out and "footing sheet" in out[0]
     assert P._floor_bearers_vs_footings(_sheet([_el("member", "B1", 245, 198, 245, 275)]), pg, 1, (0, footings),
                                         "FLOOR FRAMING PLAN") == []  # other page
+
+
+def test_wet_area_joists_are_not_stretched_wall_to_wall():
+    from app import pdf as P
+    s = _sheet([], [("J1", "140x45 F7 TP CONTINUOUS JOIST AT 450 CTRS"),
+                    ("J3", "140x45 F7 TP CONTINUOUS JOIST AT 350 CTRS UNDER WET / TILED AREAS")])
+    assert P._wet_joist_tags(s) == {"J3"}
+    assert P._wet_joist_tags(_sheet([], [("J1", "140x45 F7 TP JOIST AT 450 CTRS UNDER BATH")])) == set()  # only one
+
+
+def test_bracing_over_a_lintel_moves_onto_solid_wall():
+    import pymupdf
+    from app import pdf as P
+    from app.snap import Geometry
+    pg = pymupdf.open().new_page(width=1190, height=842)
+    for y in (500, 504):  # wall faces with a window gap 380-420
+        pg.draw_line((300, y), (380, y))
+        pg.draw_line((420, y), (600, y))
+    geo = Geometry(pg)
+    s = _sheet([_el("member", "L1", 380, 502, 420, 502), _el("bracing", "g - 900", 380, 503, 420, 503)])
+    pts = lambda e: (pymupdf.Point(e.start.x * 1190, e.start.y * 842), pymupdf.Point(e.end.x * 1190, e.end.y * 842))
+
+    def put(i, r):
+        from app.schemas import Point
+        s.elements[i] = s.elements[i].model_copy(update={"start": Point(x=r[0].x / 1190, y=r[0].y / 842),
+                                                         "end": Point(x=r[1].x / 1190, y=r[1].y / 842)})
+    out = P._bracing_off_lintels(geo, s, pts, put, "WALLS")
+    a, b = pts(s.elements[1])
+    assert out and "moved" in out[0]
+    assert (round(a.x), round(b.x)) == (339, 379)  # nearest side with solid wall, clear of the lintel

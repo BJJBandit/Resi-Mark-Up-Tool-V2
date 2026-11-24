@@ -27,6 +27,7 @@ from .snap import (
     Geometry,
     bracing_length_mm,
     _wall_runs,
+    _run,
     drawing_scale,
     mm_to_pt,
     point_targets,
@@ -1835,9 +1836,12 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
             lo, hi = sorted((a.x, b.x) if h_ else (a.y, b.y))
             perimeter.append((h_, (a.y + b.y) / 2 if h_ else (a.x + b.x) / 2, lo, hi))
     if perimeter or (joist_fp is not None and joist_fp.ok):
-        # Floor joists wall to wall; their arrows across them, ending at the walls.
+        # Floor joists wall to wall; their arrows across them, ending at the walls. Not the
+        # wet-area joists (J3 at 350 under bathrooms / laundries): they cover only the wet rooms,
+        # so they keep the extent Claude drew (ends already snapped to their supports).
+        wet = _wet_joist_tags(sheet)
         for i, e in enumerate(sheet.elements):
-            if _prefix(e.tag) == "J" and e.kind in ("member", "span"):
+            if _prefix(e.tag) == "J" and e.kind in ("member", "span") and e.tag.strip().upper() not in wet:
                 r = _wall_to_wall(geo, joist_fp if joist_fp is not None and joist_fp.ok else None,
                                   *pts(e), perimeter=perimeter or None)
                 if r is not None:
@@ -1871,7 +1875,76 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
         warnings += _lintel_checks(geo, sheet, pts, title)
     except Exception as e:
         warnings.append(f"{title}: lintel checks skipped ({e})")
+    try:
+        warnings += _bracing_off_lintels(geo, sheet, pts, put, title)
+    except Exception as e:
+        warnings.append(f"{title}: bracing / lintel check skipped ({e})")
     return warnings
+
+
+def _bracing_off_lintels(geo: Geometry, sheet: MarkupSheet, pts, put, title: str) -> list[str]:
+    """A bracing panel drawn over a lintel (so over an opening): moved along its wall to just
+    clear of the lintel, on whichever side has solid wall for its full length (nearest first);
+    named when neither side has room."""
+    def line(e):
+        a, b = pts(e)
+        hz = abs(b.x - a.x) >= abs(b.y - a.y)
+        lo, hi = sorted((a.x, b.x) if hz else (a.y, b.y))
+        return hz, (a.y + b.y) / 2 if hz else (a.x + b.x) / 2, lo, hi
+
+    lintels = [line(e) for e in sheet.elements if _is_lintel(e)]
+    moved, stuck = [], []
+    for i, e in enumerate(sheet.elements):
+        if e.kind != "bracing":
+            continue
+        hz, c, lo, hi = line(e)
+        over = [l for l in lintels if l[0] == hz and abs(l[1] - c) <= 6 and min(hi, l[3]) - max(lo, l[2]) > 2]
+        if not over:
+            continue
+        L = hi - lo
+        o_lo, o_hi = min(l[2] for l in over), max(l[3] for l in over)
+        near = [wc for wc, wlo, whi, _ in (geo.walls[0] if hz else geo.walls[1])
+                if abs(wc - c) <= 6 and wlo <= hi + L and whi >= lo - L]
+        centres = sorted(set(round(v, 1) for v in near), key=lambda v: abs(v - c)) or [c]
+        options = []
+        for start in (o_hi + 1.0, o_lo - 1.0 - L):  # just past the lintel, either side
+            end = start + L
+            clash = any(l[0] == hz and abs(l[1] - c) <= 6 and min(end, l[3]) - max(start, l[2]) > 0 for l in lintels)
+            if clash:
+                continue
+            for wc in centres:  # any wall face / centreline here with solid wall for the full panel
+                run = _run(geo, hz, wc, (start + end) / 2)
+                if run and run[0] - 1 <= start and end <= run[1] + 1:
+                    options.append((abs(start - lo), start, end))
+                    break
+        if not options:
+            stuck.append(e.tag or "bracing")
+            continue
+        _, s0, s1 = min(options)
+        a, b = pts(e)
+        if hz:
+            na, nb = pymupdf.Point(s0, a.y), pymupdf.Point(s1, b.y)
+        else:
+            na, nb = pymupdf.Point(a.x, s0), pymupdf.Point(b.x, s1)
+        put(i, (na, nb) if ((b.x - a.x) if hz else (b.y - a.y)) >= 0 else (nb, na))
+        moved.append(e.tag or "bracing")
+    out = []
+    if moved:
+        out.append(f"{title}: bracing {', '.join(moved)} moved clear of a lintel (it was over an opening)")
+    if stuck:
+        out.append(f"{title}: bracing over an opening (drawn over a lintel) with no solid wall beside it - "
+                   f"re-place it: {', '.join(stuck)}")
+    return out
+
+
+_WET = re.compile(r"\b(WET|TILED|TILE|BATH(ROOM)?S?|ENSUITES?|WCS?|LAUNDR(Y|IES)|SHOWERS?)\b", re.I)
+
+
+def _wet_joist_tags(sheet: MarkupSheet) -> set[str]:
+    """Joist tags scheduled for wet / tiled areas only ('J3: ... AT 350 CTRS UNDER WET / TILED
+    AREAS'), or at closer centres than the sheet's other joists while naming a wet room."""
+    spec = {s.tag.strip().upper(): s.text for s in sheet.schedule if _prefix(s.tag) == "J"}
+    return {t for t, text in spec.items() if _WET.search(text)} if len(spec) > 1 else set()
 
 
 def _bearers_off_base_walls(sheet: MarkupSheet, pts, put, title: str, reach: float = 10.0) -> list[str]:
