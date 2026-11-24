@@ -270,7 +270,8 @@ def resume_job(job_id: str, notes: str = Form(""), sheet_notes: str = Form(""), 
 @app.post("/jobs/{job_id}/answers")
 async def answer_questions(job_id: str, request: Request) -> dict:
     """The engineer's answers to the information requests: for each question i,
-    answer_i = yes | no | ignore, with files_i (PDFs) and / or text_i when yes."""
+    answer_i = yes | no | ignore, with files_i (PDFs), stored_i (keys of standards stored by
+    earlier reviews, ticked in the pop-up) and / or text_i when yes."""
     job = _job(job_id)
     if job.status != "waiting" or not job.questions:
         raise HTTPException(409, "This review isn't waiting for answers.")
@@ -288,10 +289,15 @@ async def answer_questions(job_id: str, request: Request) -> dict:
                 data = await _read(f, f"'{f.filename}'", MAX_REF_UPLOAD)
                 if data is not None:
                     files.append((f.filename, data))
+            for key in form.getlist(f"stored_{i}"):
+                got = refstore.load_pdf(str(key))
+                if got is None:
+                    raise HTTPException(400, "A stored standard you ticked is no longer stored - upload it instead.")
+                files.append((got[0], got[1]))
         text = str(form.get(f"text_{i}", "")).strip() if ans == "yes" else ""
         if ans == "yes" and not files and not text:
-            raise HTTPException(400, f"'{q['item']}': attach the document or type the information, "
-                                     "or answer No / Ignore.")
+            raise HTTPException(400, f"'{q['item']}': tick a stored standard, attach the document or type "
+                                     "the information, or answer No / Ignore.")
         answers.append({"answer": ans, "files": files, "text": text})
     job.answers = answers
     job.answered.set()

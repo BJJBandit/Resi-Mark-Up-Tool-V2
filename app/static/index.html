@@ -63,6 +63,8 @@
   table.issues td { padding: 2px 4px; }
   table.issues td:first-child { width: 4.5em; } table.issues td:last-child { width: 8em; }
   table.issues input { padding: 5px 7px; }
+  .askstored { max-height: 160px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px 6px; }
+  .askstored label.check { margin-top: 6px; font-weight: 400; }
   @media (max-width: 560px) { .row3 { grid-template-columns: 1fr; } }
   .row { display:grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
   @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
@@ -287,7 +289,7 @@
     <form id="askForm" method="dialog">
       <h3>More information needed</h3>
       <p class="muted" style="margin:0">The review found standards or information it needs that weren't supplied.
-        For each: <b>Yes</b> - attach it (standards are stored for later reviews) or type it in; <b>No</b> - carry on
+        For each: <b>Yes</b> - tick a stored standard, attach it (standards are stored for later reviews) or type it in; <b>No</b> - carry on
         with the assumption shown; <b>Ignore</b> - carry on without noting it on the sheets.</p>
       <div id="askList"></div>
       <p class="err" id="askErr" hidden></p>
@@ -335,10 +337,12 @@ async function getJSON(url, tries = 8) {
 }
 // Standards stored by earlier reviews (app/refstore.py): tick to use, view the text, forget.
 const storedList = document.getElementById('storedList');
+let storedDocs = [];  // the stored standards, also offered in the information pop-up
 async function loadStored() {
   try {
     const docs = await getJSON('/references');
     if (!Array.isArray(docs)) throw new Error('unexpected answer');
+    storedDocs = docs;
     storedList.innerHTML = docs.length ? docs.map(d => `<li class="ref"><div class="refhead">
       <label class="check usestd">${d.has_pdf ? `<input type="checkbox" data-use="${d.key}">` : ''}
         <span><b>${esc(d.names.join(' / '))}</b> <span class="muted">${d.page_count} pages &middot; ${d.pages_stored} read and stored${d.has_pdf ? '' : ' &middot; upload it once more to keep the PDF so it can be ticked'}</span></span></label>
@@ -545,9 +549,10 @@ f.addEventListener('submit', async e => {
 // Information requests: the review pauses after step 2 and asks (see /jobs/{id}/answers).
 const ask = document.getElementById('ask'), askForm = document.getElementById('askForm');
 let askedFor = '';
-function showAsk(id, j) {
+async function showAsk(id, j) {
   if (askedFor === id) return;  // opened once; the button on the status card reopens it
   askedFor = id;
+  try { await loadStored(); } catch (e) { /* the pop-up still works without the stored list */ }
   askForm.dataset.job = id;
   document.getElementById('askErr').hidden = true;
   document.getElementById('askWait').textContent =
@@ -564,6 +569,9 @@ function showAsk(id, j) {
         <label><input type="radio" name="answer_${i}" value="ignore"> Ignore</label>
       </div>
       <div class="askyes" data-yes="${i}" hidden>
+        ${storedDocs.some(d => d.has_pdf) ? `<label>Use stored standards <small>tick any already stored from earlier reviews</small></label>
+        <div class="askstored">${storedDocs.filter(d => d.has_pdf).map(d => `<label class="check"><input type="checkbox"
+          name="stored_${i}" value="${d.key}"> <span>${esc(d.names.join(' / '))} <span class="muted">${d.page_count} pages</span></span></label>`).join('')}</div>` : ''}
         <label>Upload <small>PDF${q.kind === 'standard' ? ' - stored, so later reviews can tick it' : ''}</small></label>
         <input type="file" name="files_${i}" accept="application/pdf" multiple>
         <label>Or type it in <small>optional</small></label>

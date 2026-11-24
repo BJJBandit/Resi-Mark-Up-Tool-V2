@@ -75,3 +75,74 @@ def test_members_follow_an_out_of_square_wall():
     assert abs(bearer[0].y - centre(450)) < 0.3 and bearer[1].y == 500  # end on the wall, other end kept
     assert abs(pier[0].y - centre(450)) < 0.3
     assert joist[0].y == 330 and joist[1].y == 330
+
+
+def _sheet(els, schedule=()):
+    from app.schemas import Box, MarkupSheet, ScheduleItem
+    return MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1),
+                                       elements=els, schedule=[ScheduleItem(tag=t, text=x) for t, x in schedule],
+                                       legend=[], notes=[], classification="", schedule_title="", legend_title="")
+
+
+def _el(kind, tag, x1, y1, x2=None, y2=None, w=1190.0, h=842.0):
+    from app.schemas import Element, Point
+    x2 = x1 if x2 is None else x2
+    y2 = y1 if y2 is None else y2
+    return Element(kind=kind, tag=tag, start=Point(x=x1 / w, y=y1 / h), end=Point(x=x2 / w, y=y2 / h), text="")
+
+
+def test_end_bay_wider_than_bearer_spacing_is_named():
+    import pymupdf
+    from app import pdf as P
+    from app.snap import mm_to_pt
+    pg = pymupdf.open().new_page(width=1190, height=842)
+    s18, x0 = mm_to_pt(1800, 100), 100.0
+    xs = [x0 + s18 * k for k in (1, 2, 3)]
+    els = [_el("member", "SF1", x0, 100, x0, 400), _el("member", "SF1", xs[-1] + mm_to_pt(2200, 100), 100,
+                                                            xs[-1] + mm_to_pt(2200, 100), 400)]
+    els += [_el("member", "B1", x, 100, x, 400) for x in xs]
+    out = P._spacing_check(_sheet(els, [("B1", "2/240x45 F7 BEARER AT 1800 CTRS MAX")]), pg, 100, "FLOOR")
+    assert len(out) == 1 and "end bay" in out[0] and "2200 mm" in out[0]
+
+
+def test_beam_span_longer_than_its_calculation_is_named():
+    import pymupdf
+    from app import pdf as P
+    from app.schemas import CalcItem
+    from app.snap import mm_to_pt
+    pg = pymupdf.open().new_page(width=1190, height=842)
+    design = type("D", (), {"calculations": [CalcItem(topic="DECK BEAM VB1 240x45 F17", basis="SPAN 2.8 m BETWEEN C1",
+                                                      working="", result="OK")]})()
+    spans = P._calc_spans(design)
+    assert spans == {"VB1": 2800.0}
+    L = mm_to_pt(7600, 100)
+    els = [_el("member", "VB1", 100, 100, 100, 100 + L), _el("column", "C1", 100, 100 + L / 2)]  # 3.8 m spans
+    out = P._beam_span_check(_sheet(els), pg, 100, "ROOF", spans)
+    assert len(out) == 1 and "3.8 m" in out[0] and "2.8 m" in out[0]
+    els.append(_el("column", "C1", 100, 100 + L / 4))
+    els.append(_el("column", "C1", 100, 100 + 3 * L / 4))
+    assert P._beam_span_check(_sheet(els), pg, 100, "ROOF", spans) == []  # 1.9 m spans
+
+
+def test_columns_match_the_footing_sheet():
+    from app import pdf as P
+    footing = [_el("column", "C1", 100, 200), _el("column", "C1", 100, 300), _el("column", "C1", 100, 400)]
+    roof = _sheet([_el("member", "VB1", 100, 100, 100, 400), _el("column", "C1", 100, 260), _el("column", "C1", 100, 400)])
+    w = P._sync_columns(roof, 0, (0, footing, "FOOTING & FLOOR PLAN"), "ROOF FRAMING PLAN")
+    assert w and "C1 (2 -> 3)" in w[0]
+    ys = sorted(round(e.start.y * 842) for e in roof.elements if e.kind == "column")
+    assert ys == [200, 300, 400]
+    assert P._sync_columns(roof, 1, (0, footing, "FOOTING & FLOOR PLAN"), "ROOF FRAMING PLAN") == []  # other page
+
+
+def test_timber_lintel_over_a_steel_one_is_dropped():
+    import pymupdf
+    from app import pdf as P
+    els = [_el("member", "L1", 688, 341, 688, 389), _el("member", "L6", 688, 341, 688, 389),
+           _el("member", "L2", 276, 263, 358, 263), _el("member", "L3", 250, 256, 375, 256)]
+    s = _sheet(els, [("L6", "2/100x75x8 UA LINTEL"), ("L1", "90x35 F17/LVL LINTEL"),
+                     ("L2", "120x35 F17/LVL LINTEL"), ("L3", "140x45 F17/LVL LINTEL")])
+    pts = lambda e: (pymupdf.Point(e.start.x * 1190, e.start.y * 842), pymupdf.Point(e.end.x * 1190, e.end.y * 842))
+    out = P._lintel_checks(None, s, pts, "WALLS")
+    assert [e.tag for e in s.elements] == ["L6", "L2", "L3"]
+    assert any("L1 removed" in o for o in out) and any("L2 and L3 overlap" in o for o in out)

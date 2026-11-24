@@ -396,3 +396,24 @@ def test_draft_pdf_while_running(client):
     assert doc.page_count == 2 and any(a.info.get("subject") == "Draft" for a in doc[0].annots())
     assert res.sheets == {} and res.pdf == b"" and sh.notes == ["-A."]  # the running review is untouched
     main.JOBS.pop("d1")
+
+
+def test_answers_can_tick_stored_standards(client, monkeypatch, tmp_path):
+    import app.main as main
+    from app import refstore
+    monkeypatch.setattr(refstore, "STORE_DIR", tmp_path)
+    doc = pymupdf.open()
+    doc.new_page()
+    pdf = doc.tobytes()
+    key = refstore.doc_key(pdf)
+    refstore.save_pdf(key, "AS 1684.2 Table 8.18.pdf", pdf, 1)
+    job = main.Job(status="waiting", questions=[r.model_dump() for r in _requests()])
+    main.JOBS["w2"] = job
+    r = client.post("/jobs/w2/answers", data={"answer_0": "yes", "stored_0": key, "answer_1": "no", "answer_2": "ignore"})
+    assert r.status_code == 200
+    assert job.answers[0]["files"] == [("AS 1684.2 Table 8.18.pdf", pdf)]
+    job.answered.clear()
+    job.answers = None
+    r = client.post("/jobs/w2/answers", data={"answer_0": "yes", "stored_0": "f" * 64, "answer_1": "no", "answer_2": "ignore"})
+    assert r.status_code == 400 and "no longer stored" in r.json()["detail"]
+    main.JOBS.pop("w2")
