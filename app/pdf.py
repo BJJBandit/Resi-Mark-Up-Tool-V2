@@ -1496,6 +1496,9 @@ class SheetMeta:
     # on the same page: (page index, [column elements], master sheet title) or None.
     columns: object = None
     presnapped: set = dataclasses.field(default_factory=set)  # sheet kinds already snapped
+    # The separate footing sheet's strip footings / edge beams (snapped), for the separate floor
+    # sheet's bearer check: (page index, [elements]) or None.
+    footings: object = None
     # Beam spans used in the calculations: tag -> span in mm ('DECK BEAM VB1 ... SPAN 2.8 m').
     calc_spans: dict = dataclasses.field(default_factory=dict)
     # Racking note for the wall sheet from the bracing check (calculation sheet on):
@@ -1940,6 +1943,30 @@ def _bearers_off_base_walls(sheet: MarkupSheet, pts, put, title: str, reach: flo
         out.append(f"{title}: bearer(s) {', '.join(trimmed)} trimmed to end at the perimeter footing - the part "
                    "along the base wall is carried by the wall")
     return out
+
+
+def _floor_bearers_vs_footings(sheet: MarkupSheet, page: pymupdf.Page, idx: int, footings, title: str) -> list[str]:
+    """A floor sheet without its own strip footings (separate footing sheet, same page): its
+    bearers are checked against the footing sheet's strip footings / edge beams."""
+    if not footings or footings[0] != idx or not footings[1]:
+        return []
+    if any(e.kind == "member" and _prefix(e.tag) in ("SF", "EB") for e in sheet.elements):
+        return []  # checked with its own footings during snapping
+    w, h = page.rect.width, page.rect.height
+    sheet.elements = list(sheet.elements) + [e.model_copy(deep=True) for e in footings[1]]
+
+    def pts(e):
+        return pymupdf.Point(e.start.x * w, e.start.y * h), pymupdf.Point(e.end.x * w, e.end.y * h)
+
+    def put(i, r):
+        sheet.elements[i] = sheet.elements[i].model_copy(update={
+            "start": Point(x=r[0].x / w, y=r[0].y / h), "end": Point(x=r[1].x / w, y=r[1].y / h)})
+    try:
+        out = _bearers_off_base_walls(sheet, pts, put, title)
+    finally:  # the borrowed footings are not drawn on the floor sheet
+        kept = len(sheet.elements) - len(footings[1])
+        sheet.elements = sheet.elements[:kept]
+    return [o.replace("perimeter strip footing", "perimeter strip footing (footing sheet)") for o in out]
 
 
 _STEEL = re.compile(r"\b(UA|EA|FL|PFC|UB|UC|SHS|RHS|CHS|STEEL)\b", re.I)
@@ -2452,6 +2479,10 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
             except Exception as e:
                 warnings.append(f"{dwg_no}: engaged piers not aligned ({e})")
         try:
+            warnings += _floor_bearers_vs_footings(sheet, src[idx], idx, meta.footings, SHEET_TITLES[kind])
+        except Exception as e:
+            warnings.append(f"{dwg_no}: bearers not checked against the footing sheet ({e})")
+        try:
             warnings += _sync_columns(sheet, idx, meta.columns, SHEET_TITLES[kind])
         except Exception as e:
             warnings.append(f"{dwg_no}: columns not matched to the other sheets ({e})")
@@ -2759,6 +2790,19 @@ def _build_markup_pdf(
         except Exception as e:
             warnings.append(f"{SHEET_TITLES[mk]}: columns not matched across the sheets ({e})")
         break
+    # Separate footing and floor sheets: the floor sheet's bearers are checked against the footing
+    # sheet's strip footings (snapped first), so none is drawn along a base wall.
+    fs = sheets.get(SheetKind.FOOTINGS)
+    if fs is not None and SheetKind.FLOOR in sheets:
+        fidx = min(max(fs.source_page_number, 1), src.page_count) - 1
+        try:
+            if SheetKind.FOOTINGS not in meta.presnapped:
+                warnings += _snap_to_drawing(src[fidx], fs, SHEET_TITLES[SheetKind.FOOTINGS])
+                _align_engaged_piers(fs, src[fidx].rect)
+                meta.presnapped.add(SheetKind.FOOTINGS)
+            meta.footings = (fidx, [e for e in fs.elements if e.kind == "member" and _prefix(e.tag) in ("SF", "EB")])
+        except Exception as e:
+            warnings.append(f"{SHEET_TITLES[SheetKind.FLOOR]}: bearers not checked against the footing sheet ({e})")
     n = 1
     for kind in SheetKind:
         if kind not in sheets:

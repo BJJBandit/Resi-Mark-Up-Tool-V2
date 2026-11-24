@@ -170,3 +170,18 @@ def test_bearers_along_the_base_wall_are_removed_or_trimmed():
     bearers = sorted((round(pts(e)[0].x), round(pts(e)[0].y), round(pts(e)[1].y)) for e in s.elements if e.tag == "B1")
     assert bearers == [(313, 197, 275), (377, 195, 275), (445, 194, 516)]
     assert any("removed" in o for o in out) and any("trimmed" in o for o in out)
+
+
+def test_separate_floor_sheet_bearers_checked_against_footing_sheet():
+    import pymupdf
+    from app import pdf as P
+    pg = pymupdf.open().new_page(width=1190, height=842)
+    footings = [_el("member", "SF1", *c) for c in [(250, 198, 675, 188), (675, 188, 675, 514), (250, 198, 250, 275)]]
+    floor = _sheet([_el("member", "B1", 245, 198, 245, 275), _el("member", "B1", 445, 194, 445, 516),
+                    _el("member", "B1", 670, 189, 670, 514), _el("member", "J1", 250, 300, 670, 300)])
+    out = P._floor_bearers_vs_footings(floor, pg, 0, (0, footings), "FLOOR FRAMING PLAN")
+    assert [round(e.start.x * 1190) for e in floor.elements] == [445, 250]  # B1 at 445 and the joist kept
+    assert not any(e.tag == "SF1" for e in floor.elements)  # borrowed footings not drawn
+    assert out and "footing sheet" in out[0]
+    assert P._floor_bearers_vs_footings(_sheet([_el("member", "B1", 245, 198, 245, 275)]), pg, 1, (0, footings),
+                                        "FLOOR FRAMING PLAN") == []  # other page
