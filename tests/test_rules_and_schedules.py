@@ -1033,3 +1033,25 @@ def test_dome_pier_note_on_footing_sheets_with_piers():
     w.notes = []
     office_notes(K.WALLS, w)
     assert w.notes == []
+
+
+def test_double_deck_ledger_option():
+    from app import claude
+    from app.pipeline import JobInput, _rules_for, double_ledgers
+    s = MarkupSheet.model_construct(
+        source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1),
+        elements=[Element(kind="callout", tag="", start=Point(x=0.1, y=0.1), end=Point(x=0.2, y=0.2),
+                          text="LD1 190X45 F7 TP DECK LEDGER BOLTED TO FLOOR FRAMING. TYPICAL.")],
+        schedule=[ScheduleItem(tag="LD1", text="190x45 F7 TP DECK LEDGER"),
+                  ScheduleItem(tag="LD2", text="2/240x45 F7 TP DECK LEDGER"),
+                  ScheduleItem(tag="B1", text="2/240x45 F7 TP CONTINUOUS BEARER")],
+        legend=[], notes=[], classification="", schedule_title="", legend_title="")
+    double_ledgers(s)
+    assert [i.text for i in s.schedule] == ["2/190x45 F7 TP DECK LEDGER", "2/240x45 F7 TP DECK LEDGER",
+                                            "2/240x45 F7 TP CONTINUOUS BEARER"]
+    assert s.elements[0].text.startswith("LD1 2/190X45 F7 TP DECK LEDGER")
+    job = JobInput.__new__(JobInput)
+    job.office_rules, job.double_ledger = "", True
+    assert "DOUBLE" in _rules_for(job) and claude.OFFICE_RULES.strip()[:40] in _rules_for(job)
+    job.double_ledger = False
+    assert _rules_for(job) == ""

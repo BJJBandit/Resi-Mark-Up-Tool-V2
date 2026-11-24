@@ -491,7 +491,8 @@ async def create_job(
     details_sheet: bool = Form(False),
     detail_ids: list[str] = Form([]),
     notes_sheets: bool = Form(False),
-    title_fields: str = Form(""),  # JSON {field name: value} for the title block / structural notes
+    title_fields: str = Form(""),
+    double_ledger: bool = Form(False),  # deck ledgers doubled (2/190x45 F7 TP)  # JSON {field name: value} for the title block / structural notes
 ) -> dict:
     try:
         chosen = [SheetKind(s) for s in sheets]
@@ -628,6 +629,7 @@ async def create_job(
         details=chosen_details,
         notes_sheets=notes_sheets,
         title_fields=_title_fields(title_fields),
+        double_ledger=double_ledger,
     )
     job_id = uuid.uuid4().hex
     _evict_old_jobs()
