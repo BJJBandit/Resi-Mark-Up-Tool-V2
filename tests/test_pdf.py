@@ -146,3 +146,27 @@ def test_timber_lintel_over_a_steel_one_is_dropped():
     out = P._lintel_checks(None, s, pts, "WALLS")
     assert [e.tag for e in s.elements] == ["L6", "L2", "L3"]
     assert any("L1 removed" in o for o in out) and any("L2 and L3 overlap" in o for o in out)
+
+
+def test_bearers_along_the_base_wall_are_removed_or_trimmed():
+    """markup 9: B1 drawn 4-5 pt beside the perimeter SF1 at the laundry west wall (removed), the east
+    wall (removed) and down the D01 line past the laundry / kitchen wall (trimmed to the internal
+    wall part); bearers clear of the footings stay."""
+    import pymupdf
+    from app import pdf as P
+    sf = [(250, 198, 675, 188), (675, 188, 675, 514), (373, 514, 675, 514), (373, 275, 373, 514),
+          (373, 275, 250, 275), (250, 198, 250, 275)]
+    els = [_el("member", "SF1", *c) for c in sf]
+    els += [_el("member", "B1", *c) for c in [(245, 198, 245, 275), (313, 197, 313, 275), (377, 195, 377, 517),
+                                              (445, 194, 445, 516), (670, 189, 670, 514)]]
+    s = _sheet(els)
+    pts = lambda e: (pymupdf.Point(e.start.x * 1190, e.start.y * 842), pymupdf.Point(e.end.x * 1190, e.end.y * 842))
+
+    def put(i, r):
+        from app.schemas import Point
+        s.elements[i] = s.elements[i].model_copy(update={"start": Point(x=r[0].x / 1190, y=r[0].y / 842),
+                                                         "end": Point(x=r[1].x / 1190, y=r[1].y / 842)})
+    out = P._bearers_off_base_walls(s, pts, put, "FOOTINGS")
+    bearers = sorted((round(pts(e)[0].x), round(pts(e)[0].y), round(pts(e)[1].y)) for e in s.elements if e.tag == "B1")
+    assert bearers == [(313, 197, 275), (377, 195, 275), (445, 194, 516)]
+    assert any("removed" in o for o in out) and any("trimmed" in o for o in out)
