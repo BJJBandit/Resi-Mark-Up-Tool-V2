@@ -183,7 +183,10 @@ class DesignAssessment(Strict):
         default_factory=list,
         description="Calculation sheet entries for the key design decisions (max ~12): roof load widths, "
         "lintels / beams by span and load, bearers / joists / rafters, columns, footing and slab selection, "
-        "tie-down. Each with its basis (standard, clause / table), working and result.")
+        "tie-down. Each with its basis (standard, clause / table), working and result. Load each member "
+        "the way the support layout in this assessment carries it (e.g. a wall that sits on a base wall / "
+        "strip footing adds nothing to a bearer; check the bearer under the loadbearing wall that does sit "
+        "on it); state each beam's span as 'SPAN x.x m' for the longest span between its supports.")
     information_requests: list[InfoRequest] = Field(
         default_factory=list,
         description="Standards, documents or information NOT supplied that would materially change the "

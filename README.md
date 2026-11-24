@@ -49,7 +49,8 @@ checked before use. It is not for construction.
      or piece of information it needs that wasn't supplied (e.g. a table of AS 1684.2, the
      truss layout with girder positions, a BAL report), the review pauses and the page pops
      up a question for each one, with the assumption it would otherwise use:
-     - **Yes** - attach the PDF and / or type the information in. Standards are stored with
+     - **Yes** - tick any standards already stored from earlier reviews, attach the PDF
+       and / or type the information in. Standards are stored with
        the other stored standards (transcribed once, ticked in later reviews); project
        documents are used for this review (and its sheet re-runs). The drawing review then
        runs again with it (one more step-2 call).

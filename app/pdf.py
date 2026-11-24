@@ -1492,6 +1492,12 @@ class SheetMeta:
     # Title block / structural notes field values typed in the tool (base field name -> value,
     # e.g. 'ADDRESS', 'CHECKED BY', 'ISSUE DESCRIPTION - 2'); a value given here wins.
     fields: dict = dataclasses.field(default_factory=dict)
+    # Column positions from the master sheet (footings first), put on every other sheet drawn
+    # on the same page: (page index, [column elements], master sheet title) or None.
+    columns: object = None
+    presnapped: set = dataclasses.field(default_factory=set)  # sheet kinds already snapped
+    # Beam spans used in the calculations: tag -> span in mm ('DECK BEAM VB1 ... SPAN 2.8 m').
+    calc_spans: dict = dataclasses.field(default_factory=dict)
     # Racking note for the wall sheet from the bracing check (calculation sheet on):
     # notes(sheet, page aspect) -> the sheet's notes with it. None: leave Claude's notes.
     racking_notes: object = None
@@ -1854,7 +1860,52 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
         _follow_skewed_walls(geo, sheet, pts, put)
     except Exception as e:  # never lose the sheet over it
         warnings.append(f"{title}: out-of-square wall not followed ({e})")
+    try:
+        warnings += _lintel_checks(geo, sheet, pts, title)
+    except Exception as e:
+        warnings.append(f"{title}: lintel checks skipped ({e})")
     return warnings
+
+
+_STEEL = re.compile(r"\b(UA|EA|FL|PFC|UB|UC|SHS|RHS|CHS|STEEL)\b", re.I)
+
+
+def _lintel_checks(geo: Geometry, sheet: MarkupSheet, pts, title: str) -> list[str]:
+    """Lintels after snapping: two on the same opening (one tag per member). A timber lintel
+    drawn exactly over a steel one is dropped; other overlaps are named."""
+    spec = {s.tag.strip().upper(): s.text for s in sheet.schedule}
+
+    def line(e):
+        a, b = pts(e)
+        hz = abs(b.x - a.x) >= abs(b.y - a.y)
+        lo, hi = sorted((a.x, b.x) if hz else (a.y, b.y))
+        return hz, (a.y + b.y) / 2 if hz else (a.x + b.x) / 2, lo, hi
+
+    def steel(e):
+        return bool(_STEEL.search(f"{spec.get(e.tag.strip().upper(), '')} {e.text}"))
+
+    out, drop = [], set()
+    idx = [i for i, e in enumerate(sheet.elements) if _is_lintel(e)]
+    for n, i in enumerate(idx):
+        for j in idx[n + 1:]:
+            if i in drop or j in drop:
+                continue
+            (h1, c1, l1, r1), (h2, c2, l2, r2) = line(sheet.elements[i]), line(sheet.elements[j])
+            ov = min(r1, r2) - max(l1, l2)
+            if h1 != h2 or abs(c1 - c2) > 8 or ov <= 0.5 * min(r1 - l1, r2 - l2):
+                continue
+            ei, ej = sheet.elements[i], sheet.elements[j]
+            if steel(ei) != steel(ej) and ov >= 0.8 * max(r1 - l1, r2 - l2):
+                timber = j if steel(ei) else i
+                drop.add(timber)
+                out.append(f"{title}: {sheet.elements[timber].tag} removed - drawn over the steel lintel "
+                           f"{(ej if timber == i else ei).tag} on the same opening (one tag per member)")
+            else:
+                out.append(f"{title}: lintels {ei.tag} and {ej.tag} overlap on the same wall - one opening "
+                           "should have one lintel, check")
+    if drop:
+        sheet.elements = [e for k, e in enumerate(sheet.elements) if k not in drop]
+    return out
 
 
 def _follow_skewed_walls(geo: Geometry, sheet: MarkupSheet, pts, put) -> int:
@@ -1953,6 +2004,87 @@ def _follow_skewed_walls(geo: Geometry, sheet: MarkupSheet, pts, put) -> int:
 _CTRS = re.compile(r"(\d{3,4})\s*(?:MM\s*)?(?:MAX\.?\s*)?(?:CTRS|CENTRES|CENTERS|CRS|C/C)\b", re.I)
 
 
+def _sync_columns(sheet: MarkupSheet, idx: int, master, title: str) -> list[str]:
+    """Columns in the same place on every sheet: a column tag this sheet shares with the master
+    sheet (footings first) takes the master's positions - drawn on the same page only (other
+    pages have other coordinates). Returns a warning naming what changed."""
+    if not master:
+        return []
+    m_idx, m_cols, m_title = master
+    if m_idx != idx or m_title == title:
+        return []
+    by_tag: dict[str, list[Element]] = {}
+    for c in m_cols:
+        by_tag.setdefault(c.tag.strip().upper(), []).append(c)
+    mine = {e.tag.strip().upper() for e in sheet.elements if e.kind == "column"}
+    changed = []
+    for tag in sorted(mine & set(by_tag)):
+        old = sorted((round(e.start.x, 3), round(e.start.y, 3)) for e in sheet.elements
+                     if e.kind == "column" and e.tag.strip().upper() == tag)
+        new = sorted((round(e.start.x, 3), round(e.start.y, 3)) for e in by_tag[tag])
+        if len(old) == len(new) and all(abs(a[0] - b[0]) < 0.004 and abs(a[1] - b[1]) < 0.004
+                                        for a, b in zip(old, new)):
+            continue
+        sheet.elements = [e for e in sheet.elements if not (e.kind == "column" and e.tag.strip().upper() == tag)] \
+            + [c.model_copy(deep=True) for c in by_tag[tag]]
+        changed.append(f"{tag} ({len(old)} -> {len(new)})" if len(old) != len(new) else tag)
+    if not changed:
+        return []
+    return [f"{title}: column(s) {', '.join(changed)} placed as on the {m_title.lower()} so every sheet "
+            "shows them in the same place - check"]
+
+
+_CALC_SPAN = re.compile(r"\bSPANS?\s+(?:OF\s+|ABOUT\s+|UP\s+TO\s+)?(\d+(?:\.\d+)?)\s*(M|MM)\b", re.I)
+
+
+def _calc_spans(design) -> dict[str, float]:
+    """The beam spans the calculations were done for: {tag: span mm}, from each calculation
+    whose topic names the tag ('DECK BEAM VB1 240x45 ...', basis '... SPAN 2.8 m ...')."""
+    out: dict[str, float] = {}
+    for c in getattr(design, "calculations", None) or []:
+        tags = set(re.findall(r"\b((?:VB|RB|DB|B|SB)\d+)\b", (c.topic or "").upper()))
+        if not tags:
+            continue
+        spans = [float(v) * (1000 if u.upper() == "M" else 1)
+                 for v, u in _CALC_SPAN.findall(f"{c.basis} {c.working}")]
+        spans = [s for s in spans if 300 <= s <= 20000]
+        if spans:
+            for t in tags:
+                out[t] = max(out.get(t, 0.0), max(spans))
+    return out
+
+
+def _beam_span_check(sheet: MarkupSheet, page: pymupdf.Page, scale: int | None, title: str,
+                     calc_spans: dict[str, float]) -> list[str]:
+    """Beams / bearers drawn with a longer span between supports (columns / piers on them,
+    and their ends) than the span their calculation used."""
+    if not scale or not calc_spans:
+        return []
+    w, h = page.rect.width, page.rect.height
+    per_mm = mm_to_pt(1, scale)
+    supports = [pymupdf.Point(e.start.x * w, e.start.y * h) for e in sheet.elements if e.kind in ("pier", "column")]
+    worst: dict[str, float] = {}
+    for e in sheet.elements:
+        tag = e.tag.strip().upper()
+        if e.kind != "member" or tag not in calc_spans:
+            continue
+        a, b = pymupdf.Point(e.start.x * w, e.start.y * h), pymupdf.Point(e.end.x * w, e.end.y * h)
+        L = abs(b - a)
+        if L < 1:
+            continue
+        u = (b - a) / L
+        at = [0.0, L]
+        for s in supports:
+            t = (s - a).x * u.x + (s - a).y * u.y
+            if -2 <= t <= L + 2 and abs(s - (a + u * t)) <= 5:
+                at.append(min(max(t, 0.0), L))
+        at.sort()
+        worst[tag] = max(worst.get(tag, 0.0), max(q - p for p, q in zip(at, at[1:])) / per_mm)
+    return [f"{title}: {tag} is drawn spanning up to {v / 1000:.1f} m between supports but its calculation "
+            f"uses {calc_spans[tag] / 1000:.1f} m - add a support or re-check it"
+            for tag, v in sorted(worst.items()) if v > calc_spans[tag] * 1.1]
+
+
 def _spacing_check(sheet: MarkupSheet, page: pymupdf.Page, scale: int | None, title: str) -> list[str]:
     """Bearers / rafters drawn further apart than their scheduled spacing (e.g. 'AT MAX
     2200 CTRS'), measured at the plan scale. Rafters with a spacing but only one line drawn
@@ -1988,6 +2120,29 @@ def _spacing_check(sheet: MarkupSheet, page: pymupdf.Page, scale: int | None, ti
         if worst > ctrs * 1.25:
             out.append(f"{title}: {tag} {what} are drawn up to {worst:.0f} mm apart but scheduled at "
                        f"{ctrs:.0f} ctrs - check the layout (a {what[:-1]} may be missing)")
+        if _prefix(tag) == "B":
+            # End bays: the outermost bearer to the perimeter footing / wall beside it carries
+            # the joists the same way, so the same spacing applies.
+            walls = []
+            for f in sheet.elements:
+                if f.kind == "member" and _prefix(f.tag) in ("SF", "EB"):
+                    p, q = pymupdf.Point(f.start.x * w, f.start.y * h), pymupdf.Point(f.end.x * w, f.end.y * h)
+                    fh = abs(q.x - p.x) >= abs(q.y - p.y)
+                    lo, hi = sorted((p.x, q.x) if fh else (p.y, q.y))
+                    walls.append((fh, (p.y + q.y) / 2 if fh else (p.x + q.x) / 2, lo, hi))
+            end = 0.0
+            for horiz, c, lo, hi in lines:
+                for side in (-1, 1):
+                    near = [abs(o[1] - c) for o in lines + walls
+                            if o[0] == horiz and (o[1] - c) * side > 2 and min(hi, o[3]) - max(lo, o[2]) > 0.5 * (hi - lo)]
+                    if near and min(near) == min((abs(o[1] - c) for o in walls if o[0] == horiz
+                                                  and (o[1] - c) * side > 2
+                                                  and min(hi, o[3]) - max(lo, o[2]) > 0.5 * (hi - lo)), default=-1):
+                        end = max(end, min(near) / per_mm)
+            if end > ctrs * 1.15 and end > worst:
+                out.append(f"{title}: the end bay from the outermost {tag} to the perimeter footing is "
+                           f"{end:.0f} mm but {tag} is scheduled at {ctrs:.0f} ctrs - add a bearer or check "
+                           "the joists for the longer span")
     return out
 
 
@@ -2212,17 +2367,23 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         except Exception as e:
             warnings.append(f"{dwg_no}: articulation joint check skipped ({e})")
     else:
+        if kind not in meta.presnapped:
+            try:
+                warnings += _snap_to_drawing(src[idx], sheet, SHEET_TITLES[kind])
+            except Exception as e:
+                warnings.append(f"{dwg_no}: snapping to the drawing skipped ({e})")
+            try:
+                _align_engaged_piers(sheet, src[idx].rect)
+            except Exception as e:
+                warnings.append(f"{dwg_no}: engaged piers not aligned ({e})")
         try:
-            warnings += _snap_to_drawing(src[idx], sheet, SHEET_TITLES[kind])
+            warnings += _sync_columns(sheet, idx, meta.columns, SHEET_TITLES[kind])
         except Exception as e:
-            warnings.append(f"{dwg_no}: snapping to the drawing skipped ({e})")
-        try:
-            _align_engaged_piers(sheet, src[idx].rect)
-        except Exception as e:
-            warnings.append(f"{dwg_no}: engaged piers not aligned ({e})")
+            warnings.append(f"{dwg_no}: columns not matched to the other sheets ({e})")
     try:
         scale_ = drawing_scale(src[idx])[0]
         warnings += _spacing_check(sheet, src[idx], scale_, SHEET_TITLES[kind])
+        warnings += _beam_span_check(sheet, src[idx], scale_, SHEET_TITLES[kind], meta.calc_spans)
         warnings += office_checks.pier_spacing(sheet, src[idx], scale_, SHEET_TITLES[kind])
         warnings += office_checks.schedule_practice(sheet, SHEET_TITLES[kind])
         warnings += office_checks.footing_practice(sheet, SHEET_TITLES[kind])
@@ -2508,6 +2669,21 @@ def _build_markup_pdf(
         meta.racking_notes = lambda sheet, aspect: calcs.racking_notes(design, sheet, aspect)
     overflow: list[list[str]] = []  # each sheet's notes block, for the SHEET NOTES pages
     warnings: list[str] = []
+    meta.calc_spans = _calc_spans(design)
+    # One set of column positions for the whole set: the footing sheet's (snapped first).
+    for mk in (SheetKind.FOUNDATION, SheetKind.FOOTINGS, SheetKind.FLOOR, SheetKind.WALLS, SheetKind.ROOF):
+        ms = sheets.get(mk)
+        if ms is None or not any(e.kind == "column" for e in ms.elements):
+            continue
+        midx = min(max(ms.source_page_number, 1), src.page_count) - 1
+        try:
+            warnings += _snap_to_drawing(src[midx], ms, SHEET_TITLES[mk])
+            _align_engaged_piers(ms, src[midx].rect)
+            meta.presnapped.add(mk)
+            meta.columns = (midx, [e for e in ms.elements if e.kind == "column"], SHEET_TITLES[mk])
+        except Exception as e:
+            warnings.append(f"{SHEET_TITLES[mk]}: columns not matched across the sheets ({e})")
+        break
     n = 1
     for kind in SheetKind:
         if kind not in sheets:
