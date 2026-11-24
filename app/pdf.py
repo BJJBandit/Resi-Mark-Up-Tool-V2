@@ -1487,6 +1487,9 @@ class SheetMeta:
     masonry: bool = False  # brick veneer / masonry walls: wall sheet gets the masonry lintel schedule
     arete: bool = False  # sheets on the office Arete A3 title block (app/assets/title_block_a3.pdf)
     client: str = ""
+    # Title block / structural notes field values typed in the tool (base field name -> value,
+    # e.g. 'ADDRESS', 'CHECKED BY', 'ISSUE DESCRIPTION - 2'); a value given here wins.
+    fields: dict = dataclasses.field(default_factory=dict)
     # Racking note for the wall sheet from the bracing check (calculation sheet on):
     # notes(sheet, page aspect) -> the sheet's notes with it. None: leave Claude's notes.
     racking_notes: object = None
@@ -1554,7 +1557,15 @@ def _title_block_values(meta: "SheetMeta") -> dict[str, str]:
         "DRAWING STATUS": "PRELIMINARY", "DESIGNED BY": meta.made_by, "DRAWN BY": meta.made_by,
         "APPROVED BY": "", "CHECKED BY": "",
         "ISSUE REVISION - 1": meta.rev, "ISSUE DESCRIPTION - 1": "PRELIMINARY MARK-UP", "ISSUE DATE - 1": meta.date,
-    }
+    } | {k: str(v).strip() for k, v in (meta.fields or {}).items()
+         if k in TB_FIELDS and str(v or "").strip()}  # typed in the tool: these win
+
+
+# Every fillable field on the title block and structural notes (base names; the sheet's
+# DRAWING TITLE / SHEET NUMBER are set per sheet, so they are not typed in).
+TB_FIELDS = ["CLIENT", "PROJECT NUMBER", "PROJECT TITLE", "ADDRESS", "SHEET REVISION", "SHEET DATE",
+             "DRAWING STATUS", "DESIGNED BY", "DRAWN BY", "CHECKED BY", "APPROVED BY"] + [
+    f"ISSUE {c} - {i}" for i in range(1, 8) for c in ("REVISION", "DESCRIPTION", "DATE")]
 
 
 def structural_notes(meta: "SheetMeta") -> pymupdf.Document:
@@ -2382,6 +2393,7 @@ def _build_markup_pdf(
     client: str = "",
     details: list[tuple[str, bytes, str]] | None = None,
     notes_sheets: bool = False,
+    title_fields: dict | None = None,
 ) -> tuple[bytes, list[str]]:
     """Mark-up sheets (the review summary stays in the app / review.json), plus the
     calculation sheet. Returns (pdf bytes, warnings). Never fails because of one bad element."""
@@ -2391,7 +2403,8 @@ def _build_markup_pdf(
                        if getattr(p, "scale", "")}
     out = pymupdf.open()
     meta = SheetMeta(project, job_no, rev, made_by, dt.date.today().strftime("%d/%m/%Y"),
-                     masonry=_is_masonry(design), arete=arete_title_block and ARETE_TB.exists(), client=client)
+                     masonry=_is_masonry(design), arete=arete_title_block and ARETE_TB.exists(), client=client,
+                     fields=dict(title_fields or {}))
     if calc_sheet and getattr(design, "racking", None):
         meta.racking_notes = lambda sheet, aspect: calcs.racking_notes(design, sheet, aspect)
     overflow: list[list[str]] = []  # each sheet's notes block, for the SHEET NOTES pages

@@ -443,6 +443,18 @@ def delete_stored_reference(key: str) -> dict:
         raise HTTPException(404, "No stored extract for that document.")
 
 
+def _title_fields(raw: str) -> dict[str, str]:
+    """The title block / structural notes fields typed in the form (known names only, capitals)."""
+    from .pdf import TB_FIELDS
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        raise HTTPException(400, "Title block fields are not valid.")
+    if not isinstance(data, dict):
+        raise HTTPException(400, "Title block fields are not valid.")
+    return {k: str(v).strip().upper()[:200] for k, v in data.items() if k in TB_FIELDS and str(v or "").strip()}
+
+
 @app.post("/jobs")
 async def create_job(
     architectural: list[UploadFile] = File([]),
@@ -473,6 +485,7 @@ async def create_job(
     details_sheet: bool = Form(False),
     detail_ids: list[str] = Form([]),
     notes_sheets: bool = Form(False),
+    title_fields: str = Form(""),  # JSON {field name: value} for the title block / structural notes
 ) -> dict:
     try:
         chosen = [SheetKind(s) for s in sheets]
@@ -608,6 +621,7 @@ async def create_job(
         office_rules=office_rules.strip()[:60000],
         details=chosen_details,
         notes_sheets=notes_sheets,
+        title_fields=_title_fields(title_fields),
     )
     job_id = uuid.uuid4().hex
     _evict_old_jobs()

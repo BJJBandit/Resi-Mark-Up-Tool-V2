@@ -56,6 +56,13 @@
   label.check { display:flex; gap:8px; align-items:center; font-weight:600; margin-top:14px; }
   label.check small { font-weight:400; color: var(--muted); }
   .row3 { display:grid; grid-template-columns: 2fr 1fr 1fr; gap: 0 16px; }
+  .row4 { display:grid; grid-template-columns: repeat(4, 1fr); gap: 0 12px; }
+  @media (max-width: 560px) { .row4 { grid-template-columns: 1fr 1fr; } }
+  table.issues { width:100%; border-collapse: collapse; margin-top: 4px; }
+  table.issues th { text-align:left; font-weight:600; font-size: 0.85em; color: var(--muted); padding: 0 4px 2px; }
+  table.issues td { padding: 2px 4px; }
+  table.issues td:first-child { width: 4.5em; } table.issues td:last-child { width: 8em; }
+  table.issues input { padding: 5px 7px; }
   @media (max-width: 560px) { .row3 { grid-template-columns: 1fr; } }
   .row { display:grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
   @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
@@ -159,13 +166,30 @@
       <small>office general and WHS notes S01-01 to S01-05 (N2) at the front, title blocks filled</small></label>
     </div>
     <div id="tbFields" hidden>
-    <label>Client <small>for the title block</small></label>
+    <p class="muted">Title block fields - filled on every sheet and on the structural notes. Left blank: the default shown, or blank.</p>
+    <label>Client</label>
     <input type="text" name="client" placeholder="e.g. J &amp; K Smith">
     <div class="row3">
-      <div><label>Job No</label><input type="text" name="job_no"></div>
+      <div><label>Job No <small>project number</small></label><input type="text" name="job_no"></div>
       <div><label>Rev</label><input type="text" name="rev" value="A"></div>
       <div><label>Made by</label><input type="text" name="made_by" placeholder="Initials"></div>
     </div>
+    <div class="row3">
+      <div><label>Project title</label><input type="text" data-tb="PROJECT TITLE" placeholder="project / site address"></div>
+      <div><label>Drawing status</label><input type="text" data-tb="DRAWING STATUS" placeholder="PRELIMINARY"></div>
+      <div><label>Sheet date</label><input type="text" data-tb="SHEET DATE" placeholder="today"></div>
+    </div>
+    <label>Address</label>
+    <input type="text" data-tb="ADDRESS" placeholder="site address for the title block">
+    <div class="row4">
+      <div><label>Designed by</label><input type="text" data-tb="DESIGNED BY" placeholder="made by"></div>
+      <div><label>Drawn by</label><input type="text" data-tb="DRAWN BY" placeholder="made by"></div>
+      <div><label>Checked by</label><input type="text" data-tb="CHECKED BY"></div>
+      <div><label>Approved by</label><input type="text" data-tb="APPROVED BY"></div>
+    </div>
+    <label>Issues</label>
+    <table class="issues"><thead><tr><th>Rev</th><th>Description</th><th>Date</th></tr></thead><tbody id="issueRows"></tbody></table>
+    <input type="hidden" name="title_fields" id="titleFields">
     </div>
 
     <label>Architectural drawings (PDF) * <small>one or more sets (e.g. plans, elevations, revised sheets) &middot; up to 60 pages in total</small></label>
@@ -344,8 +368,20 @@ document.querySelector('.sheetpick').addEventListener('change', e => {
   if (v === 'foundation') { box('footings').checked = false; box('floor').checked = false; }
   if (v === 'footings' || v === 'floor') box('foundation').checked = false;
 });
-const tb = document.getElementById('tb'), tbFields = document.getElementById('tbFields');
-tb.addEventListener('change', () => { tbFields.hidden = !tb.checked; });
+const tb = document.getElementById('tb'), tbFields = document.getElementById('tbFields'),
+      notesBox = document.querySelector('input[name=notes_sheets]');
+const showTb = () => { tbFields.hidden = !(tb.checked || notesBox.checked); };
+tb.addEventListener('change', showTb); notesBox.addEventListener('change', showTb);
+// Issue table, rows 1-7 (row 1 defaults to the rev, PRELIMINARY MARK-UP and today).
+document.getElementById('issueRows').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(i => `<tr>
+  <td><input type="text" data-tb="ISSUE REVISION - ${i}" ${i === 1 ? 'placeholder="rev"' : ''}></td>
+  <td><input type="text" data-tb="ISSUE DESCRIPTION - ${i}" ${i === 1 ? 'placeholder="PRELIMINARY MARK-UP"' : ''}></td>
+  <td><input type="text" data-tb="ISSUE DATE - ${i}" ${i === 1 ? 'placeholder="today"' : ''}></td></tr>`).join('');
+const titleFields = () => {
+  const o = {};
+  tbFields.querySelectorAll('[data-tb]').forEach(i => { if (i.value.trim()) o[i.dataset.tb] = i.value.trim(); });
+  return JSON.stringify(o);
+};
 // Document lists (drawings, geotech, standards): each "Add" appends rather than
 // replacing; every file can be removed and has its own "Pages to review".
 const mb = n => (n / 1048576).toFixed(1);
@@ -456,6 +492,7 @@ f.addEventListener('submit', async e => {
   box.style.display = 'block';
   box.innerHTML = 'Uploading…';
   try {
+    document.getElementById('titleFields').value = titleFields();
     const fd = new FormData(f);
     fd.set('combine_foundation', 'false');  // the tick boxes say exactly which sheets to make
     for (const r of archList.items) { fd.append('architectural', r.file, r.file.name); fd.append('architectural_pages', r.pages); }
