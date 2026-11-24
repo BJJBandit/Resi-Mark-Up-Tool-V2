@@ -2811,9 +2811,11 @@ def _calc_sheet(out, meta: SheetMeta, lines: list[str]) -> None:
 
 
 def build_markup_pdf(*args, arete_title_block: bool = False, **kwargs) -> tuple[bytes, list[str]]:
-    """See _build_markup_pdf. With arete_title_block every drawing sheet is laid out on the
-    office Arete A3 title block (the calculation sheet stays without one)."""
-    with _layout(arete_title_block):
+    """See _build_markup_pdf. Every drawing sheet is laid out to fit inside the office Arete A3
+    title block's drawing area, whether or not the title block itself is added (so a set can go
+    on the title block later and prints the same either way); with arete_title_block the title
+    block is drawn under each sheet (the calculation sheet stays without one)."""
+    with _layout(True):
         return _build_markup_pdf(*args, arete_title_block=arete_title_block, **kwargs)
 
 
