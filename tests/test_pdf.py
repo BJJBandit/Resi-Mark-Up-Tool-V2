@@ -215,3 +215,10 @@ def test_bracing_over_a_lintel_moves_onto_solid_wall():
     a, b = pts(s.elements[1])
     assert out and "moved" in out[0]
     assert (round(a.x), round(b.x)) == (339, 379)  # nearest side with solid wall, clear of the lintel
+
+
+def test_tall_brick_pier_drawn_at_its_350_base_and_600_pier():
+    from app.pdf import _sizes
+    assert _sizes("230x230 PIER MAX 1200 HIGH ON 350x350 PIER, MAX 2400 TOTAL, ON P2 600 DIA MASS CONCRETE "
+                  "BORED PIER") == (600.0, 350.0)
+    assert _sizes("230x230 BRICK PIER TO MAX 1500 HIGH ON P1 450 DIA BORED PIER") == (450.0, 230.0)
