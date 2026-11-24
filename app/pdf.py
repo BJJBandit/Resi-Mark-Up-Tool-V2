@@ -1861,10 +1861,85 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
     except Exception as e:  # never lose the sheet over it
         warnings.append(f"{title}: out-of-square wall not followed ({e})")
     try:
+        warnings += _bearers_off_base_walls(sheet, pts, put, title)
+    except Exception as e:
+        warnings.append(f"{title}: bearer / footing check skipped ({e})")
+    try:
         warnings += _lintel_checks(geo, sheet, pts, title)
     except Exception as e:
         warnings.append(f"{title}: lintel checks skipped ({e})")
     return warnings
+
+
+def _bearers_off_base_walls(sheet: MarkupSheet, pts, put, title: str, reach: float = 10.0) -> list[str]:
+    """A bearer (B) drawn along a perimeter strip footing / edge beam (SF / EB): the base wall
+    on that footing carries the joists there, so the bearer is redundant. Mostly along one
+    (80%+): removed. Partly along one with one clear stretch left (e.g. on past the footing
+    under an internal wall): trimmed to that stretch, ending on the footing line."""
+    foots = []
+    for e in sheet.elements:
+        if e.kind == "member" and _prefix(e.tag) in ("SF", "EB"):
+            a, b = pts(e)
+            if abs(b - a) > 1:
+                foots.append((a, b))
+    if not foots:
+        return []
+    removed, trimmed, drop = [], [], set()
+    for i, e in enumerate(sheet.elements):
+        if e.kind != "member" or not re.fullmatch(r"B\d+", e.tag.strip().upper()):
+            continue
+        a, b = pts(e)
+        L = abs(b - a)
+        if L < 4:
+            continue
+        u = (b - a) / L
+        n = pymupdf.Point(-u.y, u.x)
+        cover = []
+        for fa, fb in foots:
+            fu = (fb - fa) / abs(fb - fa)
+            if abs(u.x * fu.y - u.y * fu.x) > 0.09:  # not parallel (about 5 degrees)
+                continue
+            if max(abs((fa - a).x * n.x + (fa - a).y * n.y), abs((fb - a).x * n.x + (fb - a).y * n.y)) > reach:
+                continue
+            t0, t1 = sorted(((fa - a).x * u.x + (fa - a).y * u.y, (fb - a).x * u.x + (fb - a).y * u.y))
+            t0, t1 = max(t0, 0.0), min(t1, L)
+            if t1 > t0:
+                cover.append((t0, t1))
+        if not cover:
+            continue
+        cover.sort()
+        merged = [list(cover[0])]
+        for t0, t1 in cover[1:]:
+            if t0 <= merged[-1][1] + 2:
+                merged[-1][1] = max(merged[-1][1], t1)
+            else:
+                merged.append([t0, t1])
+        covered = sum(t1 - t0 for t0, t1 in merged)
+        if covered >= 0.8 * L:
+            drop.add(i)
+            removed.append(e.tag)
+            continue
+        gaps, last = [], 0.0  # clear stretches (stubs past a footing corner don't count)
+        for t0, t1 in merged:
+            if t0 - last > reach:
+                gaps.append((last, t0))
+            last = max(last, t1)
+        if L - last > reach:
+            gaps.append((last, L))
+        if covered >= 0.3 * L and len(gaps) == 1 and gaps[0][1] - gaps[0][0] >= 0.15 * L:
+            g0, g1 = gaps[0]
+            put(i, (a + u * g0, a + u * g1))
+            trimmed.append(e.tag)
+    if drop:
+        sheet.elements = [e for k, e in enumerate(sheet.elements) if k not in drop]
+    out = []
+    if removed:
+        out.append(f"{title}: bearer(s) {', '.join(removed)} removed - drawn along a perimeter strip footing / "
+                   "base wall, which carries the joists there")
+    if trimmed:
+        out.append(f"{title}: bearer(s) {', '.join(trimmed)} trimmed to end at the perimeter footing - the part "
+                   "along the base wall is carried by the wall")
+    return out
 
 
 _STEEL = re.compile(r"\b(UA|EA|FL|PFC|UB|UC|SHS|RHS|CHS|STEEL)\b", re.I)
