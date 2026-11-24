@@ -54,6 +54,7 @@ class JobInput:
     # paused: {"notes", "sheet_notes", "construction", "sheets"} (any subset).
     checkpoint: Callable[[str], dict | None] | None = field(default=None, repr=False)
     office_rules: str = ""  # office rules edited for this job (markdown); "" = the office defaults
+    double_ledger: bool = False  # deck ledgers doubled (2/190x45 F7 TP) - form option
     # Called with the review's result as soon as it exists (after step 2), so sheets finished
     # so far can be downloaded as a draft while the rest are still being drawn.
     on_result: Callable[["JobResult"], None] | None = field(default=None, repr=False)
@@ -112,6 +113,36 @@ def office_notes(kind: SheetKind, sheet: MarkupSheet) -> None:
     if kind in (SheetKind.FOUNDATION, SheetKind.FOOTINGS) and any(e.kind == "pier" for e in sheet.elements):
         if not any("DOME" in n.upper() and "PIER" in n.upper() for n in sheet.notes):
             sheet.notes.append(f"-{DOME_NOTE}")
+
+
+DOUBLE_LEDGER_RULE = (
+    "\n## Job option: double deck ledgers\n"
+    "- Deck ledgers on this job are DOUBLE: 'LD1: 2/190x45 F7 TP DECK LEDGER' (2/240x45 F7 TP where the deck joists "
+    "are deeper than 190), bolted through to the floor framing with M12 threaded rod at each end and max 600 centres. "
+    "This overrides the single-ledger default.\n")
+
+
+def _rules_for(job: JobInput) -> str:
+    """The office rules this job runs with: its own (edited) rules or the defaults, plus the
+    form options that change them (double deck ledgers)."""
+    if not job.double_ledger:
+        return job.office_rules
+    return (job.office_rules.strip() or claude.OFFICE_RULES) + "\n" + DOUBLE_LEDGER_RULE
+
+
+_LEDGER_SIZE = re.compile(r"(?<![/\d])(\d{2,3}\s*[xX]\s*\d{2})(?=\s+[^.]*?\bDECK\s+LEDGER)")
+
+
+def double_ledgers(sheet: MarkupSheet) -> None:
+    """Double deck ledgers (form option): every deck ledger size in the schedule and callouts
+    reads '2/...' ('190x45 F7 TP DECK LEDGER' -> '2/190x45 F7 TP DECK LEDGER')."""
+    def fix(text: str) -> str:
+        return _LEDGER_SIZE.sub(lambda m: "2/" + m.group(1), text or "")
+    for item in sheet.schedule:
+        if re.match(r"LD\d", item.tag.strip().upper()) or "LEDGER" in item.text.upper():
+            item.text = fix(item.text)
+    sheet.elements = [e.model_copy(update={"text": fix(e.text)}) if e.text and "LEDGER" in e.text.upper() else e
+                      for e in sheet.elements]
 
 
 def _as_note(note: str) -> str:
@@ -204,7 +235,7 @@ def _stored_references(docs: list[RefDoc], progress: Callable[[str], None]):
 
 def run(job: JobInput, progress: Callable[[str], None] = lambda _: None) -> JobResult:
     log = usage.start()
-    claude.set_office_rules(job.office_rules)
+    claude.set_office_rules(_rules_for(job))
     try:
         result = _run_all(job, progress, log)
     finally:
@@ -836,6 +867,8 @@ def draft_pdf(job: JobInput, result: JobResult) -> tuple[bytes, int]:
         have = {_norm(n) for n in sheet.notes}
         sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
         office_notes(kind, sheet)
+        if job.double_ledger:
+            double_ledgers(sheet)
         if job.details and kind != SheetKind.ARTICULATION:
             detail_callouts(sheet, job.details)
     consistent_tags(sheets)
@@ -868,6 +901,8 @@ def _build(job: JobInput, result: JobResult) -> None:
         have = {_norm(n) for n in sheet.notes}
         sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
         office_notes(kind, sheet)
+        if job.double_ledger:
+            double_ledgers(sheet)
         if job.details and kind != SheetKind.ARTICULATION:
             detail_callouts(sheet, job.details)
     retagged = consistent_tags(result.sheets)
@@ -933,7 +968,7 @@ def rerun_sheet(result: JobResult, kind: SheetKind, change: str = "",
     ctx = result.ctx
     assert ctx is not None
     usage.use(ctx.log)  # the re-run's calls count toward this review's usage
-    claude.set_office_rules(ctx.job.office_rules)  # the job's own rules, if edited
+    claude.set_office_rules(_rules_for(ctx.job))  # the job's own rules, if edited
     title = SHEET_TITLES[kind]
     refs = list(ctx.text_refs)
     uploaded: list = []

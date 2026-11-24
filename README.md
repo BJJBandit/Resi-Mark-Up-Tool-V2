@@ -32,6 +32,10 @@ checked before use. It is not for construction.
      - The mark-up sheets themselves carry no notes, only the plan, callouts and the
        schedule / legend. Each sheet's classification and notes go on **SHEET NOTES** pages
        (SSK-N1, ...) after the calculation sheet, headed by the sheet they belong to.
+     - *Double deck ledgers* (tick box): deck ledgers are 2/190x45 F7 TP (2/240x45 for deeper
+       deck joists), M12 threaded rod at each end and max 600 ctrs, instead of a single ledger.
+       Added to the job's office rules for Claude, and every deck ledger size in the schedules and
+       callouts is made '2/...' by the app.
    - **Pause and continue**: while a review runs, **Pause review** (next to Run review, greyed out until a review is running) stops it at the next safe point
      (after step 1, after step 2, after the first sheet, or before the PDF is built). The
      page then shows the direction, drawing notes, construction material / standard and
