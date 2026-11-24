@@ -542,7 +542,11 @@ specification just because it looks typical.
     PERPENDICULAR to that member - across the members, parallel to their supports - covering
     the full width of the area where that member repeats at its spacing, from wall to wall
     and never past a wall. Tag both the same (J1, R1 ...). Do not draw every joist or rafter.
-    Floor joists: the representative joist runs wall to wall, continuous over the bearers.
+    Floor joists: the representative joist runs wall to wall, continuous over the bearers -
+    EXCEPT wet-area joists (e.g. J3 at 350 under bathrooms, WCs, laundries, tiled areas): draw
+    their representative joist and their 'span' arrow over the wet rooms ONLY, from the wet
+    room's walls / supports, never on through kitchens, dining, offices or other dry rooms; the
+    dry part of the same bays gets the ordinary joist (J1) with its own member and arrow.
   - Trusses (by the truss manufacturer): one 'span' arrow ALONG the truss span, tagged T,
     showing the assumed truss span direction.
   - Schedule bearers, joists and rafters with their spacing: '... AT <SPACING> CTRS'.

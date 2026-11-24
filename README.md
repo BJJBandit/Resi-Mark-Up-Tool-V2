@@ -126,7 +126,9 @@ checked before use. It is not for construction.
    details - with the template's fillable form fields (named per sheet, e.g. 'CLIENT (SSK-1)'), filled: project title and job no, drawing title
    and no (SSK-x), revision, date, status PRELIMINARY, designed / drawn by (initials) and the
    first issue row, and the client (Client box on the form). The mark-up fits inside the border above the title strip. This is the only
-   title block; the calculation sheet stays without one.
+   title block; the calculation sheet stays without one. Without the tick the sheets are laid
+   out the same way (scaled to fit the title block's drawing area), just without the title block,
+   so a set prints the same and can go on the title block later.
 
    **Title block fields**: ticking **Add title block to sheets** or **Add structural notes**
    shows a box with every fillable field - client, job no, rev, made by, project title,
