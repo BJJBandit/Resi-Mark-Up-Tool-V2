@@ -103,6 +103,17 @@ def _norm(note: str) -> str:
     return re.sub(r"[^A-Z0-9]+", " ", note.upper()).strip()
 
 
+DOME_NOTE = "DOME TOP OF PIERS TO PREVENT PONDING. TYPICAL."
+
+
+def office_notes(kind: SheetKind, sheet: MarkupSheet) -> None:
+    """Standing office notes the sheet always carries (office_rules.md): footing sheets with
+    piers - 'DOME TOP OF PIERS TO PREVENT PONDING. TYPICAL.' (once, whatever Claude wrote)."""
+    if kind in (SheetKind.FOUNDATION, SheetKind.FOOTINGS) and any(e.kind == "pier" for e in sheet.elements):
+        if not any("DOME" in n.upper() and "PIER" in n.upper() for n in sheet.notes):
+            sheet.notes.append(f"-{DOME_NOTE}")
+
+
 def _as_note(note: str) -> str:
     note = note.strip().upper()  # house style: notes in capitals
     return note if note.startswith("-") else f"-{note}"
@@ -824,6 +835,7 @@ def draft_pdf(job: JobInput, result: JobResult) -> tuple[bytes, int]:
     for kind, sheet in sheets.items():
         have = {_norm(n) for n in sheet.notes}
         sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
+        office_notes(kind, sheet)
         if job.details and kind != SheetKind.ARTICULATION:
             detail_callouts(sheet, job.details)
     consistent_tags(sheets)
@@ -855,6 +867,7 @@ def _build(job: JobInput, result: JobResult) -> None:
     for kind, sheet in result.sheets.items():
         have = {_norm(n) for n in sheet.notes}
         sheet.notes += [_as_note(n) for n in job.sheet_notes if _norm(n) not in have]
+        office_notes(kind, sheet)
         if job.details and kind != SheetKind.ARTICULATION:
             detail_callouts(sheet, job.details)
     retagged = consistent_tags(result.sheets)

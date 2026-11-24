@@ -1017,3 +1017,19 @@ def test_structural_notes_sheets_fillable():
     assert notes["CLIENT"] == "J SMITH" and notes["PROJECT NUMBER"] == "J9" and notes["CHECKED BY"] == ""
     sheet = {x.field_name: x.field_value for x in doc[5].widgets()}
     assert sheet["CLIENT (SSK-1)"] == "J SMITH" and sheet["SHEET NUMBER (SSK-1)"] == "SSK-1"
+
+
+def test_dome_pier_note_on_footing_sheets_with_piers():
+    from app.pipeline import office_notes
+    s = MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1),
+                                    elements=[Element(kind="pier", tag="P1", start=Point(x=0.5, y=0.5),
+                                                      end=Point(x=0.5, y=0.5), text="")],
+                                    schedule=[], legend=[], notes=["-A NOTE."], classification="",
+                                    schedule_title="", legend_title="")
+    office_notes(K.FOUNDATION, s)
+    office_notes(K.FOUNDATION, s)  # once only
+    assert s.notes == ["-A NOTE.", "-DOME TOP OF PIERS TO PREVENT PONDING. TYPICAL."]
+    w = s.model_copy(deep=True)
+    w.notes = []
+    office_notes(K.WALLS, w)
+    assert w.notes == []
