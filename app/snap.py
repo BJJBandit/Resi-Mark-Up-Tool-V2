@@ -20,6 +20,9 @@ from dataclasses import dataclass
 import pymupdf
 
 
+SKEW_MIN_DEG, SKEW_MAX_DEG = 0.3, 10.0  # walls this far off square are followed at their angle
+
+
 @dataclass
 class Seg:
     a: float  # position along the axis (start)
@@ -34,6 +37,9 @@ class Geometry:
     def __init__(self, page: pymupdf.Page) -> None:
         self.h: list[Seg] = []  # horizontal: a..b along x at y=c
         self.v: list[Seg] = []  # vertical:   a..b along y at x=c
+        # Lines a little off square (a wall drawn out of square, e.g. a rear boundary wall at
+        # 1.3 degrees): (p, q), for skew_walls.
+        self.skew: list[tuple[pymupdf.Point, pymupdf.Point]] = []
         m = page.rotation_matrix
         for g in page.get_drawings():
             col = g.get("color")
@@ -53,6 +59,10 @@ class Geometry:
             self.h.append(Seg(min(p.x, q.x), max(p.x, q.x), (p.y + q.y) / 2))
         elif abs(p.x - q.x) < 0.3 and abs(p.y - q.y) > 0.3:
             self.v.append(Seg(min(p.y, q.y), max(p.y, q.y), (p.x + q.x) / 2))
+        elif abs(q - p) >= 15:
+            ang = abs(math.degrees(math.atan2(q.y - p.y, q.x - p.x))) % 90
+            if SKEW_MIN_DEG <= min(ang, 90 - ang) <= SKEW_MAX_DEG:
+                self.skew.append((pymupdf.Point(p), pymupdf.Point(q)))
 
     @property
     def usable(self) -> bool:
@@ -634,3 +644,56 @@ def snap_point(pt: pymupdf.Point, lines: list[Line], targets: list[pymupdf.Point
         return None
     _, h, c, a = best
     return pymupdf.Point(a, c) if h else pymupdf.Point(c, a)
+
+
+def _unit(p: pymupdf.Point, q: pymupdf.Point) -> pymupdf.Point:
+    d = q - p
+    u = d / abs(d)
+    # One direction per line: rightwards for near-horizontal, downwards for near-vertical.
+    if (abs(u.x) >= abs(u.y) and u.x < 0) or (abs(u.x) < abs(u.y) and u.y < 0):
+        u = u * -1
+    return u
+
+
+def _dot(a: pymupdf.Point, b: pymupdf.Point) -> float:
+    return a.x * b.x + a.y * b.y
+
+
+def skew_walls(geo: Geometry, max_thick: float = 15.0) -> list[tuple[pymupdf.Point, pymupdf.Point]]:
+    """Centrelines of walls drawn a little off square: two parallel off-square lines (the wall
+    faces) 1.5-15 pt apart, overlapping along; collinear pieces joined. [(a, b), ...]"""
+    if "skew_walls" in getattr(geo, "_cache", {}):
+        return geo._cache["skew_walls"]
+    lines = [(p, q, _unit(p, q)) for p, q in geo.skew]
+    pieces = []
+    for i, (p1, q1, u1) in enumerate(lines):
+        n1 = pymupdf.Point(-u1.y, u1.x)
+        for p2, q2, u2 in lines[i + 1:]:
+            if abs(u1.x * u2.y - u1.y * u2.x) > math.sin(math.radians(0.3)):
+                continue  # not parallel
+            d = _dot((p2 + q2) * 0.5 - p1, n1)
+            if not 1.5 <= abs(d) <= max_thick:
+                continue
+            s1 = sorted((_dot(p1 - p1, u1), _dot(q1 - p1, u1)))
+            s2 = sorted((_dot(p2 - p1, u1), _dot(q2 - p1, u1)))
+            lo, hi = max(s1[0], s2[0]), min(s1[1], s2[1])
+            if hi - lo < 8:
+                continue
+            off = n1 * (d / 2)
+            pieces.append((p1 + u1 * lo + off, p1 + u1 * hi + off, u1))
+    # Join collinear pieces (same line within 1.5 pt, gaps up to 15 pt - doors, windows).
+    walls: list[list] = []
+    for a, b, u in sorted(pieces, key=lambda t: (round(t[2].x, 2), _dot(t[0], t[2]))):
+        n = pymupdf.Point(-u.y, u.x)
+        for w in walls:
+            wa, wb, wu = w
+            if abs(wu.x * u.y - wu.y * u.x) < math.sin(math.radians(0.3)) and abs(_dot(a - wa, n)) < 1.5 \
+                    and _dot(a - wb, wu) < 15 and _dot(b - wa, wu) > -15:
+                pts = sorted((wa, wb, a, b), key=lambda p: _dot(p - wa, wu))
+                w[0], w[1] = pts[0], pts[-1]
+                break
+        else:
+            walls.append([a, b, u])
+    out = [(a, b) for a, b, _ in walls if abs(b - a) >= 40]
+    geo.__dict__.setdefault("_cache", {})["skew_walls"] = out
+    return out

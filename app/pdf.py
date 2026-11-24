@@ -8,6 +8,7 @@ import dataclasses
 import threading
 import datetime as dt
 import os
+import math
 import re
 from dataclasses import dataclass
 
@@ -19,6 +20,7 @@ from .elevation import cross_check, snap_joint_elevation
 from .elevation import find_openings as find_elevation_openings
 from .lintel_check import check_lintels, find_openings
 from .snap import (
+    skew_walls,
     BEAM_TAGS,
     FOOTING_TAGS,
     SPAN_TAGS,
@@ -1848,7 +1850,104 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
             r = snap_point(pts(e)[0], lines, targets)
             if r is not None:
                 put(i, (r, r))
+    try:
+        _follow_skewed_walls(geo, sheet, pts, put)
+    except Exception as e:  # never lose the sheet over it
+        warnings.append(f"{title}: out-of-square wall not followed ({e})")
     return warnings
+
+
+def _follow_skewed_walls(geo: Geometry, sheet: MarkupSheet, pts, put) -> int:
+    """Walls drawn a little off square (e.g. a rear wall at 1.3 degrees): the snapping above
+    works square, so members along such a wall end up square to the page and drift off it.
+    Members and bracing running along one are put on its centreline at its angle; joist /
+    rafter / bearer ends at it (and at members now on it) are moved onto it along their own
+    line; piers and columns beside it go onto it. Returns how many elements moved."""
+    walls = skew_walls(geo)
+    if not walls:
+        return 0
+
+    def dot(a, b):
+        return a.x * b.x + a.y * b.y
+
+    def unit(a, b):
+        return (b - a) / abs(b - a)
+
+    def foot(pt, a, b):  # pt projected onto the (infinite) line a-b
+        u = unit(a, b)
+        return a + u * dot(pt - a, u)
+
+    def parallel(u, v, deg=12.0):
+        return abs(u.x * v.y - u.y * v.x) <= math.sin(math.radians(deg))
+
+    moved = 0
+    skewed = list(walls)  # lines now off square: the walls, then members put on them
+    for i, e in enumerate(sheet.elements):
+        if e.kind not in ("member", "bracing"):
+            continue
+        a, b = pts(e)
+        L = abs(b - a)
+        if L < 4:
+            continue
+        u = unit(a, b)
+        best = None
+        for wa, wb in walls:
+            wu = unit(wa, wb)
+            if not parallel(u, wu):
+                continue
+            n = pymupdf.Point(-wu.y, wu.x)
+            d = abs(dot((a + b) * 0.5 - wa, n))
+            lo, hi = sorted((dot(a - wa, wu), dot(b - wa, wu)))
+            overlap = min(hi, abs(wb - wa)) - max(lo, 0.0)
+            # The wall must run along most of the member (short off-square bits - window
+            # symbols, fittings - never pull a long member).
+            if d <= 10 and overlap >= 0.6 * L and (best is None or d < best[0]):
+                best = (d, wa, wb)
+        if best is None:
+            continue
+        _, wa, wb = best
+        na, nb = foot(a, wa, wb), foot(b, wa, wb)
+        if abs(na - a) > 0.2 or abs(nb - b) > 0.2:
+            put(i, (na, nb))
+            moved += 1
+        skewed.append((na, nb))
+    for i, e in enumerate(sheet.elements):
+        if e.kind in ("pier", "column"):
+            p = pts(e)[0]
+            for wa, wb in skewed:
+                f = foot(p, wa, wb)
+                along = dot(f - wa, unit(wa, wb))
+                if 0.3 < abs(f - p) <= 6 and -6 <= along <= abs(wb - wa) + 6:
+                    put(i, (f, f))
+                    moved += 1
+                    break
+            continue
+        if e.kind not in ("member", "span"):
+            continue
+        a, b = pts(e)
+        if abs(b - a) < 4:
+            continue
+        u = unit(a, b)
+        ends = [a, b]
+        for k in (0, 1):
+            for wa, wb in skewed:
+                wu = unit(wa, wb)
+                if parallel(u, wu, 45):  # only members crossing / ending at the wall
+                    continue
+                n = pymupdf.Point(-wu.y, wu.x)
+                denom = dot(u, n)
+                if abs(denom) < 1e-6:
+                    continue
+                t = dot(wa - ends[k], n) / denom  # along the member to the wall line
+                x = ends[k] + u * t
+                along = dot(x - wa, wu)
+                if 0.2 < abs(t) <= 10 and -10 <= along <= abs(wb - wa) + 10:
+                    ends[k] = x
+                    break
+        if ends[0] != a or ends[1] != b:
+            put(i, (ends[0], ends[1]))
+            moved += 1
+    return moved
 
 
 _CTRS = re.compile(r"(\d{3,4})\s*(?:MM\s*)?(?:MAX\.?\s*)?(?:CTRS|CENTRES|CENTERS|CRS|C/C)\b", re.I)
