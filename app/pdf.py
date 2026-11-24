@@ -796,9 +796,10 @@ PIER_DEFAULT_MM = 450.0
 def _sizes(text: str) -> tuple[float | None, float | None]:
     """(bored pier diameter mm, square / post side mm) found in a schedule or note."""
     d = _DIA.search(text or "")
-    sq = _SQUARE.search(text or "")
+    # The largest square named: a 230x230 pier on a 350x350 pier is drawn at its 350 base.
+    sqs = [max(int(m.group(1)), int(m.group(2))) for m in _SQUARE.finditer(text or "")]
     shs = _SHS.search(text or "")  # '89x3.5 SHS': size x wall thickness
-    side = float(max(sq.group(1), sq.group(2), key=int)) if sq else (float(shs.group(1)) if shs else None)
+    side = float(max(sqs)) if sqs else (float(shs.group(1)) if shs else None)
     return (float(d.group(1)) if d else None), side
 
 
