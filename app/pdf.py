@@ -282,7 +282,7 @@ TAG_COLOURS = {
     "VB": VB_GREEN, "LD": LIGHT_BLUE, "DS": RED, "LP": ORANGE,
     "EB": RED, "SF": RED, "IB": RED, "TH": RED, "PAD": RED, "P": RED, "F": RED,
     "B": BLUE, "L": BLUE, "J": GREEN, "R": MAGENTA, "C": RED, "S": RED, "T": RED,
-    "UP": MAGENTA, "RB": MAGENTA, "HB": MAGENTA, "CJ": RED, "AJ": RED,
+    "UP": MAGENTA, "RB": MAGENTA, "HB": MAGENTA, "CJ": RED, "AJ": RED, "ST": BLUE,
 }
 FOOTING_PREFIXES = {"EB", "SF", "IB", "TH", "PAD", "F"}
 
@@ -2568,6 +2568,7 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         warnings += office_checks.schedule_practice(sheet, SHEET_TITLES[kind])
         warnings += office_checks.footing_practice(sheet, SHEET_TITLES[kind])
         warnings += office_checks.external_slabs(sheet, SHEET_TITLES[kind])
+        warnings += office_checks.stringers(sheet, SHEET_TITLES[kind])
     except Exception:
         pass
     if kind == SheetKind.WALLS:

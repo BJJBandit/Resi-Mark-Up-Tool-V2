@@ -531,7 +531,7 @@ specification just because it looks typical.
 - Tags: B = bearer, J = joist, LD = deck ledger, L = lintel / ledger, VB = verandah beam,
   R = rafter, RB = ridge beam, UP = underpurlin, C = column, DS = double stud,
   EB = edge beam, IB = internal beam, SF = strip footing, P = pier / pad,
-  CJ / AJ = control / articulation joint, LP = load path step. Number them B1, B2 ...
+  CJ / AJ = control / articulation joint, LP = load path step, ST = stringer (ramp / walkway / stair). Number them B1, B2 ...
 - Lay members out to scale using the page's drawing scale (given with each page): spacing and
   lengths on the plan should match the real ones.
   - Bearers: draw EVERY bearer line, parallel, at its scheduled spacing across the whole floor
@@ -628,7 +628,9 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
         f"gives as {BEAM_WIDTH_FROM_MM} wide are {BEAM_WIDTH_TO_MM} wide. "
         "FLOOR on the same plan: suspended floors - bearers B as 'member' (on or beside the "
         "footing / pier lines that carry them), joists J as 'span' arrows (plus a 'member' on a "
-        "representative joist), deck ledgers LD, deck bearers and joists, columns C; slab on "
+        "representative joist), deck ledgers LD, deck bearers and joists, ramp / walkway / stair "
+        "stringers ST (sloping, one each side of every ramp, sloping walkway and flight, on their own piers - the "
+        "ramp joists span across between them), columns C; slab on "
         "ground - draw the slab as ONE 'member' tagged S1 running diagonally from one corner of the slab to the opposite corner (no cloud), thickenings / set-downs / wet areas. "
         "Callouts give each footing's size and reinforcement and the slab thickness, "
         "reinforcement and concrete (or floor framing fixings) as determined for this job. "
@@ -658,7 +660,8 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
     SheetKind.FLOOR: (
         "FLOOR FRAMING PLAN. Suspended floors: bearers B as 'member', joists J as 'span' "
         "arrows (plus a 'member' on a representative joist), deck ledgers LD, deck bearers and "
-        "joists, columns C, piers under bearers. Slab on ground: the slab as ONE 'member' tagged S1 "
+        "joists, ramp / walkway / stair stringers ST (sloping, one each side of every ramp, sloping walkway and "
+        "flight, on their own piers - the ramp joists span across between them), columns C, piers under bearers. Slab on ground: the slab as ONE 'member' tagged S1 "
         "running diagonally corner to corner of the slab (no cloud), "
         "thickenings / set-downs / wet areas with callouts giving this job's slab thickness, "
         "reinforcement and concrete as determined. Schedule = 'FLOOR FRAMING SCHEDULE:' "

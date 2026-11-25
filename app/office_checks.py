@@ -164,3 +164,25 @@ def external_slabs(sheet: MarkupSheet, title: str) -> list[str]:
         return []
     return [f"{title}: external slab drawn or scheduled with an edge beam / footing ({', '.join(flagged)}) - "
             "office practice is a separate slab isolated from the building with a 10 Abelflex expansion joint; confirm"]
+
+
+_SLOPED = re.compile(r"\b(RAMPS?|WALKWAYS?|STAIRS?|STAIRCASE|STEPS)\b", re.I)
+
+
+def stringers(sheet: MarkupSheet, title: str) -> list[str]:
+    """A footing / floor sheet that frames a ramp, sloping walkway or stair (named in its
+    schedule, callouts or notes) but draws no stringer (ST / 'STRINGER') - office practice is
+    a sloping stringer each side on its own piers (office_rules.md)."""
+    if "FOOT" not in title.upper() and "FLOOR" not in title.upper():
+        return []
+    texts = [s.text for s in sheet.schedule] + [e.text for e in sheet.elements if e.kind == "callout"] + list(sheet.notes)
+    named = sorted({m.group(1).upper().rstrip("S") for t in texts for m in [_SLOPED.search(t or "")] if m})
+    if not named:
+        return []
+    has = any(_prefix(e.tag) == "ST" for e in sheet.elements if e.kind == "member") or any(
+        _prefix(s.tag) == "ST" or "STRINGER" in s.text.upper() for s in sheet.schedule)
+    if has:
+        return []
+    return [f"{title}: {' / '.join(n.lower() for n in named)} framed with no stringers - a ramp / sloping walkway / "
+            "stair needs a sloping stringer (ST) each side on its own piers, the joists spanning across between "
+            "them; it can't be ledgered to the level floor"]
