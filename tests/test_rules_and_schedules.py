@@ -1070,3 +1070,27 @@ def test_ramp_without_stringers_is_named():
     assert office_checks.stringers(s, "WALL FRAMING PLAN") == []
     s.schedule.append(ScheduleItem(tag="ST1", text="2/190x45 F7 TP RAMP / WALKWAY STRINGER"))
     assert office_checks.stringers(s, "FOOTING & FLOOR PLAN") == []
+
+
+def test_ticked_title_block_and_notes_are_checked_in_the_pdf():
+    from app import pipeline
+    src = pymupdf.open()
+    src.new_page(width=1190.55, height=841.89)
+    s = MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1), elements=[],
+                                    schedule=[], legend=[], notes=["-A."], classification="", schedule_title="",
+                                    legend_title="")
+    job = pipeline.JobInput.__new__(pipeline.JobInput)
+    for k, v in dict(arch_pdf=src.tobytes(), project="1 TEST ST", sheet_notes=[], details=[], job_no="J", rev="A",
+                     made_by="DM", calc_sheet=False, arete_title_block=True, client="", notes_sheets=True,
+                     title_fields={}, double_ledger=False, previous_markup=None, office_rules="").items():
+        setattr(job, k, v)
+    r = pipeline.JobResult.__new__(pipeline.JobResult)
+    r.planned, r.geotech, r.design, r.references = {K.WALLS: s}, None, None, []
+    r.compose_warnings = lambda: None
+    pipeline._build(job, r)
+    assert not any("ticked" in w for w in r.build_warnings)
+    assert pipeline.options_used(job) == ["title block", "structural notes"]
+    from app import pdf as P
+    plain = P.build_markup_pdf(src.tobytes(), "1 TEST ST", None, None, {K.WALLS: s}, calc_sheet=False)[0]
+    missing = pipeline._check_options(job, plain)
+    assert len(missing) == 2 and "Title block" in missing[0]

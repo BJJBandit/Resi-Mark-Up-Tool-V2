@@ -55,6 +55,7 @@ class JobInput:
     checkpoint: Callable[[str], dict | None] | None = field(default=None, repr=False)
     office_rules: str = ""  # office rules edited for this job (markdown); "" = the office defaults
     double_ledger: bool = False  # deck ledgers doubled (2/190x45 F7 TP) - form option
+    previous_markup: bytes | None = None  # an earlier mark-up of this job (flattened PDF) - the starting point
     # Called with the review's result as soon as it exists (after step 2), so sheets finished
     # so far can be downloaded as a draft while the rest are still being drawn.
     on_result: Callable[["JobResult"], None] | None = field(default=None, repr=False)
@@ -257,6 +258,62 @@ def _report_usage(log: usage.UsageLog, what: str) -> dict:
     return s
 
 
+PREVIOUS_TITLE = "PREVIOUS MARK-UP OF THIS JOB (an earlier run - not a standard)"
+PREVIOUS_DIRECTION = (
+    "A PREVIOUS MARK-UP of this job is supplied (the document titled 'PREVIOUS MARK-UP OF THIS JOB'). Use it as "
+    "the starting point: keep its member layout, tags, sizes and callouts where they are right, and correct "
+    "anything that conflicts with the drawings, the geotechnical report, the office rules or this direction "
+    "(this direction wins). Do not copy its errors, and do not treat it as a standard.")
+
+
+def flatten_markup(pdf: bytes, max_pages: int = 20) -> bytes:
+    """A previous mark-up as Claude should see it: annotations and form fields baked into the
+    page content (so every mark-up shows), at most max_pages pages."""
+    doc = pymupdf.open(stream=pdf, filetype="pdf")
+    if doc.page_count > max_pages:
+        doc.select(list(range(max_pages)))
+    try:
+        doc.bake(annots=True, widgets=True)
+    except Exception:
+        pass
+    return doc.tobytes(garbage=3, deflate=True)
+
+
+def options_used(job: JobInput) -> list[str]:
+    """The form options a review runs with, as shown on its status card."""
+    out = []
+    if job.arete_title_block:
+        out.append("title block")
+    if job.notes_sheets:
+        out.append("structural notes")
+    if job.calc_sheet:
+        out.append("calculation sheet")
+    if job.details:
+        out.append(f"details ({len(job.details)})")
+    if job.double_ledger:
+        out.append("double deck ledgers")
+    if job.previous_markup:
+        out.append("previous mark-up")
+    if job.office_rules.strip():
+        out.append("office rules edited")
+    return out
+
+
+def _check_options(job: JobInput, pdf: bytes) -> list[str]:
+    """What was asked for on the form but is not in the PDF (never silent)."""
+    out = []
+    try:
+        doc = pymupdf.open(stream=pdf, filetype="pdf")
+        names = [w.field_name or "" for p in doc for w in p.widgets()]
+    except Exception:
+        return out
+    if job.arete_title_block and not any(re.search(r"\(SSK-\d+\)$", n) for n in names):
+        out.append("Title block was ticked but is not on the sheets - run the review again and tell the developer")
+    if job.notes_sheets and not any(re.search(r"\(\d\)$", n) or n in ("ISSUE DATE - 1", "ADDRESS") for n in names):
+        out.append("Structural notes were ticked but are not in the set - run the review again and tell the developer")
+    return out
+
+
 def _run_all(job: JobInput, progress: Callable[[str], None], log: usage.UsageLog) -> JobResult:
     progress("Rendering architectural drawings")
     pages = render_pages(job.arch_pdf, job.pages or None)
@@ -279,6 +336,12 @@ def _run_all(job: JobInput, progress: Callable[[str], None], log: usage.UsageLog
             refs, files, more = _stored_references(job.references, progress)
             ref_warnings += more
     text_refs = list(refs)
+    if job.previous_markup:
+        # An earlier mark-up of this job: sent with the references (uploaded once, kept for sheet
+        # re-runs) and named in the direction as the starting point.
+        files = list(files) + [(PREVIOUS_TITLE + ".pdf", job.previous_markup)]
+        if PREVIOUS_DIRECTION not in job.notes:
+            job.notes = (job.notes + "\n\n" + PREVIOUS_DIRECTION).strip()
     if files:
         progress(f"Uploading {len(files)} reference document(s)")
         refs += claude.upload_references(files)
@@ -923,7 +986,7 @@ def _build(job: JobInput, result: JobResult) -> None:
         notes_sheets=job.notes_sheets,
         title_fields=job.title_fields,
     )
-    result.build_warnings = retagged + result.build_warnings
+    result.build_warnings = retagged + result.build_warnings + _check_options(job, result.pdf)
     result.compose_warnings()
 
 

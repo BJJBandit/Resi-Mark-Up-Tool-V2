@@ -197,6 +197,9 @@
     <label>Architectural drawings (PDF) * <small>one or more sets (e.g. plans, elevations, revised sheets) &middot; up to 60 pages in total</small></label>
     <div class="drop" id="archDrop"></div>
 
+    <label>Previous mark-up (PDF) <small>optional &middot; an earlier mark-up of this job (from this tool or the engineers) - used as the starting point: what's right is kept, what conflicts with the drawings, report, office rules or your direction is fixed</small></label>
+    <input type="file" name="previous_markup" accept="application/pdf">
+
     <label>Geotechnical documents (PDF) <small>optional &middot; report, addenda, borehole logs &middot; up to 22 MB in total</small></label>
     <div class="drop" id="geoDrop"></div>
 
@@ -946,6 +949,7 @@ async function poll(id) {
     <h3 style="margin-top:0">Review complete${j.project ? ` - ${esc(j.project)}` : ''}</h3>
     ${j.saved ? '<p class="muted">Opened from the saved reviews: view and download only. To change a sheet, run the review again.</p>' : ''}
     <ul>
+      <li>Options: ${(j.options || []).length ? esc(j.options.join(', ')) : 'none'}</li>
       <li>Standards / guides: ${(j.reference_pages || []).length ? '' : 'none'}
         <ul>${(j.reference_pages || []).map(r => `<li><b>${esc(r.document)}</b>: ${r.pages_sent ? `pages ${esc(r.pages)} of ${r.page_count}` : `<span class="err">not used</span>`} (${r.pages_sent} pages; ${esc(r.how)}${r.store ? `; ${esc(r.store)}` : ''})${(r.sections || []).length ? `<ul>${r.sections.map(x => `<li>${esc(x.title)} - p ${esc(x.pages)} <span class="muted">(${esc(x.why)})</span></li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>
       </li>

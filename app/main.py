@@ -69,6 +69,7 @@ class Job:
     partial: pipeline.JobResult | None = None  # the running review's result (sheets so far), for drafts
     inp: object = None
     answers: list[dict] | None = None
+    options: list[str] = field(default_factory=list)  # the form options this review ran with
     answered: threading.Event = field(default_factory=threading.Event)
 
 
@@ -152,6 +153,8 @@ def _worker(job_id: str, inp: pipeline.JobInput) -> None:
     inp.checkpoint = checkpoint
     inp.on_result = on_result
     job.inp = inp
+    job.options = pipeline.options_used(inp)
+    print(f"[job] {job_id} options: {', '.join(job.options) or 'none'}", flush=True)
     try:
         job.result = pipeline.run(inp, progress)
         job.status = "done"
@@ -449,6 +452,17 @@ def delete_stored_reference(key: str) -> dict:
         raise HTTPException(404, "No stored extract for that document.")
 
 
+async def _previous(f: UploadFile | None) -> bytes | None:
+    """The previous mark-up uploaded with a run, flattened (annotations baked in) for Claude."""
+    data = await _read(f, "Previous mark-up", MAX_REF_UPLOAD)
+    if data is None:
+        return None
+    try:
+        return pipeline.flatten_markup(data)
+    except Exception:
+        raise HTTPException(400, "The previous mark-up could not be opened as a PDF.")
+
+
 def _title_fields(raw: str) -> dict[str, str]:
     """The title block / structural notes fields typed in the form (known names only, capitals)."""
     from .pdf import TB_FIELDS
@@ -467,6 +481,7 @@ async def create_job(
     architectural_pages: list[str] = Form([]),
     geotech: list[UploadFile] = File([]),
     geotech_pages: list[str] = Form([]),
+    previous_markup: UploadFile | None = File(None),  # an earlier mark-up of this job (PDF), optional
     project: str = Form(""),
     wind_class: str = Form(""),
     site_class: str = Form(""),
@@ -630,6 +645,7 @@ async def create_job(
         notes_sheets=notes_sheets,
         title_fields=_title_fields(title_fields),
         double_ledger=double_ledger,
+        previous_markup=await _previous(previous_markup),
     )
     job_id = uuid.uuid4().hex
     _evict_old_jobs()
@@ -658,6 +674,7 @@ def _status_body(job: Job) -> dict:
     if job.status == "waiting":
         body["questions"] = job.questions
         body["wait_minutes"] = INFO_WAIT_MINUTES
+    body["options"] = job.options
     if job.result:
         body["references"] = job.result.references
         body["reference_pages"] = job.result.reference_pages

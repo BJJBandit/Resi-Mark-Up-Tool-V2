@@ -222,3 +222,24 @@ def test_tall_brick_pier_drawn_at_its_350_base_and_600_pier():
     assert _sizes("230x230 PIER MAX 1200 HIGH ON 350x350 PIER, MAX 2400 TOTAL, ON P2 600 DIA MASS CONCRETE "
                   "BORED PIER") == (600.0, 350.0)
     assert _sizes("230x230 BRICK PIER TO MAX 1500 HIGH ON P1 450 DIA BORED PIER") == (450.0, 230.0)
+
+
+def test_strip_footing_on_an_existing_wall_is_removed():
+    import pymupdf
+    from app import pdf as P
+    pg = pymupdf.open().new_page(width=1190, height=842)
+    pg.draw_rect(pymupdf.Rect(664, 178, 670, 525), color=None, fill=(0.7, 0.7, 0.7))  # existing wall, grey fill
+    sf = [(277, 192, 667, 183), (667, 183, 667, 418), (391, 481, 667, 481), (391, 192, 391, 481)]
+    els = [_el("member", "SF1", *c) for c in sf] + [_el("pier", "EP1", 667, 300), _el("pier", "EP1", 500, 481)]
+    s = _sheet(els, [("BP1", "230x230 BRICK PIER ON P1")])
+    pts = lambda e: (pymupdf.Point(e.start.x * 1190, e.start.y * 842), pymupdf.Point(e.end.x * 1190, e.end.y * 842))
+    out = P._footings_off_existing_walls(pg, s, pts, "FOOTINGS")
+    assert len([e for e in s.elements if e.tag == "SF1"]) == 3
+    assert sorted(e.tag for e in s.elements if e.kind == "pier") == ["BP1", "EP1"]
+    assert out and "existing wall" in out[0]
+    # Every wall filled grey (new ones too): nothing is removed.
+    for x in (277, 391):
+        pg.draw_rect(pymupdf.Rect(x - 3, 180, x + 3, 485), color=None, fill=(0.7, 0.7, 0.7))
+    pg.draw_rect(pymupdf.Rect(270, 478, 670, 484), color=None, fill=(0.7, 0.7, 0.7))
+    s2 = _sheet([_el("member", "SF1", *c) for c in sf])
+    assert P._footings_off_existing_walls(pg, s2, pts, "FOOTINGS") == [] and len(s2.elements) == 4
