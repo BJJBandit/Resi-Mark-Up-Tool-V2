@@ -816,7 +816,7 @@ def consistent_tags(sheets: dict[SheetKind, MarkupSheet]) -> list[str]:
 _DETAIL_WORDS = [
     (r"ENGAGED\s+PIER", ("EP",)), (r"BRICK\s+PIER|ISOLATED\s+PIER", ("BP",)),
     (r"BORED\s+PIER|\bPIER\b", ("P",)), (r"STRIP\s+FOOTING", ("SF",)), (r"EDGE\s+BEAM", ("EB",)),
-    (r"INTERNAL\s+BEAM", ("IB",)), (r"\bSLAB\b", ("S",)), (r"LINTEL", ("L", "SL")), (r"DECK\s+BEARER", ("DB",)),
+    (r"INTERNAL\s+BEAM", ("IB",)), (r"\bSLAB\b", ("S",)), (r"LINTEL", ("L", "SL")), (r"DECK\s+BEARER", ("DB",)), (r"STRINGER", ("ST",)),
     (r"BEARER", ("B",)), (r"LEDGER", ("LD",)), (r"JOIST", ("J",)), (r"RAFTER", ("R",)),
     (r"VERANDAH\s+BEAM|ROOF\s+BEAM", ("VB", "RB")), (r"COLUMN|\bPOST\b", ("C",)), (r"DOUBLE\s+STUD", ("DS",)),
 ]

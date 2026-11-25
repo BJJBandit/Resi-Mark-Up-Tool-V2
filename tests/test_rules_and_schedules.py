@@ -1055,3 +1055,18 @@ def test_double_deck_ledger_option():
     assert "DOUBLE" in _rules_for(job) and claude.OFFICE_RULES.strip()[:40] in _rules_for(job)
     job.double_ledger = False
     assert _rules_for(job) == ""
+
+
+def test_ramp_without_stringers_is_named():
+    from app import office_checks
+    s = MarkupSheet.model_construct(
+        source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1),
+        elements=[Element(kind="callout", tag="", start=Point(x=0.1, y=0.1), end=Point(x=0.2, y=0.2),
+                          text="RAMP J2 SPAN FROM LD1 TO OUTER DB1 ON BP1 PIERS.")],
+        schedule=[ScheduleItem(tag="J2", text="140x45 F7 TP DECK JOIST AT 400 CTRS")],
+        legend=[], notes=[], classification="", schedule_title="", legend_title="")
+    out = office_checks.stringers(s, "FOOTING & FLOOR PLAN")
+    assert out and "ramp" in out[0] and "stringer" in out[0]
+    assert office_checks.stringers(s, "WALL FRAMING PLAN") == []
+    s.schedule.append(ScheduleItem(tag="ST1", text="2/190x45 F7 TP RAMP / WALKWAY STRINGER"))
+    assert office_checks.stringers(s, "FOOTING & FLOOR PLAN") == []
