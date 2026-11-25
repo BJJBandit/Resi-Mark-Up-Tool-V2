@@ -417,3 +417,39 @@ def test_answers_can_tick_stored_standards(client, monkeypatch, tmp_path):
     r = client.post("/jobs/w2/answers", data={"answer_0": "yes", "stored_0": "f" * 64, "answer_1": "no", "answer_2": "ignore"})
     assert r.status_code == 400 and "no longer stored" in r.json()["detail"]
     main.JOBS.pop("w2")
+
+
+def test_previous_markup_is_flattened_and_sent(monkeypatch):
+    from app import pipeline
+    doc = pymupdf.open()
+    page = doc.new_page()
+    a = page.add_freetext_annot(pymupdf.Rect(50, 50, 300, 80), "SF1 450W X 450 DEEP", fontsize=10)
+    a.update()
+    flat = pymupdf.open(stream=pipeline.flatten_markup(doc.tobytes()))
+    assert not list(flat[0].annots()) and "SF1 450W" in flat[0].get_text()
+
+
+def test_create_job_takes_a_previous_markup(client, monkeypatch):
+    import time
+    import app.main as main
+    seen = {}
+    monkeypatch.setattr(main, "_worker", lambda job_id, inp: seen.setdefault("inp", inp))
+    arch = pymupdf.open()
+    arch.new_page()
+    prev = pymupdf.open()
+    p = prev.new_page()
+    a = p.add_freetext_annot(pymupdf.Rect(50, 50, 300, 80), "B1 2/240x45 F7 TP", fontsize=10)
+    a.update()
+    r = client.post("/jobs", data={"sheets": ["walls"], "arete_title_block": "true", "notes_sheets": "true"},
+                    files=[("architectural", ("arch.pdf", arch.tobytes(), "application/pdf")),
+                           ("previous_markup", ("markup_47.pdf", prev.tobytes(), "application/pdf"))])
+    assert r.status_code == 200, r.text
+    for _ in range(50):
+        if "inp" in seen:
+            break
+        time.sleep(0.02)
+    inp = seen["inp"]
+    assert inp.arete_title_block and inp.notes_sheets
+    flat = pymupdf.open(stream=inp.previous_markup)
+    assert not list(flat[0].annots()) and "B1 2/240x45" in flat[0].get_text()
+    main.JOBS.pop(r.json()["id"], None)

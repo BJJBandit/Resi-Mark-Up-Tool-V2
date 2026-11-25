@@ -32,6 +32,10 @@ checked before use. It is not for construction.
      - The mark-up sheets themselves carry no notes, only the plan, callouts and the
        schedule / legend. Each sheet's classification and notes go on **SHEET NOTES** pages
        (SSK-N1, ...) after the calculation sheet, headed by the sheet they belong to.
+     - *Previous mark-up* (optional PDF): an earlier mark-up of this job, from this tool or the
+       engineers. Its mark-ups are flattened into the pages and it goes to Claude with the
+       references as the starting point: what's right is kept, anything that conflicts with the
+       drawings, geotech report, office rules or the direction is fixed.
      - *Double deck ledgers* (tick box): deck ledgers are 2/190x45 F7 TP (2/240x45 for deeper
        deck joists), M12 threaded rod at each end and max 600 ctrs, instead of a single ledger.
        Added to the job's office rules for Claude, and every deck ledger size in the schedules and

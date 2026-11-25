@@ -1869,6 +1869,10 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
     except Exception as e:  # never lose the sheet over it
         warnings.append(f"{title}: out-of-square wall not followed ({e})")
     try:
+        warnings += _footings_off_existing_walls(src_page, sheet, pts, title)
+    except Exception as e:
+        warnings.append(f"{title}: existing wall check skipped ({e})")
+    try:
         warnings += _bearers_off_base_walls(sheet, pts, put, title)
     except Exception as e:
         warnings.append(f"{title}: bearer / footing check skipped ({e})")
@@ -1946,6 +1950,70 @@ def _wet_joist_tags(sheet: MarkupSheet) -> set[str]:
     AREAS'), or at closer centres than the sheet's other joists while naming a wet room."""
     spec = {s.tag.strip().upper(): s.text for s in sheet.schedule if _prefix(s.tag) == "J"}
     return {t for t, text in spec.items() if _WET.search(text)} if len(spec) > 1 else set()
+
+
+def _existing_wall_fills(page: pymupdf.Page) -> list[pymupdf.Rect]:
+    """Existing walls as architects usually draw them: neutral mid-grey filled wall pieces
+    (thin filled shapes), in displayed page coordinates."""
+    m = page.rotation_matrix
+    out = []
+    for g in page.get_drawings():
+        f = g.get("fill")
+        if not f or max(f) - min(f) > 0.08 or not 0.5 <= sum(f) / 3 <= 0.9:
+            continue
+        r = g["rect"] * m
+        if min(r.width, r.height) <= 20 and max(r.width, r.height) >= 2:
+            out.append(r)
+    return out
+
+
+def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, title: str) -> list[str]:
+    """A new strip footing / edge beam drawn under or along an existing (grey-filled) wall: it
+    can't go there - removed, the engaged piers on it become isolated piers (the sheet's BP / P
+    tag), and the new floor edge along it is named for a bearer on its own piers clear of the
+    existing footings. Skipped where most of the footings sit on grey fill (the architect fills
+    every wall grey, new ones too)."""
+    foots = [i for i, e in enumerate(sheet.elements) if e.kind == "member" and _prefix(e.tag) in ("SF", "EB")]
+    if not foots:
+        return []
+    fills = _existing_wall_fills(page)
+    if not fills:
+        return []
+    grown = [pymupdf.Rect(r.x0 - 1.5, r.y0 - 1.5, r.x1 + 1.5, r.y1 + 1.5) for r in fills]
+
+    def on_fill(i: int) -> float:
+        a, b = pts(sheet.elements[i])
+        L = abs(b - a)
+        n = max(2, int(L / 2))
+        hits = sum(any(r.contains(a + (b - a) * (k / n)) for r in grown) for k in range(n + 1))
+        return hits / (n + 1)
+
+    share = {i: on_fill(i) for i in foots}
+    existing = [i for i in foots if share[i] >= 0.6]
+    if not existing or len(existing) > len(foots) / 2:
+        return []
+    lines = [pts(sheet.elements[i]) for i in existing]
+    tags = sorted({sheet.elements[i].tag for i in existing})
+    sched = [s.tag.strip().upper() for s in sheet.schedule]
+    pier_tag = next((t for t in sched if _prefix(t) == "BP"), None) or next((t for t in sched if _prefix(t) == "P"), "P1")
+    moved = 0
+    for k, e in enumerate(sheet.elements):
+        if e.kind == "pier" and _prefix(e.tag) == "EP":
+            p = pts(e)[0]
+            for a, b in lines:
+                u = (b - a) / max(abs(b - a), 1e-6)
+                t = (p - a).x * u.x + (p - a).y * u.y
+                if -6 <= t <= abs(b - a) + 6 and abs(p - (a + u * t)) <= 6:
+                    sheet.elements[k] = e.model_copy(update={"tag": pier_tag})
+                    moved += 1
+                    break
+    sheet.elements = [e for k, e in enumerate(sheet.elements) if k not in set(existing)]
+    out = [f"{title}: {', '.join(tags)} drawn under / along an existing wall removed - a new strip footing can't run "
+           "under the existing wall. Carry the new floor edge there on its own bearer on piers clear of the existing "
+           "footings (min 600) - check"]
+    if moved:
+        out.append(f"{title}: {moved} engaged pier(s) on that line changed to {pier_tag} (no base wall there)")
+    return out
 
 
 def _bearers_off_base_walls(sheet: MarkupSheet, pts, put, title: str, reach: float = 10.0) -> list[str]:
