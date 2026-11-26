@@ -1972,96 +1972,145 @@ def _existing_wall_fills(page: pymupdf.Page) -> list[pymupdf.Rect]:
 
 
 def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, title: str, put=None) -> list[str]:
-    """A new strip footing / edge beam drawn under an existing (grey-filled) wall: it can't go
-    under it, so it is moved sideways onto the new side to run PARALLEL beside the existing
-    wall (its face at the wall's face), with the ends of the footings meeting it and the
-    engaged piers on it moved too. Skipped where most of the footings sit on grey fill (the
-    architect fills every wall grey, new ones too)."""
+    """A new strip footing / edge beam along an existing (grey-filled) wall belongs right beside
+    it: PARALLEL to the existing wall on the new side, its face at the existing wall's face -
+    never under it (markup 48) and not set back from it (markup 53). A footing drawn under or
+    within about 1.5 m of an existing wall running along it is moved there; where the existing
+    wall steps out (a chimney breast) the footing steps round it. The footings meeting it and
+    its engaged piers follow. Skipped where most footings qualify (every wall drawn grey)."""
     foots = [i for i, e in enumerate(sheet.elements) if e.kind == "member" and _prefix(e.tag) in ("SF", "EB")]
-    if not foots:
+    if len(foots) < 2:
         return []
     fills = _existing_wall_fills(page)
     if not fills:
         return []
-    grown = [pymupdf.Rect(r.x0 - 1.5, r.y0 - 1.5, r.x1 + 1.5, r.y1 + 1.5) for r in fills]
-
-    def on_fill(i: int) -> float:
-        a, b = pts(sheet.elements[i])
-        n = max(2, int(abs(b - a) / 2))
-        return sum(any(r.contains(a + (b - a) * (k / n)) for r in grown) for k in range(n + 1)) / (n + 1)
-
-    existing = [i for i in foots if on_fill(i) >= 0.6]
-    if not existing or len(existing) > len(foots) / 2:
-        return []
-    others = [pts(sheet.elements[i]) for i in foots if i not in existing]
-    if not others:
-        return []
-    cx = sum(p.x + q.x for p, q in others) / (2 * len(others))
-    cy = sum(p.y + q.y for p, q in others) / (2 * len(others))
     try:
         scale = drawing_scale(page)[0]
     except Exception:
         scale = None
+    D = mm_to_pt(1500, scale) if scale else 45.0  # how far out an existing wall is looked for
     spec = {s_.tag.strip().upper(): s_.text for s_ in sheet.schedule}
-    moved_tags, shifts = [], []
-    for i in existing:
+    allp = [pts(sheet.elements[i]) for i in foots]
+    cx = sum(p.x + q.x for p, q in allp) / (2 * len(allp))
+    cy = sum(p.y + q.y for p, q in allp) / (2 * len(allp))
+
+    plans = {}  # footing index -> (a, u, n, [(t0, t1, offset)])
+    for i in foots:
         e = sheet.elements[i]
         a, b = pts(e)
         L = abs(b - a)
-        if L < 2:
-            continue
+        if L < 40:
+            continue  # short jogs / steps follow the long runs they join
         u = (b - a) / L
         n = pymupdf.Point(-u.y, u.x)
         mid = (a + b) * 0.5
         if (cx - mid.x) * n.x + (cy - mid.y) * n.y < 0:
             n = n * -1  # towards the new work
-        # How far the existing wall reaches towards the new side, along this footing.
-        reach = 0.0
+        boxes = []  # (along lo, along hi, face across) of the existing wall pieces beside / under it
         for r in fills:
-            corners = [r.tl, r.tr, r.bl, r.br]
-            along = [(c - a).x * u.x + (c - a).y * u.y for c in corners]
-            if max(along) < -2 or min(along) > L + 2:
-                continue
-            across = [(c - a).x * n.x + (c - a).y * n.y for c in corners]
-            if min(across) <= 1.0 and max(across) >= -1.0:  # this fill is the wall under the line
-                reach = max(reach, max(across))
-        m_ = _WIDTH.search(f"{e.text} {spec.get(e.tag.strip().upper(), '')}")
-        width_mm = float(m_.group(1)) if m_ else 450.0
-        half = mm_to_pt(width_mm / 2, scale) if scale else 6.0
-        d = reach + half
-        if d <= 0.5:
+            cs = [r.tl, r.tr, r.bl, r.br]
+            al = [(c - a).x * u.x + (c - a).y * u.y for c in cs]
+            ac = [(c - a).x * n.x + (c - a).y * n.y for c in cs]
+            if max(al) < 0 or min(al) > L or max(ac) < -D or min(ac) > 1.0:
+                continue  # off its length, too far out, or on the new side
+            boxes.append((min(al), max(al), max(ac)))
+        if not boxes:
             continue
-        na, nb = a + n * d, b + n * d
-        shifts.append((a, b, na, nb, n * d))
-        sheet.elements[i] = e.model_copy(update={"start": Point(x=na.x / page.rect.width, y=na.y / page.rect.height),
-                                                 "end": Point(x=nb.x / page.rect.width, y=nb.y / page.rect.height)})
-        moved_tags.append(e.tag)
-    if not shifts:
+        step = 2.0
+        ts = [min(L, k * step) for k in range(int(L / step) + 2)]
+        face = [max((f for lo, hi, f in boxes if lo - 0.5 <= t <= hi + 0.5), default=None) for t in ts]
+        covered = sum(f is not None for f in face) / len(face)
+        if covered < 0.6:
+            continue  # not running along an existing wall
+        for k in range(len(face)):  # openings in the existing wall: carry the face across
+            if face[k] is None:
+                near = [face[j] for j in range(len(face)) if face[j] is not None]
+                left = next((face[j] for j in range(k, -1, -1) if face[j] is not None), None)
+                right = next((face[j] for j in range(k, len(face)) if face[j] is not None), None)
+                face[k] = max(v for v in (left, right) if v is not None) if (left or right) is not None else max(near)
+        # A projection drawn as an outline (a chimney breast's two faces, hollow between): the
+        # footing goes round the whole of it, not back in between its faces.
+        win = int(30 / step)
+        face = [max(face[k], min(max(face[max(0, k - win):k + 1]), max(face[k:k + win + 1])))
+                for k in range(len(face))]
+        m_ = _WIDTH.search(f"{e.text} {spec.get(e.tag.strip().upper(), '')}")
+        half = mm_to_pt((float(m_.group(1)) if m_ else 450.0) / 2, scale) if scale else 6.0
+        offs = [round(f + half, 1) for f in face]
+        runs = [[ts[0], ts[0], offs[0]]]
+        for t, o in zip(ts[1:], offs[1:]):
+            if abs(o - runs[-1][2]) <= 0.6:
+                runs[-1][1] = t
+            else:
+                runs.append([t, t, o])
+        # Short runs (a sliver of a fill) take the larger (further-in) neighbour.
+        merged = []
+        for r in runs:
+            if merged and r[1] - r[0] < 6:
+                merged[-1][1] = r[1]
+                merged[-1][2] = max(merged[-1][2], r[2])
+            else:
+                merged.append(r)
+        merged[0][0], merged[-1][1] = 0.0, L
+        for k in range(1, len(merged)):
+            merged[k][0] = merged[k - 1][1]
+        if all(abs(r[2]) <= 0.5 for r in merged):
+            continue  # already right beside the wall
+        plans[i] = (a, u, n, merged)
+    if not plans or len(plans) > len(foots) / 2:
         return []
+
     W, H = page.rect.width, page.rect.height
+
+    def P_(p):
+        return Point(x=p.x / W, y=p.y / H)
+
+    ends = {}  # old end point -> new end point (for the footings meeting a moved one)
+    new_elems = []
+    for i, (a, u, n, runs) in plans.items():
+        e = sheet.elements[i]
+        b = a + u * runs[-1][1]
+        ends[(round(a.x, 1), round(a.y, 1))] = a + n * runs[0][2]
+        ends[(round(b.x, 1), round(b.y, 1))] = b + n * runs[-1][2]
+        prev = None
+        for t0, t1, o in runs:
+            s0, s1 = a + u * t0 + n * o, a + u * t1 + n * o
+            if prev is not None and abs(prev - s0) > 0.3:  # the step round a projection
+                new_elems.append(e.model_copy(update={"start": P_(prev), "end": P_(s0)}))
+            new_elems.append(e.model_copy(update={"start": P_(s0), "end": P_(s1)}))
+            prev = s1
+
+    def offset_at(p):
+        for i, (a, u, n, runs) in plans.items():
+            t = (p - a).x * u.x + (p - a).y * u.y
+            if -6 <= t <= runs[-1][1] + 6 and abs(p - (a + u * t)) <= 6:
+                o = next((r[2] for r in runs if r[0] - 0.01 <= min(max(t, 0), runs[-1][1]) <= r[1] + 0.01), runs[-1][2])
+                return a + u * t + n * o
+        return None
+
+    out_elems = []
     for k, e in enumerate(sheet.elements):
-        if k in existing:
+        if k in plans:
             continue
         if e.kind == "member" and _prefix(e.tag) in ("SF", "EB"):
             p, q = pts(e)
-            for a, b, na, nb, off in shifts:  # footings meeting the moved one: their end follows it
-                if abs(p - a) <= 3 or abs(p - b) <= 3:
-                    p = p + off
-                if abs(q - a) <= 3 or abs(q - b) <= 3:
-                    q = q + off
-            sheet.elements[k] = e.model_copy(update={"start": Point(x=p.x / W, y=p.y / H), "end": Point(x=q.x / W, y=q.y / H)})
+            for old, new in ends.items():
+                o = pymupdf.Point(*old)
+                if abs(p - o) <= 3:
+                    p = new
+                if abs(q - o) <= 3:
+                    q = new
+            e = e.model_copy(update={"start": P_(p), "end": P_(q)})
         elif e.kind == "pier" and _prefix(e.tag) == "EP":
-            p = pts(e)[0]
-            for a, b, na, nb, off in shifts:
-                u = (b - a) / max(abs(b - a), 1e-6)
-                t = (p - a).x * u.x + (p - a).y * u.y
-                if -6 <= t <= abs(b - a) + 6 and abs(p - (a + u * t)) <= 6:
-                    p = p + off
-                    sheet.elements[k] = e.model_copy(update={"start": Point(x=p.x / W, y=p.y / H),
-                                                             "end": Point(x=p.x / W, y=p.y / H)})
-                    break
-    return [f"{title}: {', '.join(sorted(set(moved_tags)))} was drawn under an existing wall - moved to run parallel "
-            "beside it on the new side (a new strip footing can't go under the existing wall). Confirm the existing "
+            np_ = offset_at(pts(e)[0])
+            if np_ is not None:
+                e = e.model_copy(update={"start": P_(np_), "end": P_(np_)})
+        out_elems.append(e)
+    sheet.elements = [e for e in out_elems + new_elems  # a step / jog collapsed by the move goes
+                      if not (e.kind == "member" and _prefix(e.tag) in ("SF", "EB")
+                              and abs(pts(e)[1] - pts(e)[0]) < 0.5)]
+    tags = sorted({e.tag for e in new_elems})
+    return [f"{title}: {', '.join(tags)} along the existing wall moved to run parallel right beside it on the new "
+            "side (never under it, not set back from it), stepping round any projection. Confirm the existing "
             "footing position on site"]
 
 

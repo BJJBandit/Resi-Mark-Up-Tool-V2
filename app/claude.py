@@ -614,8 +614,9 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
     SheetKind.FOUNDATION: (
         "SUSPENDED TIMBER FLOOR: a brick base wall on an SF strip footing runs the full perimeter of the enclosed "
         "floor of the new work (decks / ramps / landings / verandahs excluded) - draw the SF members as one closed "
-        "loop round it - beside an existing house the strip footing runs PARALLEL to and beside the existing wall, "
-        "on the new side, never under it; bearer ends sit on engaged piers EP in the base wall. "
+        "loop round it - beside an existing house the strip footing runs PARALLEL to and RIGHT BESIDE the existing "
+        "wall on the new side (stepping round any chimney breast), never under it and never set back from it; bearer "
+        "ends sit on engaged piers EP in the base wall. "
         "MASONRY WALLS: brick veneer / masonry runs the whole perimeter of the enclosed new building except "
         "decks / verandahs / ramps / open areas - draw the strip footing round all of it, stopping where the deck "
         "starts. Every wall in the design assessment's masonry_walls sits on a strip footing / edge beam "
@@ -643,8 +644,9 @@ SHEET_BRIEFS: dict[SheetKind, str] = {
     SheetKind.FOOTINGS: (
         "SUSPENDED TIMBER FLOOR: a brick base wall on an SF strip footing runs the full perimeter of the enclosed "
         "floor of the new work (decks / ramps / landings / verandahs excluded) - draw the SF members as one closed "
-        "loop round it - beside an existing house the strip footing runs PARALLEL to and beside the existing wall, "
-        "on the new side, never under it; bearer ends sit on engaged piers EP in the base wall. "
+        "loop round it - beside an existing house the strip footing runs PARALLEL to and RIGHT BESIDE the existing "
+        "wall on the new side (stepping round any chimney breast), never under it and never set back from it; bearer "
+        "ends sit on engaged piers EP in the base wall. "
         "MASONRY WALLS: brick veneer / masonry runs the whole perimeter of the enclosed new building except "
         "decks / verandahs / ramps / open areas - draw the strip footing round all of it, stopping where the deck "
         "starts. Every wall in the design assessment's masonry_walls sits on a strip footing / edge beam "
