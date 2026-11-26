@@ -617,6 +617,16 @@ class PlanMap:
         c = self.clip
         return c.x0 - mx <= x <= c.x1 + mx and c.y0 - my <= y <= c.y1 + my
 
+    def clamp(self, pt, reach: float = 0.08):
+        """A point a little outside the plan (within `reach` of the page) pulled onto its edge, as a
+        normalised Point; None if it is further out."""
+        x, y = pt.x * self.src_w, pt.y * self.src_h
+        c = self.clip
+        rx, ry = reach * self.src_w, reach * self.src_h
+        if not (c.x0 - rx <= x <= c.x1 + rx and c.y0 - ry <= y <= c.y1 + ry):
+            return None
+        return Point(x=min(max(x, c.x0), c.x1) / self.src_w, y=min(max(y, c.y0), c.y1) / self.src_h)
+
     def draw_background(self, page: pymupdf.Page, src_doc: pymupdf.Document) -> None:
         sp = self.src_page
         clip = (self.clip * sp.derotation_matrix).normalize()
@@ -2923,8 +2933,14 @@ def _markup_sheet(out, src, meta: SheetMeta, kind: SheetKind, sheet: MarkupSheet
         if e.kind == "callout" and any(re.match(rf"\s*{re.escape(t)}\b", e.text or "", re.I) for t in slab_tags):
             continue  # the slab callout sits on the slab line itself
         if e.kind == "callout":
-            if on_plan:
-                callouts.append(e)
+            # Only the anchor (the element pointed at) has to be on the plan - the box goes in the
+            # margins wherever the layout puts it, so Claude's end point (often out where it pictured
+            # the box) doesn't matter. An anchor a little outside the crop is pulled onto its edge.
+            anchor = next((p for p in (e.start, e.end) if m.inside(p)), None)
+            if anchor is None:
+                anchor = m.clamp(e.start)
+            if anchor is not None:
+                callouts.append(e.model_copy(update={"start": anchor, "end": anchor}))
             else:
                 off_plan.append(e.text or e.tag)
         elif on_plan:
@@ -3178,6 +3194,13 @@ def _build_markup_pdf(
     overflow: list[list[str]] = []  # each sheet's notes block, for the SHEET NOTES pages
     warnings: list[str] = []
     meta.calc_spans = _calc_spans(design)
+    plan_pages = {k: sheets[k].source_page_number for k in (SheetKind.ROOF, SheetKind.WALLS, SheetKind.FOUNDATION,
+                                                             SheetKind.FOOTINGS, SheetKind.FLOOR) if k in sheets}
+    if len(set(plan_pages.values())) > 1:
+        warnings.append("Plan sheets drawn on different drawing pages ("
+                        + ", ".join(f"{SHEET_TITLES[k].lower()} p{p}" for k, p in plan_pages.items())
+                        + ") - they should all be on the floor plan (columns can only be matched on one page); "
+                          "re-run the odd one out")
     # One set of column positions for the whole set: the footing sheet's (snapped first).
     for mk in (SheetKind.FOUNDATION, SheetKind.FOOTINGS, SheetKind.FLOOR, SheetKind.WALLS, SheetKind.ROOF):
         ms = sheets.get(mk)

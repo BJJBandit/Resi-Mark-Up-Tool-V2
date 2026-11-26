@@ -259,7 +259,10 @@ class Box(Strict):
 
 
 class MarkupSheet(Strict):
-    source_page_number: int = Field(description="1-based page of the architectural set to mark up (a plan).")
+    source_page_number: int = Field(description="1-based page of the architectural set to mark up: the FLOOR PLAN "
+                                    "of the level being framed - the same page for the roof, wall, footing and floor "
+                                    "sheets (the walls that carry the roof show on it). The roof plan is read for the "
+                                    "roof shape, falls and extent, not marked up. Elevations only for the articulation sheet.")
     plan_region: Box = Field(
         description="Normalised box on that page around the plan drawing only (exclude the architect's "
         "title block, notes and other views). This is cropped onto the mark-up sheet."
