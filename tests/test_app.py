@@ -453,3 +453,61 @@ def test_create_job_takes_a_previous_markup(client, monkeypatch):
     flat = pymupdf.open(stream=inp.previous_markup)
     assert not list(flat[0].annots()) and "B1 2/240x45" in flat[0].get_text()
     main.JOBS.pop(r.json()["id"], None)
+
+
+def test_requested_standard_already_uploaded_or_stored_is_read_not_asked(monkeypatch, tmp_path):
+    """Step 2 asks for AS 1684.2 Table 8.18 and AS 4055: the job's own AS 1684.2 upload and the
+    stored AS 4055 are read (pages picked for the request) instead of asking; the truss layout
+    is still asked for."""
+    from app import claude, refstore
+    from app.refpages import RefDoc
+    from app.schemas import DesignAssessment, InfoRequest
+    monkeypatch.setattr(refstore, "STORE_DIR", tmp_path)
+    doc = pymupdf.open()
+    doc.new_page()
+    stored = doc.tobytes()
+    refstore.save_pdf(refstore.doc_key(stored), "AS 4055-2021 Wind loads for housing.pdf", stored, 1)
+    own = pymupdf.open()
+    own.new_page()
+    own.new_page()
+    own_pdf = own.tobytes()
+    prepared = []
+    monkeypatch.setattr(pipeline, "prepare", lambda docs, ctx, sel, budget, prog: (prepared.append(
+        ([d.name for d in docs], ctx)) or ([(d.name, d.data) for d in docs], [])))
+    monkeypatch.setattr(pipeline, "_stored_references", lambda docs, prog: ([], [(d.name, d.data) for d in docs], []))
+    monkeypatch.setattr(claude, "upload_references", lambda files: [claude.Reference(title=n, file_id="f") for n, _ in files])
+    monkeypatch.setattr(claude, "assess_design", lambda *a: DesignAssessment.model_construct(
+        information_requests=[], assumptions=[]))
+    job = pipeline.JobInput(project="x", arch_pdf=b"", geotech_pdf=None, wind_class=None, site_class=None,
+                            construction="timber", notes="")
+    job.references = [RefDoc("AS 1684.2-2021 Residential timber framed.pdf", own_pdf, 2)]
+    asked = []
+    job.ask = lambda qs: asked.append(qs) or [{"answer": "no"}]
+    reqs = [InfoRequest(item="AS 1684.2 Table 8.18 (bracing capacities)", kind="standard", why="bracing",
+                        assumption="office values"),
+            InfoRequest(item="AS 4055 wind classification tables", kind="standard", why="wind", assumption="N2"),
+            InfoRequest(item="Truss layout", kind="document", why="girders", assumption="no girders")]
+    design = DesignAssessment.model_construct(information_requests=reqs, assumptions=[])
+    out, warnings = pipeline._information(job, [], [], None, design, lambda _: None, {"text_refs": [], "files": []})
+    assert [q["item"] for q in asked[0]] == ["Truss layout"]  # only what isn't here
+    names = prepared[0][0]
+    assert any("AS 1684.2" in n for n in names) and any("AS 4055" in n for n in names)
+    assert "Table 8.18" in prepared[0][1]  # pages picked for what was asked
+    assert sum("not asked" in w for w in warnings) == 2
+
+
+def test_requested_standard_found_by_its_contents_not_its_file_name():
+    from app.refpages import RefDoc
+    from app.schemas import InfoRequest
+    doc = pymupdf.open()
+    doc.new_page().insert_text((72, 72), "AS 1684.2-2021 Residential timber-framed construction")
+    doc.new_page().insert_text((72, 72), "CONTENTS ..... Table 8.18 Bracing capacities ........ 112")
+    pdf = doc.tobytes()
+    job = pipeline.JobInput(project="x", arch_pdf=b"", geotech_pdf=None, wind_class=None, site_class=None,
+                            construction="timber", notes="")
+    job.references = [RefDoc("Bracing tables.pdf", pdf, 2)]
+    want = InfoRequest(item="AS 1684.2 Table 8.18 (bracing capacities)", kind="standard", why="bracing",
+                       assumption="office values")
+    other = InfoRequest(item="AS 3600 Table 4.10.3", kind="standard", why="cover", assumption="50 cover")
+    assert [d.name for d in pipeline._supplied_standard(want, job)] == ["Bracing tables.pdf"]
+    assert pipeline._supplied_standard(other, job) == []

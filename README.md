@@ -57,6 +57,10 @@ checked before use. It is not for construction.
      or piece of information it needs that wasn't supplied (e.g. a table of AS 1684.2, the
      truss layout with girder positions, a BAL report), the review pauses and the page pops
      up a question for each one, with the assumption it would otherwise use:
+     - Before asking, a standard Claude asks for that is already here - uploaded with this
+       job (the part needed wasn't among the pages sent) or stored from an earlier review - is
+       read from it (pages picked for what was asked) instead of being asked for; the warnings
+       say which.
      - **Yes** - tick any standards already stored from earlier reviews, attach the PDF
        and / or type the information in. Standards are stored with
        the other stored standards (transcribed once, ticked in later reviews); project
