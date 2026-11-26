@@ -2088,8 +2088,8 @@ def _lintels_off_existing(page: pymupdf.Page, sheet: MarkupSheet, pts, title: st
     new = [pts(e) for k, e in enumerate(sheet.elements)
            if k not in on_existing and e.kind in ("member", "bracing") and not _is_lintel(e)]
     new += [pts(sheet.elements[k]) for k in lint if k not in on_existing]
-    if not new or len(on_existing) > len(lint) / 2:
-        return []  # every wall grey (new ones too), or nothing new to measure from
+    if not new or len(on_existing) == len(lint):
+        return []  # every lintel in a grey wall (the architect fills every wall grey), or nothing new to measure from
 
     def dist(p, a, b):
         d = b - a
