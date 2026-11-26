@@ -336,3 +336,26 @@ def test_footing_drawn_in_pieces_beside_an_existing_wall_is_merged_and_placed():
     assert verts == [658.0, 677.0]  # outside faces: round the chimney, and hard against the wall
     south = next(pts(e) for e in s.elements if abs(pts(e)[0].y - 480) < 1 and abs(pts(e)[1].y - 480) < 1)
     assert max(south[0].x, south[1].x) + half <= 658.5  # meets the footing, not on into the wall
+
+
+def test_callouts_with_their_end_out_in_the_margin_are_still_placed():
+    """markup 10: Claude's callouts ended out in the margin (where it pictured the box), outside the
+    cropped plan - they all went to the notes. Only the anchor has to be on the plan."""
+    import pymupdf
+    from app import pdf as P
+    from app.schemas import Box
+    from app.schemas import SheetKind as K
+    src = pymupdf.open()
+    pg = src.new_page(width=1190, height=842)
+    for k in range(60):
+        pg.draw_line((200 + 5 * k, 300), (200 + 5 * k, 500))
+    texts = [f"R{i} 240X45 F17/LVL RAFTER AT 600 CTRS. FIX WITH A FRAMING ANCHOR. TYPICAL." for i in range(1, 5)]
+    els = [_el("member", "R1", 250, 400, 450, 400)]
+    els += [_el("callout", "", x, y, 1150, 40) for x, y in ((260, 350), (300, 420), (400, 380), (440, 460))]
+    for e, t in zip(els[1:], texts):
+        e.text = t
+    s = _sheet(els)
+    s.plan_region = Box(x1=180 / 1190, y1=280 / 842, x2=520 / 1190, y2=520 / 842)
+    out, _ = P.build_markup_pdf(src.tobytes(), "T", None, None, {K.ROOF: s}, calc_sheet=False)
+    page = pymupdf.open(stream=out)[0]
+    assert sum(a.info.get("subject") == "Call-out" for a in page.annots()) == 4
