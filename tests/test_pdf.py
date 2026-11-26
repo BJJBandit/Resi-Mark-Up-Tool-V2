@@ -294,3 +294,20 @@ def test_strip_footing_set_back_from_an_existing_wall_moves_beside_it_round_a_ch
                  and abs(pts(e)[0].x - pts(e)[1].x) < 0.1 and pts(e)[0].x > 600})
     assert xs == [658.0, 677.0]  # outside face hard against the wall (677) and round the chimney (658)
     assert abs(pts(next(e for e in s.elements if e.tag == "EP1"))[0].x + half - 677) < 0.3
+
+
+def test_footing_step_between_parallel_runs_is_drawn():
+    """A short step between two parallel footing runs (round a chimney breast) closes onto each
+    run at its own end - it used to close both ends onto the first run and vanish."""
+    import pymupdf
+    from app import pdf as P
+    from app.schemas import Box
+    pg = pymupdf.open().new_page(width=1190, height=842)
+    sf = [(300, 200, 600, 200), (600, 200, 600, 450), (600, 450, 585, 450), (585, 450, 585, 500),
+          (585, 500, 300, 500), (300, 500, 300, 200)]
+    s = _sheet([_el("member", "SF1", *c) for c in sf], [("SF1", "450W x 450 DEEP STRIP FOOTING")])
+    s.plan_region = Box(x1=0, y1=0, x2=1, y2=1)
+    m = P.PlanMap(pg, s.plan_region)
+    bands = P._footing_bands(s, m)
+    step = next(v for k, v in bands.items() if k == id(s.elements[2]))
+    assert all(abs(q - p) > 5 for p, q, _ in step)  # both faces of the step have length

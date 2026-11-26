@@ -810,7 +810,9 @@ _WIDTH = re.compile(r"(\d{3,4})\s*(?:MM\s*)?(?:W\b|WIDE)", re.I)
 
 def _footing_width_pt(e: Element, m: PlanMap) -> float:
     m_ = _WIDTH.search(f"{e.text} {m.spec(e.tag)}")
-    return _scaled(m, (float(m_.group(1)) if m_ else 450.0) / 2, 4.0, 2.0, 10.0)
+    # To scale, as the engineers draw it (a zoomed-in plan shows a wide band; the face must sit
+    # where the real footing face is, e.g. hard against an existing wall).
+    return _scaled(m, (float(m_.group(1)) if m_ else 450.0) / 2, 4.0, 2.0, 30.0)
 
 
 def _cross(p1, p2, q1, q2):
@@ -949,22 +951,23 @@ def _footing_bands(sheet: MarkupSheet, m: PlanMap) -> dict[int, list[tuple]]:
             p, q = a + off, b + off
             ends = []
             for end in (a, b):
-                new = None
+                # A neighbour is any footing whose line passes close to this end (after
+                # snapping, corners rarely meet exactly) - the CLOSEST one that crosses it, so a
+                # short step between two parallel runs closes onto each run at its own end.
+                cands = []
                 for k2, (e2, a2, b2, half2, in2) in info.items():
                     if k2 == key or _prefix(e2.tag) not in ("SF", "EB"):
                         continue
-                    # A neighbour is any footing whose line passes close to this end (after
-                    # snapping, corners rarely meet exactly).
                     d2 = b2 - a2
                     t = max(0.0, min(1.0, ((end - a2).x * d2.x + (end - a2).y * d2.y) / max(1e-6, d2.x ** 2 + d2.y ** 2)))
-                    if abs(end - (a2 + d2 * t)) > max(6.0, 2.5 * max(half, half2)):
+                    gap = abs(end - (a2 + d2 * t))
+                    if gap > max(6.0, 2.5 * max(half, half2)):
                         continue
                     off2 = in2 * (half2 * sign)
                     x = _cross(p, q, a2 + off2, b2 + off2)
                     if x is not None:
-                        new = x
-                        break
-                ends.append(new)
+                        cands.append((gap, x))
+                ends.append(min(cands, key=lambda c: c[0])[1] if cands else None)
             lines.append((ends[0] or p, ends[1] or q, dashed))
         out[key] = lines
     # Internal beams stop at the inside face of the perimeter footing (as drawn by the engineers).
@@ -2090,6 +2093,29 @@ def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, ti
                 return a + u * t + n * o
         return None
 
+    def meet(end, other):
+        """A footing ending at / near a moved one (at right angles to it): its end goes onto the
+        moved footing's new line, where that line now runs at this position."""
+        d = end - other
+        if abs(d) < 1e-6:
+            return end
+        v = d / abs(d)
+        for i, (a, u, n, runs) in plans.items():
+            if abs(v.x * u.x + v.y * u.y) > 0.3:
+                continue  # not at right angles to it
+            t = (end - a).x * u.x + (end - a).y * u.y
+            if not -6 <= t <= runs[-1][1] + 6:
+                continue
+            across = (end - a).x * n.x + (end - a).y * n.y
+            o = next((r[2] for r in runs if r[0] - 0.01 <= min(max(t, 0), runs[-1][1]) <= r[1] + 0.01), runs[-1][2])
+            if abs(across - o) <= 3 or abs(across) <= max(D, 20):  # at / near the old or new line
+                denom = v.x * n.x + v.y * n.y
+                if abs(denom) < 1e-6:
+                    continue
+                k = (o - ((other - a).x * n.x + (other - a).y * n.y)) / denom
+                return other + v * k
+        return end
+
     out_elems = []
     for k, e in enumerate(sheet.elements):
         if k in plans:
@@ -2102,6 +2128,7 @@ def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, ti
                     p = new
                 if abs(q - o) <= 3:
                     q = new
+            p, q = meet(p, q), meet(q, p)
             e = e.model_copy(update={"start": P_(p), "end": P_(q)})
         elif e.kind == "pier" and _prefix(e.tag) == "EP":
             np_ = offset_at(pts(e)[0])
