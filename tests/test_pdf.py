@@ -224,22 +224,41 @@ def test_tall_brick_pier_drawn_at_its_350_base_and_600_pier():
     assert _sizes("230x230 BRICK PIER TO MAX 1500 HIGH ON P1 450 DIA BORED PIER") == (450.0, 230.0)
 
 
-def test_strip_footing_on_an_existing_wall_is_removed():
+def test_strip_footing_under_an_existing_wall_moves_beside_it():
     import pymupdf
     from app import pdf as P
     pg = pymupdf.open().new_page(width=1190, height=842)
     pg.draw_rect(pymupdf.Rect(664, 178, 670, 525), color=None, fill=(0.7, 0.7, 0.7))  # existing wall, grey fill
-    sf = [(277, 192, 667, 183), (667, 183, 667, 418), (391, 481, 667, 481), (391, 192, 391, 481)]
+    sf = [(277, 192, 667, 183), (667, 183, 667, 481), (391, 481, 667, 481), (391, 192, 391, 481)]
     els = [_el("member", "SF1", *c) for c in sf] + [_el("pier", "EP1", 667, 300), _el("pier", "EP1", 500, 481)]
-    s = _sheet(els, [("BP1", "230x230 BRICK PIER ON P1")])
+    s = _sheet(els, [("SF1", "450W x 450 DEEP STRIP FOOTING")])
     pts = lambda e: (pymupdf.Point(e.start.x * 1190, e.start.y * 842), pymupdf.Point(e.end.x * 1190, e.end.y * 842))
     out = P._footings_off_existing_walls(pg, s, pts, "FOOTINGS")
-    assert len([e for e in s.elements if e.tag == "SF1"]) == 3
-    assert sorted(e.tag for e in s.elements if e.kind == "pier") == ["BP1", "EP1"]
-    assert out and "existing wall" in out[0]
-    # Every wall filled grey (new ones too): nothing is removed.
+    east = pts(s.elements[1])
+    assert len([e for e in s.elements if e.tag == "SF1"]) == 4  # kept
+    assert abs(east[0].x - east[1].x) < 0.1 and 655 <= east[0].x < 664  # parallel, beside the wall on the new side
+    assert abs(pts(s.elements[0])[1].x - east[0].x) < 0.2  # the north footing's end follows it
+    assert abs(pts(s.elements[4])[0].x - east[0].x) < 0.2  # its engaged pier too
+    assert out and "parallel" in out[0]
+    # Every wall filled grey (new ones too): nothing moves.
     for x in (277, 391):
         pg.draw_rect(pymupdf.Rect(x - 3, 180, x + 3, 485), color=None, fill=(0.7, 0.7, 0.7))
     pg.draw_rect(pymupdf.Rect(270, 478, 670, 484), color=None, fill=(0.7, 0.7, 0.7))
     s2 = _sheet([_el("member", "SF1", *c) for c in sf])
-    assert P._footings_off_existing_walls(pg, s2, pts, "FOOTINGS") == [] and len(s2.elements) == 4
+    assert P._footings_off_existing_walls(pg, s2, pts, "FOOTINGS") == []
+
+
+def test_lintel_inside_the_existing_building_is_removed():
+    import pymupdf
+    from app import pdf as P
+    pg = pymupdf.open().new_page(width=1190, height=842)
+    g = (0.7, 0.7, 0.7)
+    for r in [(513, 270, 519, 333), (513, 369, 519, 520),  # existing wall the new work joins (opening 333-369)
+              (814, 381, 819, 410), (814, 446, 819, 523)]:  # existing internal wall deep in the house
+        pg.draw_rect(pymupdf.Rect(*r), color=None, fill=g)
+    s = _sheet([_el("member", "L1", 474, 378, 508, 378), _el("member", "B1", 480, 200, 480, 520),
+                _el("member", "L6", 516, 336, 516, 371), _el("member", "L6", 816, 407, 816, 449)])
+    pts = lambda e: (pymupdf.Point(e.start.x * 1190, e.start.y * 842), pymupdf.Point(e.end.x * 1190, e.end.y * 842))
+    out = P._lintels_off_existing(pg, s, pts, "WALLS")
+    assert [round(e.start.x * 1190) for e in s.elements if e.tag == "L6"] == [516]  # the junction opening stays
+    assert out and "existing building" in out[0]
