@@ -234,11 +234,14 @@ def test_strip_footing_under_an_existing_wall_moves_beside_it():
     s = _sheet(els, [("SF1", "450W x 450 DEEP STRIP FOOTING")])
     pts = lambda e: (pymupdf.Point(e.start.x * 1190, e.start.y * 842), pymupdf.Point(e.end.x * 1190, e.end.y * 842))
     out = P._footings_off_existing_walls(pg, s, pts, "FOOTINGS")
-    east = pts(s.elements[1])
-    assert len([e for e in s.elements if e.tag == "SF1"]) == 4  # kept
-    assert abs(east[0].x - east[1].x) < 0.1 and 655 <= east[0].x < 664  # parallel, beside the wall on the new side
-    assert abs(pts(s.elements[0])[1].x - east[0].x) < 0.2  # the north footing's end follows it
-    assert abs(pts(s.elements[4])[0].x - east[0].x) < 0.2  # its engaged pier too
+    sfs = [pts(e) for e in s.elements if e.tag == "SF1"]
+    east = next(l for l in sfs if abs(l[0].x - l[1].x) < 0.1 and l[0].x > 600)
+    assert len(sfs) == 4  # kept
+    assert 655 <= east[0].x < 664  # parallel, beside the wall on the new side
+    north = next(l for l in sfs if abs(l[0].y - l[1].y) > 1 or l[0].y < 200)
+    assert abs(max(north[0].x, north[1].x) - east[0].x) < 0.2  # the north footing's end follows it
+    ep = next(pts(e)[0] for e in s.elements if e.tag == "EP1" and pts(e)[0].y < 400)
+    assert abs(ep.x - east[0].x) < 0.2  # its engaged pier too
     assert out and "parallel" in out[0]
     # Every wall filled grey (new ones too): nothing moves.
     for x in (277, 391):
@@ -262,3 +265,26 @@ def test_lintel_inside_the_existing_building_is_removed():
     out = P._lintels_off_existing(pg, s, pts, "WALLS")
     assert [round(e.start.x * 1190) for e in s.elements if e.tag == "L6"] == [516]  # the junction opening stays
     assert out and "existing building" in out[0]
+
+
+
+def test_strip_footing_set_back_from_an_existing_wall_moves_beside_it_round_a_chimney():
+    """markup 53: the link east SF drawn about 1 m in from the existing west wall - it runs right
+    beside the wall, stepping round the chimney breast (drawn as an outline, hollow between)."""
+    import pymupdf
+    from app import pdf as P
+    pg = pymupdf.open().new_page(width=1190, height=842)
+    g = (0.7, 0.7, 0.7)
+    for r in [(677, 170, 683, 424), (658, 424, 702, 432), (677, 432, 683, 468), (658, 468, 702, 477),
+              (677, 477, 683, 523)]:
+        pg.draw_rect(pymupdf.Rect(*r), color=None, fill=g)
+    sf = [(288, 188, 639, 180), (639, 180, 639, 479), (406, 479, 639, 479), (406, 185, 406, 479)]
+    s = _sheet([_el("member", "SF1", *c) for c in sf] + [_el("pier", "EP1", 639, 300)],
+               [("SF1", "450W x 450 DEEP STRIP FOOTING")])
+    pts = lambda e: (pymupdf.Point(e.start.x * 1190, e.start.y * 842), pymupdf.Point(e.end.x * 1190, e.end.y * 842))
+    out = P._footings_off_existing_walls(pg, s, pts, "FOOTINGS")
+    assert out and "beside" in out[0]
+    xs = sorted({round(pts(e)[0].x) for e in s.elements if e.tag == "SF1" and abs(pts(e)[0].x - pts(e)[1].x) < 0.1
+                 and pts(e)[0].x > 600})
+    assert xs == [652, 671]  # beside the wall face (677) and stepped out round the chimney (658)
+    assert round(pts(next(e for e in s.elements if e.tag == "EP1"))[0].x) == 671
