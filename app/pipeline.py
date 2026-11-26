@@ -263,7 +263,8 @@ PREVIOUS_DIRECTION = (
     "A PREVIOUS MARK-UP of this job is supplied (the document titled 'PREVIOUS MARK-UP OF THIS JOB'). Use it as "
     "the starting point: keep its member layout, tags, sizes and callouts where they are right, and correct "
     "anything that conflicts with the drawings, the geotechnical report, the office rules or this direction "
-    "(this direction wins). Do not copy its errors, and do not treat it as a standard.")
+    "(this direction wins). Keep its callouts on the plan (each sheet carries its own callouts - don't move "
+    "them into the notes). Do not copy its errors, and do not treat it as a standard.")
 
 
 def flatten_markup(pdf: bytes, max_pages: int = 20) -> bytes:
@@ -842,6 +843,10 @@ def ledger_tags(sheet: MarkupSheet, title: str) -> list[str]:
             "(ledgers are tagged LD; L is for lintels)"]
 
 
+CALLOUT_SHEETS = {SheetKind.ROOF, SheetKind.WALLS, SheetKind.FOUNDATION, SheetKind.FOOTINGS, SheetKind.FLOOR}
+MIN_CALLOUTS = 3
+
+
 def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, change: str = "") -> None:
     """Plan one sheet and store it (with its rule warnings) on the result. Raises on failure."""
     direction = job.notes
@@ -855,6 +860,18 @@ def _make_sheet(kind: SheetKind, job: JobInput, pages, refs, result: JobResult, 
             "element on this sheet that a detail applies to, add 'SEE DETAIL n' (its number above); don't "
             "reference a detail that doesn't apply.")
     sheet = claude.plan_sheet(kind, pages, result.geotech, result.design, refs, direction)
+    n_call = sum(e.kind == "callout" for e in sheet.elements)
+    has_members = any(e.kind in ("member", "pier", "column", "bracing") for e in sheet.elements)
+    if kind in CALLOUT_SHEETS and has_members and n_call < MIN_CALLOUTS:
+        # A plan sheet with (almost) no callouts - the notes alone don't point at the members.
+        # Asked once more; the version with more callouts is kept.
+        again = claude.plan_sheet(kind, pages, result.geotech, result.design, refs, (
+            f"{direction}\n" if direction else "") + (
+            f"This sheet came back with only {n_call} callout(s). Every plan sheet carries about 4-12 "
+            "callouts ON THE PLAN, each pointing at the member / element it describes (sizes, fixings, "
+            "conditions) - the construction notes for the key members go in callouts, not only in the notes."))
+        if sum(e.kind == "callout" for e in again.elements) > n_call:
+            sheet = again
     if kind != SheetKind.ARTICULATION:
         # Articulation / control joints belong on the elevation sheet only.
         dropped = [e for e in sheet.elements if e.kind == "member" and _joint(e.tag)]

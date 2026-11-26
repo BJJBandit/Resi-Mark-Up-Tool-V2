@@ -1999,6 +1999,90 @@ def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, ti
     allp = [pts(sheet.elements[i]) for i in foots]
     cx = sum(p.x + q.x for p, q in allp) / (2 * len(allp))
     cy = sum(p.y + q.y for p, q in allp) / (2 * len(allp))
+    W, H = page.rect.width, page.rect.height
+
+    def side(a, u):
+        n = pymupdf.Point(-u.y, u.x)
+        mid = a
+        return n if (cx - mid.x) * n.x + (cy - mid.y) * n.y >= 0 else n * -1
+
+    def cover(a, b) -> float:  # share of a footing's length with an existing wall beside / under it
+        L = abs(b - a)
+        u = (b - a) / L
+        n = side((a + b) * 0.5, u)
+        hits = 0
+        k_n = max(2, int(L / 2))
+        for k in range(k_n + 1):
+            t = L * k / k_n
+            for r in fills:
+                cs = [r.tl, r.tr, r.bl, r.br]
+                al = [(c - a).x * u.x + (c - a).y * u.y for c in cs]
+                ac = [(c - a).x * n.x + (c - a).y * n.y for c in cs]
+                if min(al) - 0.5 <= t <= max(al) + 0.5 and max(ac) >= -D and min(ac) <= 1.0:
+                    hits += 1
+                    break
+        return hits / (k_n + 1)
+
+    # Claude often draws the footing beside the existing wall in pieces (a run, a short run by a
+    # chimney, a jog between them). Merge every piece along one existing wall into a single
+    # straight run first, so it is placed as one footing (pieces placed one by one come out wrong).
+    pieces = []
+    for i in foots:
+        a, b = pts(sheet.elements[i])
+        if abs(b - a) >= 8 and cover(a, b) >= 0.6:
+            pieces.append(i)
+    groups: list[list[int]] = []
+    for i in sorted(pieces, key=lambda k: -abs(pts(sheet.elements[k])[1] - pts(sheet.elements[k])[0])):
+        a, b = pts(sheet.elements[i])
+        u = (b - a) / abs(b - a)
+        for g in groups:
+            ga, gb = pts(sheet.elements[g[0]])
+            gu = (gb - ga) / abs(gb - ga)
+            gn = pymupdf.Point(-gu.y, gu.x)
+            if abs(u.x * gu.y - u.y * gu.x) < 0.17 and \
+                    abs(((a + b) * 0.5 - ga).x * gn.x + ((a + b) * 0.5 - ga).y * gn.y) <= D:
+                g.append(i)
+                break
+        else:
+            groups.append([i])
+    if groups and len(sum(groups, [])) <= len(foots) / 2:
+        drop, add = set(), []
+        for g in groups:
+            if len(g) < 2:
+                continue
+            ga, gb = pts(sheet.elements[g[0]])
+            gu = (gb - ga) / abs(gb - ga)
+            gn = pymupdf.Point(-gu.y, gu.x)
+            ts, acs, wts = [], [], []
+            for i in g:
+                a, b = pts(sheet.elements[i])
+                ts += [(a - ga).x * gu.x + (a - ga).y * gu.y, (b - ga).x * gu.x + (b - ga).y * gu.y]
+                acs.append(((a + b) * 0.5 - ga).x * gn.x + ((a + b) * 0.5 - ga).y * gn.y)
+                wts.append(abs(b - a))
+            t0, t1 = min(ts), max(ts)
+            ac = sum(x * wt for x, wt in zip(acs, wts)) / sum(wts)
+            lo_ac, hi_ac = min(acs) - 2, max(acs) + 2
+            # the jogs and stubs between / at the ends of the pieces (short footings - a few
+            # footing widths - in the zone beside the wall) go too
+            jog = 3 * (mm_to_pt(225, scale) if scale else 6.0)
+            for k in foots:
+                if k in g:
+                    continue
+                a, b = pts(sheet.elements[k])
+                if abs(b - a) > jog:
+                    continue
+                inside = all(t0 - jog <= (p - ga).x * gu.x + (p - ga).y * gu.y <= t1 + jog and
+                             min(lo_ac, -D) - 3 <= (p - ga).x * gn.x + (p - ga).y * gn.y <= max(hi_ac, D) + 3
+                             for p in (a, b))
+                if inside:
+                    drop.add(k)
+            na, nb = ga + gu * t0 + gn * ac, ga + gu * t1 + gn * ac
+            e = sheet.elements[g[0]]
+            add.append(e.model_copy(update={"start": Point(x=na.x / W, y=na.y / H), "end": Point(x=nb.x / W, y=nb.y / H)}))
+            drop.update(g)
+        if add:
+            sheet.elements = [e for k, e in enumerate(sheet.elements) if k not in drop] + add
+            foots = [i for i, e in enumerate(sheet.elements) if e.kind == "member" and _prefix(e.tag) in ("SF", "EB")]
 
     plans = {}  # footing index -> (a, u, n, [(t0, t1, offset)])
     for i in foots:

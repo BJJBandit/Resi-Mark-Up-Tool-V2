@@ -311,3 +311,28 @@ def test_footing_step_between_parallel_runs_is_drawn():
     bands = P._footing_bands(s, m)
     step = next(v for k, v in bands.items() if k == id(s.elements[2]))
     assert all(abs(q - p) > 5 for p, q, _ in step)  # both faces of the step have length
+
+
+def test_footing_drawn_in_pieces_beside_an_existing_wall_is_merged_and_placed():
+    """markup 56: Claude drew the footing beside the existing wall as a run, a short run by the
+    chimney, a jog and a stub, with the south footing running into the wall - it is merged into one
+    run hard against the wall face, stepping round the chimney, and the south footing meets it."""
+    import pymupdf
+    from app import pdf as P
+    pg = pymupdf.open().new_page(width=1190, height=842)
+    for r in [(677, 170, 683, 424), (658, 424, 702, 432), (677, 432, 683, 468), (658, 468, 702, 477),
+              (677, 477, 683, 523)]:
+        pg.draw_rect(pymupdf.Rect(*r), color=None, fill=(0.7, 0.7, 0.7))
+    sf = [(288, 188, 650, 180), (650, 180, 650, 429), (649, 422, 649, 474), (649, 474, 672, 474),
+          (672, 474, 672, 480), (406, 480, 672, 480), (406, 185, 406, 480)]
+    s = _sheet([_el("member", "SF1", *c) for c in sf], [("SF1", "450W x 450 DEEP STRIP FOOTING")])
+    pts = lambda e: (pymupdf.Point(e.start.x * 1190, e.start.y * 842), pymupdf.Point(e.end.x * 1190, e.end.y * 842))
+    assert P._footings_off_existing_walls(pg, s, pts, "FOOTINGS")
+    from app.snap import Geometry, drawing_scale, mm_to_pt
+    sc = drawing_scale(pg, Geometry(pg))[0]
+    half = mm_to_pt(225, sc) if sc else 6.0
+    verts = sorted({round(pts(e)[0].x + half, 1) for e in s.elements if abs(pts(e)[0].x - pts(e)[1].x) < 0.1
+                    and pts(e)[0].x > 600 and abs(pts(e)[1].y - pts(e)[0].y) > 1})
+    assert verts == [658.0, 677.0]  # outside faces: round the chimney, and hard against the wall
+    south = next(pts(e) for e in s.elements if abs(pts(e)[0].y - 480) < 1 and abs(pts(e)[1].y - 480) < 1)
+    assert max(south[0].x, south[1].x) + half <= 658.5  # meets the footing, not on into the wall

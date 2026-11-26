@@ -511,3 +511,26 @@ def test_requested_standard_found_by_its_contents_not_its_file_name():
     other = InfoRequest(item="AS 3600 Table 4.10.3", kind="standard", why="cover", assumption="50 cover")
     assert [d.name for d in pipeline._supplied_standard(want, job)] == ["Bracing tables.pdf"]
     assert pipeline._supplied_standard(other, job) == []
+
+
+def test_plan_sheet_with_too_few_callouts_is_asked_once_more(monkeypatch):
+    from app import claude
+    from app.schemas import Box, Element, MarkupSheet, Point
+    from app.schemas import SheetKind as K
+
+    def sheet(n_call):
+        els = [Element(kind="member", tag="L1", start=Point(x=0.1, y=0.1), end=Point(x=0.2, y=0.1), text="")]
+        els += [Element(kind="callout", tag="", start=Point(x=0.1, y=0.1), end=Point(x=0.1, y=0.1),
+                        text=f"L1 90X35 F17 LINTEL. TYPICAL {i}.") for i in range(n_call)]
+        return MarkupSheet.model_construct(source_page_number=1, plan_region=Box(x1=0, y1=0, x2=1, y2=1),
+                                           elements=els, schedule=[], legend=[], notes=[], classification="",
+                                           schedule_title="", legend_title="")
+    calls = []
+    monkeypatch.setattr(claude, "plan_sheet", lambda kind, pages, g, d, refs, direction: (
+        calls.append(direction) or sheet(0 if len(calls) == 1 else 6)))
+    job = pipeline.JobInput(project="x", arch_pdf=b"", geotech_pdf=None, wind_class=None, site_class=None,
+                            construction="timber", notes="")
+    result = pipeline.JobResult(geotech=None, design=None)
+    pipeline._make_sheet(K.WALLS, job, [], [], result)
+    assert len(calls) == 2 and "only 0 callout" in calls[1]
+    assert sum(e.kind == "callout" for e in result.planned[K.WALLS].elements) == 6
