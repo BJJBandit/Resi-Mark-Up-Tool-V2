@@ -560,7 +560,8 @@ specification just because it looks typical.
 - Callouts carry the construction notes for the element they point at, in the form
   '<WHAT> <SIZE / SPEC> <WHERE / SPACING>. <FIXING OR CONDITION>. TYPICAL.' Point each
   callout's start at the element it describes. Use 'TYPICAL.' instead of repeating a callout.
-  Keep to about 4-12 callouts per sheet.
+  Keep to about 4-12 callouts per sheet - and at least 4 on every plan sheet: the construction notes for
+  the key members go in callouts on the plan, never only in the sheet notes.
 - Be economical: one element per real member (no duplicates), tag repeated items once and
   rely on 'TYPICAL.', and aim for under ~150 elements per sheet.
 - Schedule items: tag + UPPERCASE '<NUMBER/><DEPTH>x<BREADTH> <GRADE> <MEMBER> [AT <SPACING> CTRS]'
