@@ -494,3 +494,20 @@ def test_requested_standard_already_uploaded_or_stored_is_read_not_asked(monkeyp
     assert any("AS 1684.2" in n for n in names) and any("AS 4055" in n for n in names)
     assert "Table 8.18" in prepared[0][1]  # pages picked for what was asked
     assert sum("not asked" in w for w in warnings) == 2
+
+
+def test_requested_standard_found_by_its_contents_not_its_file_name():
+    from app.refpages import RefDoc
+    from app.schemas import InfoRequest
+    doc = pymupdf.open()
+    doc.new_page().insert_text((72, 72), "AS 1684.2-2021 Residential timber-framed construction")
+    doc.new_page().insert_text((72, 72), "CONTENTS ..... Table 8.18 Bracing capacities ........ 112")
+    pdf = doc.tobytes()
+    job = pipeline.JobInput(project="x", arch_pdf=b"", geotech_pdf=None, wind_class=None, site_class=None,
+                            construction="timber", notes="")
+    job.references = [RefDoc("Bracing tables.pdf", pdf, 2)]
+    want = InfoRequest(item="AS 1684.2 Table 8.18 (bracing capacities)", kind="standard", why="bracing",
+                       assumption="office values")
+    other = InfoRequest(item="AS 3600 Table 4.10.3", kind="standard", why="cover", assumption="50 cover")
+    assert [d.name for d in pipeline._supplied_standard(want, job)] == ["Bracing tables.pdf"]
+    assert pipeline._supplied_standard(other, job) == []

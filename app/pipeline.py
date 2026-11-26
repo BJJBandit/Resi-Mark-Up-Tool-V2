@@ -11,7 +11,7 @@ import pymupdf
 
 from . import claude, refstore, spelling, stock, usage
 from .pdf import build_markup_pdf, extract_pages, format_ranges, render_pages
-from .refpages import MAX_REF_PAGES, RefDoc, prepare, report
+from .refpages import page_map, MAX_REF_PAGES, RefDoc, prepare, report
 from .rules import apply_rules, check_geotech
 from .schemas import (SHEET_TITLES, DesignAssessment, Element, GeotechReview, InfoRequest, MarkupSheet, Point,
                       ScheduleItem, SheetKind)
@@ -486,6 +486,9 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None], extra: dic
 _STD_DESIG = re.compile(r"\bAS\s*(?:/\s*NZS)?\s*(\d{4})(?:\s*[.:-]\s*(\d{1,2})(?!\d))?", re.I)
 
 
+_STD_ITEM = re.compile(r"\b(?:TABLE|CLAUSE|FIGURE|SECTION)\s+\d+(?:\.\d+)*", re.I)
+
+
 def _designations(text: str) -> set[tuple[str, str]]:
     """Standard designations named in text: 'AS 1684.2-2021 Table 8.18' -> {('1684', '2')}."""
     return {(m.group(1), m.group(2) or "") for m in _STD_DESIG.finditer(text or "")}
@@ -496,24 +499,41 @@ def _supplied_standard(req: InfoRequest, job: JobInput) -> list[RefDoc]:
     the reference store (with its PDF). Matched on the designation (AS 1684.2, AS 4055 ...); a
     request without a part number matches any part."""
     want = _designations(req.item)
-    if not want:
+    items = {re.sub(r"\s+", " ", m.group(0).upper()) for m in _STD_ITEM.finditer(req.item or "")}
+    if not want and not items:
         return []
 
     def hit(name: str) -> bool:
         have = _designations(name)
         return any(n == wn and (not wp or p == wp) for wn, wp in want for n, p in have)
 
-    found = [d for d in job.references if d.data and hit(d.name)]
+    def in_contents(data: bytes) -> bool:
+        """A document named otherwise ('Bracing tables.pdf'): its title page, bookmarks and
+        contents name the standard asked for and, where the request names one, its table /
+        clause (e.g. AS 1684.2 ... TABLE 8.18)."""
+        try:
+            bookmarks, contents, pmap, _ = page_map(data)
+        except Exception:
+            return False
+        text = f"{bookmarks}\n{contents}\n{pmap}"
+        norm = re.sub(r"\s+", " ", text.upper())
+        if want and not hit(text):
+            return False
+        return not items or any(i in norm for i in items)
+
+    found = [d for d in job.references if d.data and (hit(d.name) or in_contents(d.data))]
     if refstore.enabled():
         seen = {refstore.doc_key(d.data) for d in found}
         try:
             for doc in refstore.list_documents():
-                if doc["key"] in seen or not doc.get("has_pdf") or not any(hit(n) for n in doc["names"]):
+                if doc["key"] in seen or not doc.get("has_pdf"):
                     continue
+                named = any(hit(n) for n in doc["names"])
                 got = refstore.load_pdf(doc["key"])
-                if got is not None:
-                    found.append(RefDoc(got[0], got[1], got[2]))
-                    seen.add(doc["key"])
+                if got is None or not (named or in_contents(got[1])):
+                    continue
+                found.append(RefDoc(got[0], got[1], got[2]))
+                seen.add(doc["key"])
         except Exception as e:  # never lose the review over the store
             print(f"[info] reference store: {e!r}", flush=True)
     return found
