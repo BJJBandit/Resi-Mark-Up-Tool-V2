@@ -1873,6 +1873,10 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
     except Exception as e:
         warnings.append(f"{title}: existing wall check skipped ({e})")
     try:
+        warnings += _lintels_off_existing(src_page, sheet, pts, title)
+    except Exception as e:
+        warnings.append(f"{title}: existing building lintel check skipped ({e})")
+    try:
         warnings += _bearers_off_base_walls(sheet, pts, put, title)
     except Exception as e:
         warnings.append(f"{title}: bearer / footing check skipped ({e})")
@@ -1967,12 +1971,12 @@ def _existing_wall_fills(page: pymupdf.Page) -> list[pymupdf.Rect]:
     return out
 
 
-def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, title: str) -> list[str]:
-    """A new strip footing / edge beam drawn under or along an existing (grey-filled) wall: it
-    can't go there - removed, the engaged piers on it become isolated piers (the sheet's BP / P
-    tag), and the new floor edge along it is named for a bearer on its own piers clear of the
-    existing footings. Skipped where most of the footings sit on grey fill (the architect fills
-    every wall grey, new ones too)."""
+def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, title: str, put=None) -> list[str]:
+    """A new strip footing / edge beam drawn under an existing (grey-filled) wall: it can't go
+    under it, so it is moved sideways onto the new side to run PARALLEL beside the existing
+    wall (its face at the wall's face), with the ends of the footings meeting it and the
+    engaged piers on it moved too. Skipped where most of the footings sit on grey fill (the
+    architect fills every wall grey, new ones too)."""
     foots = [i for i, e in enumerate(sheet.elements) if e.kind == "member" and _prefix(e.tag) in ("SF", "EB")]
     if not foots:
         return []
@@ -1983,37 +1987,127 @@ def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, ti
 
     def on_fill(i: int) -> float:
         a, b = pts(sheet.elements[i])
-        L = abs(b - a)
-        n = max(2, int(L / 2))
-        hits = sum(any(r.contains(a + (b - a) * (k / n)) for r in grown) for k in range(n + 1))
-        return hits / (n + 1)
+        n = max(2, int(abs(b - a) / 2))
+        return sum(any(r.contains(a + (b - a) * (k / n)) for r in grown) for k in range(n + 1)) / (n + 1)
 
-    share = {i: on_fill(i) for i in foots}
-    existing = [i for i in foots if share[i] >= 0.6]
+    existing = [i for i in foots if on_fill(i) >= 0.6]
     if not existing or len(existing) > len(foots) / 2:
         return []
-    lines = [pts(sheet.elements[i]) for i in existing]
-    tags = sorted({sheet.elements[i].tag for i in existing})
-    sched = [s.tag.strip().upper() for s in sheet.schedule]
-    pier_tag = next((t for t in sched if _prefix(t) == "BP"), None) or next((t for t in sched if _prefix(t) == "P"), "P1")
-    moved = 0
+    others = [pts(sheet.elements[i]) for i in foots if i not in existing]
+    if not others:
+        return []
+    cx = sum(p.x + q.x for p, q in others) / (2 * len(others))
+    cy = sum(p.y + q.y for p, q in others) / (2 * len(others))
+    try:
+        scale = drawing_scale(page)[0]
+    except Exception:
+        scale = None
+    spec = {s_.tag.strip().upper(): s_.text for s_ in sheet.schedule}
+    moved_tags, shifts = [], []
+    for i in existing:
+        e = sheet.elements[i]
+        a, b = pts(e)
+        L = abs(b - a)
+        if L < 2:
+            continue
+        u = (b - a) / L
+        n = pymupdf.Point(-u.y, u.x)
+        mid = (a + b) * 0.5
+        if (cx - mid.x) * n.x + (cy - mid.y) * n.y < 0:
+            n = n * -1  # towards the new work
+        # How far the existing wall reaches towards the new side, along this footing.
+        reach = 0.0
+        for r in fills:
+            corners = [r.tl, r.tr, r.bl, r.br]
+            along = [(c - a).x * u.x + (c - a).y * u.y for c in corners]
+            if max(along) < -2 or min(along) > L + 2:
+                continue
+            across = [(c - a).x * n.x + (c - a).y * n.y for c in corners]
+            if min(across) <= 1.0 and max(across) >= -1.0:  # this fill is the wall under the line
+                reach = max(reach, max(across))
+        m_ = _WIDTH.search(f"{e.text} {spec.get(e.tag.strip().upper(), '')}")
+        width_mm = float(m_.group(1)) if m_ else 450.0
+        half = mm_to_pt(width_mm / 2, scale) if scale else 6.0
+        d = reach + half
+        if d <= 0.5:
+            continue
+        na, nb = a + n * d, b + n * d
+        shifts.append((a, b, na, nb, n * d))
+        sheet.elements[i] = e.model_copy(update={"start": Point(x=na.x / page.rect.width, y=na.y / page.rect.height),
+                                                 "end": Point(x=nb.x / page.rect.width, y=nb.y / page.rect.height)})
+        moved_tags.append(e.tag)
+    if not shifts:
+        return []
+    W, H = page.rect.width, page.rect.height
     for k, e in enumerate(sheet.elements):
-        if e.kind == "pier" and _prefix(e.tag) == "EP":
+        if k in existing:
+            continue
+        if e.kind == "member" and _prefix(e.tag) in ("SF", "EB"):
+            p, q = pts(e)
+            for a, b, na, nb, off in shifts:  # footings meeting the moved one: their end follows it
+                if abs(p - a) <= 3 or abs(p - b) <= 3:
+                    p = p + off
+                if abs(q - a) <= 3 or abs(q - b) <= 3:
+                    q = q + off
+            sheet.elements[k] = e.model_copy(update={"start": Point(x=p.x / W, y=p.y / H), "end": Point(x=q.x / W, y=q.y / H)})
+        elif e.kind == "pier" and _prefix(e.tag) == "EP":
             p = pts(e)[0]
-            for a, b in lines:
+            for a, b, na, nb, off in shifts:
                 u = (b - a) / max(abs(b - a), 1e-6)
                 t = (p - a).x * u.x + (p - a).y * u.y
                 if -6 <= t <= abs(b - a) + 6 and abs(p - (a + u * t)) <= 6:
-                    sheet.elements[k] = e.model_copy(update={"tag": pier_tag})
-                    moved += 1
+                    p = p + off
+                    sheet.elements[k] = e.model_copy(update={"start": Point(x=p.x / W, y=p.y / H),
+                                                             "end": Point(x=p.x / W, y=p.y / H)})
                     break
-    sheet.elements = [e for k, e in enumerate(sheet.elements) if k not in set(existing)]
-    out = [f"{title}: {', '.join(tags)} drawn under / along an existing wall removed - a new strip footing can't run "
-           "under the existing wall. Carry the new floor edge there on its own bearer on piers clear of the existing "
-           "footings (min 600) - check"]
-    if moved:
-        out.append(f"{title}: {moved} engaged pier(s) on that line changed to {pier_tag} (no base wall there)")
-    return out
+    return [f"{title}: {', '.join(sorted(set(moved_tags)))} was drawn under an existing wall - moved to run parallel "
+            "beside it on the new side (a new strip footing can't go under the existing wall). Confirm the existing "
+            "footing position on site"]
+
+
+def _lintels_off_existing(page: pymupdf.Page, sheet: MarkupSheet, pts, title: str, reach: float = 30.0) -> list[str]:
+    """Lintels drawn inside the existing building: on an existing (grey-filled) wall and away
+    from all the new work (more than `reach` pt from every new member / bracing panel) - there
+    is no new opening there, so they are removed. A lintel at the existing wall the new work
+    joins (a formed / widened opening beside the new work) is kept."""
+    lint = [i for i, e in enumerate(sheet.elements) if _is_lintel(e)]
+    if not lint:
+        return []
+    fills = _existing_wall_fills(page)
+    if not fills:
+        return []
+    grown = [pymupdf.Rect(r.x0 - 5, r.y0 - 5, r.x1 + 5, r.y1 + 5) for r in fills]
+
+    def in_existing_wall(i: int) -> bool:  # spans an opening in a grey wall: both ends bear on it
+        a, b = pts(sheet.elements[i])
+        return all(any(r.contains(p) for r in grown) for p in (a, b))
+
+    on_existing = [i for i in lint if in_existing_wall(i)]
+    if not on_existing:
+        return []
+    new = [pts(e) for k, e in enumerate(sheet.elements)
+           if k not in on_existing and e.kind in ("member", "bracing") and not _is_lintel(e)]
+    new += [pts(sheet.elements[k]) for k in lint if k not in on_existing]
+    if not new or len(on_existing) == len(lint):
+        return []  # every lintel in a grey wall (the architect fills every wall grey), or nothing new to measure from
+
+    def dist(p, a, b):
+        d = b - a
+        L2 = d.x * d.x + d.y * d.y
+        t = 0.0 if L2 < 1e-9 else max(0.0, min(1.0, ((p - a).x * d.x + (p - a).y * d.y) / L2))
+        return abs(p - (a + d * t))
+
+    drop = []
+    for i in on_existing:
+        a, b = pts(sheet.elements[i])
+        if min(min(dist(p, na, nb) for na, nb in new) for p in (a, b, (a + b) * 0.5)) > reach:
+            drop.append(i)
+    if not drop:
+        return []
+    tags = [sheet.elements[i].tag for i in drop]
+    sheet.elements = [e for k, e in enumerate(sheet.elements) if k not in set(drop)]
+    return [f"{title}: lintel(s) {', '.join(tags)} removed - drawn in the existing building, away from the new work "
+            "(no new opening there)"]
 
 
 def _bearers_off_base_walls(sheet: MarkupSheet, pts, put, title: str, reach: float = 10.0) -> list[str]:
