@@ -237,7 +237,10 @@ def test_strip_footing_under_an_existing_wall_moves_beside_it():
     sfs = [pts(e) for e in s.elements if e.tag == "SF1"]
     east = next(l for l in sfs if abs(l[0].x - l[1].x) < 0.1 and l[0].x > 600)
     assert len(sfs) == 4  # kept
-    assert 655 <= east[0].x < 664  # parallel, beside the wall on the new side
+    from app.snap import Geometry, drawing_scale, mm_to_pt
+    sc = drawing_scale(pg, Geometry(pg))[0]
+    half = mm_to_pt(225, sc) if sc else 6.0
+    assert abs(east[0].x + half - 664) < 0.3  # parallel, its outside face hard against the existing wall
     north = next(l for l in sfs if abs(l[0].y - l[1].y) > 1 or l[0].y < 200)
     assert abs(max(north[0].x, north[1].x) - east[0].x) < 0.2  # the north footing's end follows it
     ep = next(pts(e)[0] for e in s.elements if e.tag == "EP1" and pts(e)[0].y < 400)
@@ -284,7 +287,10 @@ def test_strip_footing_set_back_from_an_existing_wall_moves_beside_it_round_a_ch
     pts = lambda e: (pymupdf.Point(e.start.x * 1190, e.start.y * 842), pymupdf.Point(e.end.x * 1190, e.end.y * 842))
     out = P._footings_off_existing_walls(pg, s, pts, "FOOTINGS")
     assert out and "beside" in out[0]
-    xs = sorted({round(pts(e)[0].x) for e in s.elements if e.tag == "SF1" and abs(pts(e)[0].x - pts(e)[1].x) < 0.1
-                 and pts(e)[0].x > 600})
-    assert xs == [652, 671]  # beside the wall face (677) and stepped out round the chimney (658)
-    assert round(pts(next(e for e in s.elements if e.tag == "EP1"))[0].x) == 671
+    from app.snap import Geometry, drawing_scale, mm_to_pt
+    sc = drawing_scale(pg, Geometry(pg))[0]
+    half = mm_to_pt(225, sc) if sc else 6.0
+    xs = sorted({round(pts(e)[0].x + half, 1) for e in s.elements if e.tag == "SF1"
+                 and abs(pts(e)[0].x - pts(e)[1].x) < 0.1 and pts(e)[0].x > 600})
+    assert xs == [658.0, 677.0]  # outside face hard against the wall (677) and round the chimney (658)
+    assert abs(pts(next(e for e in s.elements if e.tag == "EP1"))[0].x + half - 677) < 0.3

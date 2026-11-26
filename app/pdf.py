@@ -183,6 +183,8 @@ def _scale_note(page: pymupdf.Page) -> str:
     their real spacing (bearers at 2200 ctrs, rafters at 900 ctrs ...)."""
     try:
         scale, how = drawing_scale(page)
+        if not scale:  # no printed scale (common on CAD sets): the one the wall thicknesses give
+            scale, how = drawing_scale(page, Geometry(page))
     except Exception:
         return ""
     if not scale:
@@ -1869,7 +1871,7 @@ def _snap_to_drawing(src_page: pymupdf.Page, sheet: MarkupSheet, title: str) -> 
     except Exception as e:  # never lose the sheet over it
         warnings.append(f"{title}: out-of-square wall not followed ({e})")
     try:
-        warnings += _footings_off_existing_walls(src_page, sheet, pts, title)
+        warnings += _footings_off_existing_walls(src_page, sheet, pts, title, geo=geo)
     except Exception as e:
         warnings.append(f"{title}: existing wall check skipped ({e})")
     try:
@@ -1971,7 +1973,8 @@ def _existing_wall_fills(page: pymupdf.Page) -> list[pymupdf.Rect]:
     return out
 
 
-def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, title: str, put=None) -> list[str]:
+def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, title: str, put=None,
+                                 geo: Geometry | None = None) -> list[str]:
     """A new strip footing / edge beam along an existing (grey-filled) wall belongs right beside
     it: PARALLEL to the existing wall on the new side, its face at the existing wall's face -
     never under it (markup 48) and not set back from it (markup 53). A footing drawn under or
@@ -1984,8 +1987,8 @@ def _footings_off_existing_walls(page: pymupdf.Page, sheet: MarkupSheet, pts, ti
     fills = _existing_wall_fills(page)
     if not fills:
         return []
-    try:
-        scale = drawing_scale(page)[0]
+    try:  # with the wall geometry: CAD sets often carry no printed scale
+        scale = drawing_scale(page, geo if geo is not None else Geometry(page))[0]
     except Exception:
         scale = None
     D = mm_to_pt(1500, scale) if scale else 45.0  # how far out an existing wall is looked for
