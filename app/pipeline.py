@@ -483,6 +483,42 @@ def _run(job: JobInput, pages, refs, progress: Callable[[str], None], extra: dic
     return result
 
 
+_STD_DESIG = re.compile(r"\bAS\s*(?:/\s*NZS)?\s*(\d{4})(?:\s*[.:-]\s*(\d{1,2})(?!\d))?", re.I)
+
+
+def _designations(text: str) -> set[tuple[str, str]]:
+    """Standard designations named in text: 'AS 1684.2-2021 Table 8.18' -> {('1684', '2')}."""
+    return {(m.group(1), m.group(2) or "") for m in _STD_DESIG.finditer(text or "")}
+
+
+def _supplied_standard(req: InfoRequest, job: JobInput) -> list[RefDoc]:
+    """The standard a request asks for, if it is already here: uploaded with this job, or kept in
+    the reference store (with its PDF). Matched on the designation (AS 1684.2, AS 4055 ...); a
+    request without a part number matches any part."""
+    want = _designations(req.item)
+    if not want:
+        return []
+
+    def hit(name: str) -> bool:
+        have = _designations(name)
+        return any(n == wn and (not wp or p == wp) for wn, wp in want for n, p in have)
+
+    found = [d for d in job.references if d.data and hit(d.name)]
+    if refstore.enabled():
+        seen = {refstore.doc_key(d.data) for d in found}
+        try:
+            for doc in refstore.list_documents():
+                if doc["key"] in seen or not doc.get("has_pdf") or not any(hit(n) for n in doc["names"]):
+                    continue
+                got = refstore.load_pdf(doc["key"])
+                if got is not None:
+                    found.append(RefDoc(got[0], got[1], got[2]))
+                    seen.add(doc["key"])
+        except Exception as e:  # never lose the review over the store
+            print(f"[info] reference store: {e!r}", flush=True)
+    return found
+
+
 def _information(job: JobInput, pages, refs: list, geotech: GeotechReview, design: DesignAssessment,
                  progress: Callable[[str], None], extra: dict) -> tuple[DesignAssessment, list[str]]:
     """Ask the engineer about the standards / documents / information step 2 says are missing.
@@ -493,18 +529,31 @@ def _information(job: JobInput, pages, refs: list, geotech: GeotechReview, desig
     reqs: list[InfoRequest] = list(design.information_requests)
     if not reqs:
         return design, []
-    answers: list[dict] = []
-    if job.ask is not None:
-        progress("Waiting for your answers: more information requested")
-        try:
-            answers = job.ask([r.model_dump() for r in reqs]) or []
-        except Exception as e:  # never lose the review over the question
-            print(f"[info] asking failed: {e!r}", flush=True)
     warnings, direction, assumed = [], [], []
     typed = False  # information typed in as an answer
     std_docs: list[RefDoc] = []
     other_docs: list[RefDoc] = []
-    for i, r in enumerate(reqs):
+    # A standard asked for that is already here - uploaded with this job (the part needed was
+    # not among the pages sent) or stored from an earlier review - is read from it, not asked for.
+    ask_reqs = []
+    for r in reqs:
+        found = _supplied_standard(r, job) if r.kind == "standard" else []
+        if found:
+            for d in found:
+                if all(refstore.doc_key(d.data) != refstore.doc_key(x.data) for x in std_docs):
+                    std_docs.append(d)
+            warnings.append(f"{r.item}: read from {', '.join(d.stem for d in found)} (already uploaded / stored - "
+                            "not asked)")
+        else:
+            ask_reqs.append(r)
+    answers: list[dict] = []
+    if ask_reqs and job.ask is not None:
+        progress("Waiting for your answers: more information requested")
+        try:
+            answers = job.ask([r.model_dump() for r in ask_reqs]) or []
+        except Exception as e:  # never lose the review over the question
+            print(f"[info] asking failed: {e!r}", flush=True)
+    for i, r in enumerate(ask_reqs):
         a = answers[i] if i < len(answers) and answers[i] else {}
         ans = str(a.get("answer", "no")).lower()
         files = a.get("files") or []
